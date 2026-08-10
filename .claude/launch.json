@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "garagego-web",
+      "runtimeExecutable": "C:\\Users\\NICO\\Desktop\\PROYECTO-GARAGEGO\\.claude\\start-web.bat",
+      "runtimeArgs": [],
+      "port": 8081
+    }
+  ]
+}
