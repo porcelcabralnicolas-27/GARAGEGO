@@ -10,7 +10,7 @@ export default function ClientLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.onSurfaceVariant,
         tabBarStyle: { backgroundColor: colors.surface },
       }}
@@ -20,14 +20,17 @@ export default function ClientLayout() {
         options={{ title: 'Inicio', tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="map"
-        options={{ title: 'Mapa', tabBarIcon: ({ color, size }) => <Ionicons name="map" color={color} size={size} /> }}
-      />
-      <Tabs.Screen
         name="bookings/index"
         options={{
           title: 'Mis reservas',
           tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: 'Mensajes',
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
@@ -42,9 +45,6 @@ export default function ClientLayout() {
         options={{ title: 'Perfil', tabBarIcon: ({ color, size }) => <Ionicons name="person" color={color} size={size} /> }}
       />
       <Tabs.Screen name="search" options={{ href: null }} />
-      <Tabs.Screen name="list" options={{ href: null }} />
-      <Tabs.Screen name="parking/[id]" options={{ href: null }} />
-      <Tabs.Screen name="booking/[parkingId]" options={{ href: null }} />
     </Tabs>
   );
 }

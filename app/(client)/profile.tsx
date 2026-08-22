@@ -1,10 +1,5 @@
-import { Screen } from '@/components/ui/Screen';
-import { PlaceholderText } from '@/components/ui/PlaceholderText';
+import { ProfileView } from '@/features/profile/ProfileView';
 
 export default function ClientProfileScreen() {
-  return (
-    <Screen>
-      <PlaceholderText title="Perfil" subtitle="Datos de cuenta, saldo y cambio de rol — Fase 2" />
-    </Screen>
-  );
+  return <ProfileView />;
 }

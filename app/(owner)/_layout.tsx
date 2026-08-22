@@ -10,7 +10,7 @@ export default function OwnerLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.onSurfaceVariant,
         tabBarStyle: { backgroundColor: colors.surface },
       }}
@@ -20,7 +20,7 @@ export default function OwnerLayout() {
         options={{ title: 'Dashboard', tabBarIcon: ({ color, size }) => <Ionicons name="grid" color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="parkings/index"
+        name="parkings"
         options={{
           title: 'Publicaciones',
           tabBarIcon: ({ color, size }) => <Ionicons name="business" color={color} size={size} />,
@@ -34,15 +34,17 @@ export default function OwnerLayout() {
         }}
       />
       <Tabs.Screen
-        name="stats"
-        options={{ title: 'Estadísticas', tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" color={color} size={size} /> }}
+        name="messages"
+        options={{
+          title: 'Mensajes',
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" color={color} size={size} />,
+        }}
       />
+      <Tabs.Screen name="stats" options={{ href: null }} />
       <Tabs.Screen
         name="profile"
         options={{ title: 'Perfil', tabBarIcon: ({ color, size }) => <Ionicons name="person" color={color} size={size} /> }}
       />
-      <Tabs.Screen name="parkings/create" options={{ href: null }} />
-      <Tabs.Screen name="parkings/[id]/edit" options={{ href: null }} />
     </Tabs>
   );
 }
