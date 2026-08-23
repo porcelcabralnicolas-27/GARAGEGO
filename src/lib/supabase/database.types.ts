@@ -164,6 +164,9 @@ export type Database = {
           end_time: string;
           status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
           total_price: number;
+          actual_end_at: string | null;
+          overtime_minutes: number;
+          overtime_charge: number;
           created_at: string;
         };
         Insert: never;
@@ -208,6 +211,22 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          type: string;
+          read: boolean;
+          created_at: string;
+        };
+        Insert: never;
+        Update: {
+          read?: boolean;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -238,7 +257,7 @@ export type Database = {
       };
       complete_booking: {
         Args: { p_booking_id: string };
-        Returns: undefined;
+        Returns: { overtime_minutes: number; overtime_charge: number }[];
       };
       cancel_booking: {
         Args: { p_booking_id: string };

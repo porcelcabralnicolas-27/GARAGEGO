@@ -26,10 +26,23 @@ type BookingCardProps = {
   endTime: string;
   totalPrice: number;
   status: BookingStatus;
+  overtimeMinutes?: number;
+  overtimeCharge?: number;
   actions?: ReactNode;
 };
 
-export function BookingCard({ title, subtitle, date, startTime, endTime, totalPrice, status, actions }: BookingCardProps) {
+export function BookingCard({
+  title,
+  subtitle,
+  date,
+  startTime,
+  endTime,
+  totalPrice,
+  status,
+  overtimeMinutes = 0,
+  overtimeCharge = 0,
+  actions,
+}: BookingCardProps) {
   const { colors, typography } = useTheme();
 
   return (
@@ -47,6 +60,11 @@ export function BookingCard({ title, subtitle, date, startTime, endTime, totalPr
         {date} · {startTime.slice(0, 5)} - {endTime.slice(0, 5)}
       </Text>
       <Text style={[typography.titleMedium, { color: colors.accent, marginTop: 4 }]}>${totalPrice.toFixed(2)}</Text>
+      {overtimeCharge > 0 ? (
+        <Text style={[typography.label, { color: colors.error, marginTop: 2 }]}>
+          + ${overtimeCharge.toFixed(2)} por {overtimeMinutes} min de exceso
+        </Text>
+      ) : null}
       {actions ? <View style={styles.actions}>{actions}</View> : null}
     </View>
   );

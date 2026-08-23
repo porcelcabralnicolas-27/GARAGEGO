@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "garagego-web",
-      "runtimeExecutable": "C:\\Users\\NICO\\Desktop\\PROYECTO-GARAGEGO\\.claude\\start-web.bat",
+      "runtimeExecutable": "C:\\Users\\Daniel\\GARAGEGO-2027-CLAUDE\\.claude\\start-web.bat",
       "runtimeArgs": [],
       "port": 8081
     }

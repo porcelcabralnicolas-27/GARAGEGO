@@ -11,6 +11,9 @@ function mapBookingRow(row: {
   end_time: string;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   total_price: number;
+  actual_end_at: string | null;
+  overtime_minutes: number;
+  overtime_charge: number;
   created_at: string;
 }): Booking {
   return {
@@ -22,6 +25,9 @@ function mapBookingRow(row: {
     endTime: row.end_time,
     status: row.status,
     totalPrice: row.total_price,
+    actualEndAt: row.actual_end_at,
+    overtimeMinutes: row.overtime_minutes,
+    overtimeCharge: row.overtime_charge,
     createdAt: row.created_at,
   };
 }
@@ -58,9 +64,11 @@ export async function confirmBooking(bookingId: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function completeBooking(bookingId: string): Promise<void> {
-  const { error } = await supabase.rpc('complete_booking', { p_booking_id: bookingId });
+export async function completeBooking(bookingId: string): Promise<{ overtimeMinutes: number; overtimeCharge: number }> {
+  const { data, error } = await supabase.rpc('complete_booking', { p_booking_id: bookingId });
   if (error) throw error;
+  const result = data[0];
+  return { overtimeMinutes: result.overtime_minutes, overtimeCharge: result.overtime_charge };
 }
 
 export async function cancelBooking(bookingId: string): Promise<void> {
@@ -138,6 +146,9 @@ export function getBookingErrorMessage(error: unknown): string {
     const message = String((error as { message: unknown }).message);
     if (message.includes('insufficient_balance')) return 'No tenés saldo suficiente para esta reserva.';
     if (message.includes('overlap_conflict')) return 'Ese horario ya no está disponible. Elegí otro.';
+    if (message.includes('buffer_conflict')) {
+      return 'Ese horario está muy cerca de otra reserva. Dejá al menos 15 minutos de margen.';
+    }
     if (message.includes('No se puede reservar en el pasado')) return 'No se puede reservar en el pasado.';
     if (message.includes('No podés reservar tu propio estacionamiento')) {
       return 'No podés reservar tu propio estacionamiento.';

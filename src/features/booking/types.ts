@@ -9,6 +9,9 @@ export type Booking = {
   endTime: string;
   status: BookingStatus;
   totalPrice: number;
+  actualEndAt: string | null;
+  overtimeMinutes: number;
+  overtimeCharge: number;
   createdAt: string;
 };
 

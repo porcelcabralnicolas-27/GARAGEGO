@@ -88,6 +88,8 @@ export default function MyBookingsScreen() {
             endTime={item.endTime}
             totalPrice={item.totalPrice}
             status={item.status}
+            overtimeMinutes={item.overtimeMinutes}
+            overtimeCharge={item.overtimeCharge}
             actions={
               item.status === 'pending' || item.status === 'confirmed' ? (
                 <Button label="Cancelar" size="compact" variant="outlined" onPress={() => setCancelTarget(item)} />

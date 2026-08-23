@@ -40,6 +40,13 @@ export default function OwnerLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" color={color} size={size} />,
         }}
       />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notificaciones',
+          tabBarIcon: ({ color, size }) => <Ionicons name="notifications" color={color} size={size} />,
+        }}
+      />
       <Tabs.Screen name="stats" options={{ href: null }} />
       <Tabs.Screen
         name="profile"

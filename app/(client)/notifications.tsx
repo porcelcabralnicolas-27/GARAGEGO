@@ -1,10 +1,5 @@
-import { Screen } from '@/components/ui/Screen';
-import { PlaceholderText } from '@/components/ui/PlaceholderText';
+import { NotificationsView } from '@/features/notifications/NotificationsView';
 
 export default function ClientNotificationsScreen() {
-  return (
-    <Screen>
-      <PlaceholderText title="Notificaciones" subtitle="Historial de notificaciones — Fase 8" />
-    </Screen>
-  );
+  return <NotificationsView />;
 }

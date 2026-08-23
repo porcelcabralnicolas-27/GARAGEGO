@@ -28,6 +28,7 @@ export default function OwnerBookingsScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<OwnerBookingItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!profile) return;
@@ -61,8 +62,12 @@ export default function OwnerBookingsScreen() {
   const handleComplete = async (booking: OwnerBookingItem) => {
     setBusyId(booking.id);
     setErrorMessage(null);
+    setInfoMessage(null);
     try {
-      await completeBooking(booking.id);
+      const { overtimeMinutes, overtimeCharge } = await completeBooking(booking.id);
+      if (overtimeCharge > 0) {
+        setInfoMessage(`El cliente se quedó ${overtimeMinutes} min de más. Se le cobraron $${overtimeCharge.toFixed(2)}.`);
+      }
       reloadProfile();
       load();
     } catch (error) {
@@ -94,6 +99,7 @@ export default function OwnerBookingsScreen() {
       </Text>
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
+      {infoMessage ? <Banner message={infoMessage} variant="success" /> : null}
 
       {!isLoading && bookings.length === 0 && !errorMessage ? (
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
@@ -115,6 +121,8 @@ export default function OwnerBookingsScreen() {
             endTime={item.endTime}
             totalPrice={item.totalPrice}
             status={item.status}
+            overtimeMinutes={item.overtimeMinutes}
+            overtimeCharge={item.overtimeCharge}
             actions={
               <>
                 {item.status === 'pending' ? (
