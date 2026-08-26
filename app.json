@@ -47,7 +47,8 @@
           "locationAlwaysAndWhenInUsePermission": "GarageGo usa tu ubicación para mostrarte los estacionamientos cercanos."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},
