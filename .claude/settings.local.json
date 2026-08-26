@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(npx tsc *)",
+      "WebSearch",
+      "WebFetch(domain:docs.expo.dev)"
+    ]
+  }
+}
