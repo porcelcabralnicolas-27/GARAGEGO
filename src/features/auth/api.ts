@@ -60,18 +60,15 @@ export async function signInWithGoogle() {
     return;
   }
 
-  // TEMPORAL: para diagnosticar el error de "localhost" al loguear con Google desde el celular.
-  // Sacar estos dos console.log una vez resuelto.
-  console.log('[GoogleAuth] redirectTo =', redirectTo);
-
+  // En nativo, redirectTo usa el scheme propio de la app (garagego://). Ojo: en Expo Go sería
+  // exp://<IP-local>:8081, y Supabase rechaza cualquier redirect cuyo host sea una IP numérica,
+  // así que el login con Google solo funciona desde un development build, no desde Expo Go.
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo, skipBrowserRedirect: true },
   });
   if (error) throw error;
   if (!data?.url) throw new Error('No se pudo iniciar el flujo de Google.');
-
-  console.log('[GoogleAuth] authorize url =', data.url);
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
   if (result.type !== 'success' || !result.url) {
