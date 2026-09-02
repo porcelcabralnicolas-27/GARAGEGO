@@ -4,6 +4,7 @@ import { FlatList, Text } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { ConversationListItem } from '@/features/messaging/ConversationListItem';
 import { listOwnerConversations } from '@/features/messaging/api';
 import type { ConversationThread } from '@/features/messaging/types';
@@ -42,7 +43,7 @@ export default function OwnerMessagesScreen() {
 
   return (
     <Screen>
-      <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>Mensajes</Text>
+      <ScreenHeader title="Mensajes" />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
 

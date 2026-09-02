@@ -2,11 +2,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { deleteVehicle, getVehicle, getVehicleErrorMessage, updateVehicle, type VehicleInput } from '@/features/vehicle/api';
 import { VehicleForm } from '@/features/vehicle/VehicleForm';
 import { VehicleImageManager } from '@/features/vehicle/VehicleImageManager';
@@ -66,11 +66,7 @@ export default function EditOwnerVehicleScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <BackHeader href="/(owner)/vehicles" />
-
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>
-          {vehicle.plate}
-        </Text>
+        <ScreenHeader title={vehicle.plate} backHref="/(owner)/vehicles" />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 

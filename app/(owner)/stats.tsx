@@ -4,14 +4,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { formatMoney } from '@/lib/money';
 import { getOwnerStats } from '@/features/stats/api';
 import type { OwnerStats } from '@/features/stats/types';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD' }).format(amount);
-}
 
 export default function OwnerStatsScreen() {
   const { colors, typography } = useTheme();
@@ -37,7 +35,7 @@ export default function OwnerStatsScreen() {
   return (
     <Screen>
       <ScrollView>
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>Estadísticas</Text>
+        <ScreenHeader title="Estadísticas" backHref="/(owner)/dashboard" />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
@@ -83,7 +81,7 @@ export default function OwnerStatsScreen() {
                       {lot.bookingsCount} {lot.bookingsCount === 1 ? 'reserva' : 'reservas'}
                     </Text>
                   </View>
-                  <Text style={[typography.titleMedium, { color: colors.accent }]}>{formatCurrency(lot.revenue)}</Text>
+                  <Text style={[typography.titleMedium, { color: colors.accent }]}>{formatMoney(lot.revenue)}</Text>
                 </View>
               ))
             )}
