@@ -45,7 +45,7 @@ export function TimeSelect({ label, value, placeholder = 'Elegir hora', onChange
       </Pressable>
 
       <Modal visible={isOpen} transparent animationType="fade" onRequestClose={() => setIsOpen(false)}>
-        <Pressable style={styles.overlay} onPress={() => setIsOpen(false)}>
+        <Pressable style={[styles.overlay, { backgroundColor: colors.overlay }]} onPress={() => setIsOpen(false)}>
           {/* Pressable propio para que tocar el card no cierre el modal (el toque no llega al overlay). */}
           <Pressable style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => {}}>
             {label ? (
@@ -91,7 +91,6 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,

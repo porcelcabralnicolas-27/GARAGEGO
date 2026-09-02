@@ -4,8 +4,10 @@ import { FlatList, View, Text } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { LinkText } from '@/components/ui/LinkText';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { NotificationListItem } from '@/features/notifications/NotificationListItem';
 import {
   deleteAllNotifications,
@@ -18,11 +20,9 @@ import {
 import type { AppNotification } from '@/features/notifications/types';
 import { getThreadRefForBooking } from '@/features/messaging/api';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useTheme } from '@/theme';
 
 export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
   const router = useRouter();
-  const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -114,9 +114,7 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={[typography.displayLarge, { color: colors.onBackground, flex: 1 }]}>Notificaciones</Text>
-      </View>
+      <ScreenHeader title="Notificaciones" />
 
       {notifications.length > 0 ? (
         <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
@@ -128,9 +126,11 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
       {!isLoading && notifications.length === 0 && !errorMessage ? (
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-          Todavía no tenés notificaciones. Acá vas a ver novedades sobre tus reservas.
-        </Text>
+        <EmptyState
+          icon="notifications-outline"
+          title="No tenés notificaciones"
+          description="Acá vas a ver las novedades sobre tus reservas y mensajes."
+        />
       ) : null}
 
       <FlatList

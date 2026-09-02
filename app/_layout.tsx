@@ -1,3 +1,9 @@
+import {
+  Inter_400Regular,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts,
+} from '@expo-google-fonts/inter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -94,9 +100,20 @@ function useNavigationGuard() {
 }
 
 export default function RootLayout() {
+  // Inter se carga en runtime (no embebida en el build nativo) para no depender de un rebuild.
+  // Si la carga falla, se sigue igual: React Native cae a la fuente del sistema y la app queda
+  // usable, solo que con otra tipografía. Nunca dejamos la pantalla en blanco por una fuente.
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
   useAuthListener();
   useProfileLoader();
   useNavigationGuard();
+
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <QueryClientProvider client={queryClient}>

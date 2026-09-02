@@ -28,9 +28,12 @@ export function RouteMap({ origin, destination, coordinates }: RouteMapProps) {
   return (
     <View style={styles.container}>
       <MapView provider={PROVIDER_GOOGLE} style={styles.map} initialRegion={region}>
-        <Marker coordinate={origin} pinColor={colors.accent} title="Tu ubicación" />
-        <Marker coordinate={destination} title="Estacionamiento" />
-        <Polyline coordinates={polylineCoordinates} strokeColor={colors.accent} strokeWidth={4} />
+        {/* Origen oscuro y destino lima, como los extremos de la ruta en el Figma. */}
+        <Marker coordinate={origin} pinColor={colors.onSurface} title="Tu ubicación" />
+        <Marker coordinate={destination} pinColor={colors.primary} title="Estacionamiento" />
+        {/* El trazo usa el lima de marca sin oscurecer: sobre el mapa es una línea gruesa,
+            no texto, así que no le aplica el mínimo de contraste que obliga a usar `accent`. */}
+        <Polyline coordinates={polylineCoordinates} strokeColor={colors.primary} strokeWidth={6} />
       </MapView>
     </View>
   );

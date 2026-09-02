@@ -2,9 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
+import { formatMoney } from '@/lib/money';
 import type { BookingStatus } from '@/features/booking/types';
 import { BOOKING_STATUS_LABELS } from '@/features/booking/types';
-import { useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 
 function statusColor(status: BookingStatus, colors: ReturnType<typeof useTheme>['colors']) {
   switch (status) {
@@ -54,7 +56,7 @@ export function BookingCard({
   const statusLabel = isInProgress ? 'En curso' : BOOKING_STATUS_LABELS[status];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.surfaceVariant, borderColor: colors.outline }]}>
+    <Card>
       <View style={styles.headerRow}>
         <Text style={[typography.titleMedium, { color: colors.onSurface, flex: 1 }]} numberOfLines={1}>
           {title}
@@ -75,37 +77,31 @@ export function BookingCard({
           </Text>
         </View>
       ) : null}
-      <Text style={[typography.titleMedium, { color: colors.accent, marginTop: 4 }]}>${totalPrice.toFixed(2)}</Text>
+      <Text style={[typography.titleMedium, { color: colors.accent, marginTop: 4 }]}>{formatMoney(totalPrice)}</Text>
       {overtimeCharge > 0 ? (
         <Text style={[typography.label, { color: colors.error, marginTop: 2 }]}>
-          + ${overtimeCharge.toFixed(2)} por {overtimeMinutes} min de exceso
+          + {formatMoney(overtimeCharge)} por {overtimeMinutes} min de exceso
         </Text>
       ) : null}
       {actions ? <View style={styles.actions}>{actions}</View> : null}
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 12,
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: spacing.xs,
   },
   vehicleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: spacing.xs,
   },
   actions: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
 });

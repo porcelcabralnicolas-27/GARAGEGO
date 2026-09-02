@@ -1,16 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Banner } from '@/components/ui/Banner';
-import { useTheme } from '@/theme';
+import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
 
-import { deleteVehicleImage, listVehicleImages, uploadVehicleImage } from './api';
+import { deleteVehicleImage, getVehicleErrorMessage, listVehicleImages, uploadVehicleImage } from './api';
 import type { VehicleImage } from './types';
 
 export function VehicleImageManager({ ownerId, vehicleId }: { ownerId: string; vehicleId: string }) {
-  const { colors, typography } = useTheme();
   const [images, setImages] = useState<VehicleImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -49,94 +45,34 @@ export function VehicleImageManager({ ownerId, vehicleId }: { ownerId: string; v
       });
       setImages((prev) => [...prev, image]);
     } catch (error) {
-      setErrorMessage(
-        error && typeof error === 'object' && 'message' in error
-          ? `No se pudo subir la foto: ${String((error as { message: unknown }).message)}`
-          : 'No se pudo subir la foto. Intenta nuevamente.',
-      );
+      setErrorMessage(`No se pudo subir la foto: ${getVehicleErrorMessage(error)}`);
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleRemoveImage = async (image: VehicleImage) => {
+  const handleRemoveImage = async (photo: UploadedPhoto) => {
+    const image = images.find((i) => i.id === photo.id);
+    if (!image) return;
+
     setErrorMessage(null);
     try {
       await deleteVehicleImage(image);
       setImages((prev) => prev.filter((i) => i.id !== image.id));
-    } catch {
-      setErrorMessage('No se pudo eliminar la foto.');
+    } catch (error) {
+      setErrorMessage(`No se pudo eliminar la foto: ${getVehicleErrorMessage(error)}`);
     }
   };
 
   return (
-    <View>
-      <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Fotos del vehículo</Text>
-
-      {errorMessage ? <Banner message={errorMessage} /> : null}
-
-      {isLoading ? (
-        <ActivityIndicator color={colors.accent} />
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.row}>
-          {images.map((image) => (
-            <View key={image.id} style={styles.thumbWrapper}>
-              <Image source={{ uri: image.publicUrl }} style={styles.thumb} />
-              <Pressable
-                onPress={() => handleRemoveImage(image)}
-                style={[styles.removeButton, { backgroundColor: colors.error }]}
-              >
-                <Ionicons name="close" size={14} color={colors.onError} />
-              </Pressable>
-            </View>
-          ))}
-
-          <Pressable
-            onPress={handleAddImage}
-            disabled={isUploading}
-            style={[styles.addButton, { borderColor: colors.outline }]}
-          >
-            {isUploading ? (
-              <ActivityIndicator color={colors.accent} />
-            ) : (
-              <Ionicons name="add" size={28} color={colors.onSurfaceVariant} />
-            )}
-          </Pressable>
-        </ScrollView>
-      )}
-    </View>
+    <PhotoUploader
+      label="Fotos del vehículo"
+      photos={images}
+      onAdd={handleAddImage}
+      onRemove={handleRemoveImage}
+      isLoading={isLoading}
+      isUploading={isUploading}
+      errorMessage={errorMessage}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    marginBottom: 8,
-  },
-  thumbWrapper: {
-    marginRight: 10,
-  },
-  thumb: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-  },
-  removeButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButton: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

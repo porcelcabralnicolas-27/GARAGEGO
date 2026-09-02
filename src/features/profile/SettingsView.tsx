@@ -3,9 +3,9 @@ import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
@@ -27,9 +27,7 @@ export function SettingsView({ backHref }: { backHref: Href }) {
 
   return (
     <Screen>
-      <BackHeader href={backHref} />
-
-      <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 20 }]}>Ajustes</Text>
+      <ScreenHeader title="Ajustes" backHref={backHref} />
 
       <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Cuenta</Text>
       <Button

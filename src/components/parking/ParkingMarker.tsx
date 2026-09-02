@@ -16,8 +16,10 @@ export function ParkingMarker({ coordinate, title, description, onPress }: Parki
 
   return (
     <Marker coordinate={coordinate} title={title} description={description} onCalloutPress={onPress}>
-      <View style={[styles.pin, { backgroundColor: colors.accent, borderColor: '#FFFFFF' }]}>
-        <Ionicons name="car" size={16} color="#FFFFFF" />
+      {/* Pin lima como en el Figma. El ícono va en `onPrimary` (oscuro) y no en blanco:
+          sobre el lima el blanco queda en 1.6:1 y se pierde de vista. */}
+      <View style={[styles.pin, { backgroundColor: colors.primary, borderColor: colors.surface }]}>
+        <Ionicons name="car" size={16} color={colors.onPrimary} />
       </View>
     </Marker>
   );

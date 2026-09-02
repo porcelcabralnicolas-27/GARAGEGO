@@ -88,7 +88,13 @@ export type ParkingLotInput = {
   pricePerHour: number;
 };
 
-export async function createParkingLot(ownerId: string, input: ParkingLotInput): Promise<ParkingLot> {
+export async function createParkingLot(
+  ownerId: string,
+  input: ParkingLotInput,
+  // El asistente de publicación crea el lote como borrador (inactivo) en el primer paso y lo
+  // activa recién al terminar, para que no aparezca en la búsqueda sin fotos ni horarios.
+  options?: { isActive?: boolean }
+): Promise<ParkingLot> {
   const { data, error } = await supabase
     .from('parking_lots')
     .insert({
@@ -99,6 +105,7 @@ export async function createParkingLot(ownerId: string, input: ParkingLotInput):
       latitude: input.latitude,
       longitude: input.longitude,
       price_per_hour: input.pricePerHour,
+      is_active: options?.isActive ?? true,
     })
     .select('*')
     .single();

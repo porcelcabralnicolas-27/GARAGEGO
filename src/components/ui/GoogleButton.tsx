@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
-import { useTheme } from '@/theme';
+import { radius, spacing, useTheme } from '@/theme';
 
 type GoogleButtonProps = {
   onPress: () => void;
@@ -36,15 +36,17 @@ export function GoogleButton({ onPress, loading, disabled }: GoogleButtonProps) 
 
 const styles = StyleSheet.create({
   base: {
-    height: 48,
-    borderRadius: 24,
+    height: 56,
+    // El Figma lo muestra redondeado pero no en píldora (`rounded-round-eight`, 1.5rem),
+    // a diferencia de los botones de acción que sí son píldora.
+    borderRadius: radius.xl,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xl,
   },
   icon: {
-    marginRight: 10,
+    marginRight: spacing.sm,
   },
 });

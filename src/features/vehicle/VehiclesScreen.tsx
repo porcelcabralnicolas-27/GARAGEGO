@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { FlatList, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
+import { BackButton } from '@/components/ui/BackButton';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -103,7 +103,7 @@ export function VehiclesScreen({ backHref }: { backHref: Href }) {
         renderItem={({ item }) => <VehicleListItem vehicle={item} onDelete={() => setDeleteTarget(item)} />}
         ListHeaderComponent={
           <>
-            <BackHeader href={backHref} />
+            <BackButton href={backHref} />
             <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 4 }]}>
               Mis vehículos
             </Text>

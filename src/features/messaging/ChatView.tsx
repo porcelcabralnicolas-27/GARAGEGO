@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Href } from 'expo-router';
 
-import { BackHeader } from '@/components/ui/BackHeader';
+import { BackButton } from '@/components/ui/BackButton';
 import { Banner } from '@/components/ui/Banner';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -16,7 +16,7 @@ import {
 } from '@/features/messaging/api';
 import { markMessageNotificationsAsRead } from '@/features/notifications/api';
 import type { Message, ThreadRole } from '@/features/messaging/types';
-import { useTheme } from '@/theme';
+import { radius, spacing, useTheme } from '@/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 type ChatViewProps = {
@@ -162,7 +162,7 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
 
   return (
     <Screen>
-      <BackHeader href={backHref} />
+      <BackButton href={backHref} />
       <Text style={[typography.titleLarge, { color: colors.onBackground, marginBottom: 12 }]} numberOfLines={1}>
         {title}
       </Text>
@@ -251,9 +251,9 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '80%',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   timestamp: {
     alignSelf: 'flex-end',
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   sendButton: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,

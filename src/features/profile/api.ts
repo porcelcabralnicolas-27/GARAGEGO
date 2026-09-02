@@ -69,3 +69,37 @@ export async function topupWallet(amount: number): Promise<void> {
   const { error } = await supabase.rpc('topup_wallet', { p_amount: amount });
   if (error) throw error;
 }
+
+export type WalletTransaction = {
+  id: string;
+  type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge';
+  amount: number;
+  createdAt: string;
+};
+
+/** Movimientos de la billetera del usuario, del más nuevo al más viejo. Alimenta el feed
+ *  "Pagos recientes" del panel del propietario. RLS: la policy `wallet_transactions_select_own`
+ *  ya restringe a las filas de la billetera propia. */
+export async function listRecentTransactions(userId: string, limit = 5): Promise<WalletTransaction[]> {
+  const { data: wallet, error: walletError } = await supabase
+    .from('wallets')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+  if (walletError) throw walletError;
+
+  const { data, error } = await supabase
+    .from('wallet_transactions')
+    .select('id, type, amount, created_at')
+    .eq('wallet_id', wallet.id)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  return data.map((row) => ({
+    id: row.id,
+    type: row.type as WalletTransaction['type'],
+    amount: row.amount,
+    createdAt: row.created_at,
+  }));
+}

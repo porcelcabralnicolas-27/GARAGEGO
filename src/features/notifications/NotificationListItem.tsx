@@ -1,8 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
+import { IconButton } from '@/components/ui/IconButton';
 import type { AppNotification } from '@/features/notifications/types';
-import { useTheme } from '@/theme';
+import { radius, spacing, useTheme } from '@/theme';
 
 function formatTime(iso: string): string {
   const date = new Date(iso);
@@ -21,40 +22,36 @@ export function NotificationListItem({
   const { colors, typography } = useTheme();
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.container,
-        {
-          backgroundColor: notification.read ? colors.surfaceVariant : colors.surface,
-          borderColor: notification.read ? colors.outline : colors.accent,
-        },
-      ]}
-    >
+    <Card onPress={onPress} padding="md" accessibilityLabel={notification.title}>
       <View style={styles.row}>
         {notification.read ? null : <View style={[styles.dot, { backgroundColor: colors.accent }]} />}
+
         <Text style={[typography.titleMedium, { color: colors.onSurface, flex: 1 }]} numberOfLines={1}>
           {notification.title}
         </Text>
-        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{formatTime(notification.createdAt)}</Text>
-        <Pressable onPress={onDelete} hitSlop={8} style={styles.deleteButton}>
-          <Ionicons name="trash" size={16} color={colors.onSurfaceVariant} />
-        </Pressable>
+
+        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>
+          {formatTime(notification.createdAt)}
+        </Text>
+
+        <IconButton
+          name="trash-outline"
+          size={16}
+          onPress={onDelete}
+          accessibilityLabel={`Borrar notificación: ${notification.title}`}
+        />
       </View>
+
       {notification.description ? (
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 4 }]}>{notification.description}</Text>
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: spacing.xs }]}>
+          {notification.description}
+        </Text>
       ) : null}
-    </Pressable>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 10,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -62,10 +59,7 @@ const styles = StyleSheet.create({
   dot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  deleteButton: {
-    marginLeft: 12,
+    borderRadius: radius.pill,
+    marginRight: spacing.sm,
   },
 });

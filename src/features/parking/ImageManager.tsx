@@ -1,9 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Banner } from '@/components/ui/Banner';
+import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
 import {
   deleteParkingImage,
   getParkingErrorMessage,
@@ -11,10 +9,8 @@ import {
   uploadParkingImage,
 } from '@/features/parking/api';
 import { MAX_PARKING_IMAGES, type ParkingImage } from '@/features/parking/types';
-import { useTheme } from '@/theme';
 
 export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parkingLotId: string }) {
-  const { colors, typography } = useTheme();
   const [images, setImages] = useState<ParkingImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -58,15 +54,16 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
       });
       setImages((prev) => [...prev, image]);
     } catch (error) {
-      // Mostramos el error real (incluido el del trigger de máximo de fotos si dos pestañas
-      // suben al mismo tiempo) en vez de un mensaje fijo que oculta la causa.
       setErrorMessage(`No se pudo subir la foto: ${getParkingErrorMessage(error)}`);
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleRemoveImage = async (image: ParkingImage) => {
+  const handleRemoveImage = async (photo: UploadedPhoto) => {
+    const image = images.find((i) => i.id === photo.id);
+    if (!image) return;
+
     setErrorMessage(null);
     try {
       await deleteParkingImage(image);
@@ -77,77 +74,15 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
   };
 
   return (
-    <View>
-      <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>
-        Fotografías ({images.length}/{MAX_PARKING_IMAGES})
-      </Text>
-
-      {errorMessage ? <Banner message={errorMessage} /> : null}
-
-      {isLoading ? (
-        <ActivityIndicator color={colors.accent} />
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.row}>
-          {images.map((image) => (
-            <View key={image.id} style={styles.thumbWrapper}>
-              <Image source={{ uri: image.publicUrl }} style={styles.thumb} />
-              <Pressable
-                onPress={() => handleRemoveImage(image)}
-                style={[styles.removeButton, { backgroundColor: colors.error }]}
-              >
-                <Ionicons name="close" size={14} color={colors.onError} />
-              </Pressable>
-            </View>
-          ))}
-
-          {images.length < MAX_PARKING_IMAGES ? (
-            <Pressable
-              onPress={handleAddImage}
-              disabled={isUploading}
-              style={[styles.addButton, { borderColor: colors.outline }]}
-            >
-              {isUploading ? (
-                <ActivityIndicator color={colors.accent} />
-              ) : (
-                <Ionicons name="add" size={28} color={colors.onSurfaceVariant} />
-              )}
-            </Pressable>
-          ) : null}
-        </ScrollView>
-      )}
-    </View>
+    <PhotoUploader
+      label="Fotografías"
+      photos={images}
+      onAdd={handleAddImage}
+      onRemove={handleRemoveImage}
+      max={MAX_PARKING_IMAGES}
+      isLoading={isLoading}
+      isUploading={isUploading}
+      errorMessage={errorMessage}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    marginBottom: 8,
-  },
-  thumbWrapper: {
-    marginRight: 10,
-  },
-  thumb: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-  },
-  removeButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButton: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

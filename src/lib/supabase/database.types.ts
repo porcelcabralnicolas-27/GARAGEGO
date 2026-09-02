@@ -51,6 +51,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      wallet_transactions: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          // El constraint se amplió en migraciones posteriores (0010, 0015): además de los
+          // originales, 'overtime_charge'. 'earning' se agregó en 0010 y se quitó en 0015.
+          type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge';
+          amount: number;
+          related_booking_id: string | null;
+          status: 'pending' | 'completed' | 'failed';
+          payment_gateway_ref: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge';
+          amount: number;
+          related_booking_id?: string | null;
+          status?: 'pending' | 'completed' | 'failed';
+          payment_gateway_ref?: string | null;
+        };
+        Update: {
+          status?: 'pending' | 'completed' | 'failed';
+        };
+        Relationships: [];
+      };
       parking_lots: {
         Row: {
           id: string;

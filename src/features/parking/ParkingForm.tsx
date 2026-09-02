@@ -1,15 +1,17 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
+import { FormSection } from '@/components/ui/FormSection';
+import { PriceStepper } from '@/components/ui/PriceStepper';
 import { TextField } from '@/components/ui/TextField';
 import { LocationPicker } from '@/features/parking/LocationPicker';
 import { parkingLotSchema, type ParkingLotFormValues } from '@/features/parking/schemas';
 import type { ParkingLotInput } from '@/features/parking/api';
-import { useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 
 type ParkingFormProps = {
   defaultValues?: Partial<ParkingLotFormValues>;
@@ -70,80 +72,87 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
     <View>
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
-      <Controller
-        control={control}
-        name="name"
-        render={({ field, fieldState }) => (
-          <TextField label="Nombre" value={field.value} onChangeText={field.onChange} errorMessage={fieldState.error?.message} />
-        )}
-      />
+      <FormSection title="Datos del lugar" description="Así lo van a ver los conductores en la búsqueda.">
+        <Controller
+          control={control}
+          name="name"
+          render={({ field, fieldState }) => (
+            <TextField
+              label="NOMBRE"
+              value={field.value}
+              onChangeText={field.onChange}
+              errorMessage={fieldState.error?.message}
+            />
+          )}
+        />
 
-      <Controller
-        control={control}
-        name="description"
-        render={({ field, fieldState }) => (
-          <TextField
-            label="Descripción (opcional)"
-            value={field.value}
-            onChangeText={field.onChange}
-            errorMessage={fieldState.error?.message}
-            multiline
-          />
-        )}
-      />
+        <Controller
+          control={control}
+          name="description"
+          render={({ field, fieldState }) => (
+            <TextField
+              label="DESCRIPCIÓN (OPCIONAL)"
+              value={field.value}
+              onChangeText={field.onChange}
+              errorMessage={fieldState.error?.message}
+              multiline
+            />
+          )}
+        />
 
-      <Controller
-        control={control}
-        name="address"
-        render={({ field, fieldState }) => (
-          <TextField label="Dirección" value={field.value} onChangeText={field.onChange} errorMessage={fieldState.error?.message} />
-        )}
-      />
+        <Controller
+          control={control}
+          name="address"
+          render={({ field, fieldState }) => (
+            <TextField
+              label="DIRECCIÓN"
+              value={field.value}
+              onChangeText={field.onChange}
+              errorMessage={fieldState.error?.message}
+            />
+          )}
+        />
+      </FormSection>
 
-      <LocationPicker
-        latitude={pickerLatitude}
-        longitude={pickerLongitude}
-        onChange={(lat, lng) => {
-          setValue('latitude', String(lat), { shouldValidate: true });
-          setValue('longitude', String(lng), { shouldValidate: true });
-        }}
-        onAddressResolved={(address) => setValue('address', address, { shouldValidate: true })}
-      />
+      <FormSection
+        title="Ubicación en el mapa"
+        description="Movés el marcador al lugar exacto de la entrada."
+      >
+        <LocationPicker
+          latitude={pickerLatitude}
+          longitude={pickerLongitude}
+          onChange={(lat, lng) => {
+            setValue('latitude', String(lat), { shouldValidate: true });
+            setValue('longitude', String(lng), { shouldValidate: true });
+          }}
+          onAddressResolved={(address) => setValue('address', address, { shouldValidate: true })}
+        />
 
-      {pickerLatitude !== null && pickerLongitude !== null ? (
-        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>
-          Ubicación seleccionada: {pickerLatitude.toFixed(5)}, {pickerLongitude.toFixed(5)}
-        </Text>
-      ) : null}
-      {errors.latitude || errors.longitude ? (
-        <Banner message={errors.latitude?.message ?? errors.longitude?.message ?? 'Ubicación inválida'} />
-      ) : null}
+        {pickerLatitude !== null && pickerLongitude !== null ? (
+          <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: spacing.sm }]}>
+            Ubicación seleccionada: {pickerLatitude.toFixed(5)}, {pickerLongitude.toFixed(5)}
+          </Text>
+        ) : null}
+        {errors.latitude || errors.longitude ? (
+          <Banner message={errors.latitude?.message ?? errors.longitude?.message ?? 'Ubicación inválida'} />
+        ) : null}
+      </FormSection>
 
-      <View style={styles.spacer} />
-
-      <Controller
-        control={control}
-        name="pricePerHour"
-        render={({ field, fieldState }) => (
-          <TextField
-            label="Precio por hora (USD)"
-            keyboardType="decimal-pad"
-            value={field.value}
-            onChangeText={field.onChange}
-            errorMessage={fieldState.error?.message}
-          />
-        )}
-      />
-
-      <View style={styles.spacer} />
+      <FormSection title="Tarifa por hora" description="Lo que paga el conductor por cada hora reservada.">
+        <Controller
+          control={control}
+          name="pricePerHour"
+          render={({ field, fieldState }) => (
+            <PriceStepper
+              value={field.value}
+              onChangeText={field.onChange}
+              errorMessage={fieldState.error?.message}
+            />
+          )}
+        />
+      </FormSection>
 
       <Button label={submitLabel} onPress={handleSubmit(submit)} loading={isSubmitting} disabled={isSubmitting} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  spacer: {
-    height: 12,
-  },
-});
