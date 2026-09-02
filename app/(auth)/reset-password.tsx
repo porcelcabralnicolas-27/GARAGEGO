@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AuthHeading } from '@/components/ui/AuthHeading';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
@@ -62,9 +63,7 @@ export default function ResetPasswordScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 24 }]}>
-          Nueva contraseña
-        </Text>
+        <AuthHeading title="Nueva contraseña" />
 
         {sessionError ? <Banner message={sessionError} /> : null}
         {errorMessage ? <Banner message={errorMessage} /> : null}

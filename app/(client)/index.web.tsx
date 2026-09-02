@@ -1,16 +1,17 @@
 import { GoogleMap, MarkerF, useJsApiLoader } from '@react-google-maps/api';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { ParkingPreviewSheet } from '@/components/parking/ParkingPreviewSheet';
 import { Banner } from '@/components/ui/Banner';
-import { Button } from '@/components/ui/Button';
+import { Logo } from '@/components/ui/Logo';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { searchParkingLots } from '@/features/parking/api';
 import { buildParkingMarkerIcon } from '@/features/parking/parkingMarkerIcon.web';
 import type { ParkingLotWithDistance } from '@/features/parking/types';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
-import { useTheme } from '@/theme';
+import { radius, spacing, useTheme } from '@/theme';
 
 type SearchParams = {
   lat: string;
@@ -26,7 +27,7 @@ const GOOGLE_MAPS_WEB_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY 
 // soporte para web, así que acá se usa la API de JavaScript de Google Maps directamente.
 export default function ClientHomeWebScreen() {
   const router = useRouter();
-  const { colors, typography } = useTheme();
+  const { colors } = useTheme();
   const params = useLocalSearchParams<SearchParams>();
   const currentLocation = useCurrentLocation();
 
@@ -79,7 +80,9 @@ export default function ClientHomeWebScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <SearchBar placeholder="Buscar estacionamientos…" onPress={() => router.push('/(client)/search')} />
+        {/* El logo hace de identidad de la pantalla; antes había un saludo "HOLA, {nombre}". */}
+        <Logo />
+        <SearchBar placeholder="¿A dónde vas?" onPress={() => router.push('/(client)/search')} />
       </View>
 
       {errorMessage ? (
@@ -104,7 +107,7 @@ export default function ClientHomeWebScreen() {
               <MarkerF
                 key={lot.id}
                 position={{ lat: lot.latitude, lng: lot.longitude }}
-                icon={buildParkingMarkerIcon(colors.accent)}
+                icon={buildParkingMarkerIcon(colors.primary)}
                 onClick={() => setSelectedId(lot.id)}
               />
             ))}
@@ -113,16 +116,16 @@ export default function ClientHomeWebScreen() {
       ) : null}
 
       {selected ? (
-        <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.outline }]}>
-          <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{selected.name}</Text>
-          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 12 }]}>
-            ${selected.pricePerHour.toFixed(2)}/hora · ★ {selected.ratingAvg.toFixed(1)} · {selected.distanceKm.toFixed(1)} km
-          </Text>
-          <Button
-            label="Ver detalle"
-            onPress={() => router.push({ pathname: '/(client)/search/parking/[id]', params: { id: selected.id } })}
-          />
-        </View>
+        <ParkingPreviewSheet
+          lot={selected}
+          onClose={() => setSelectedId(null)}
+          onViewDetail={() =>
+            router.push({ pathname: '/(client)/search/parking/[id]', params: { id: selected.id } })
+          }
+          onBook={() =>
+            router.push({ pathname: '/(client)/search/booking/[parkingId]', params: { parkingId: selected.id } })
+          }
+        />
       ) : null}
     </View>
   );
@@ -133,23 +136,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    // Separa el logo del buscador (antes lo hacía el margen del saludo).
+    gap: spacing.md,
   },
   banner: {
-    paddingHorizontal: 20,
-    marginTop: 12,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
   },
   mapWrapper: {
     flex: 1,
-  },
-  infoCard: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+    borderRadius: radius.xl,
+    overflow: 'hidden',
   },
 });

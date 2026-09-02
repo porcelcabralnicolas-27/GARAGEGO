@@ -2,11 +2,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import {
   getBookedIntervals,
   createBooking,
@@ -24,6 +24,7 @@ import { getParkingLot, getAvailabilityExceptions, getRecurringAvailability } fr
 import type { AvailabilityException, ParkingLot, RecurringAvailability } from '@/features/parking/types';
 import { listMyVehicles } from '@/features/vehicle/api';
 import type { Vehicle } from '@/features/vehicle/types';
+import { formatMoney, formatPricePerHour } from '@/lib/money';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
@@ -155,7 +156,10 @@ export default function BookingScreen() {
   if (loadError) {
     return (
       <Screen>
-        <BackHeader href={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }} />
+        <ScreenHeader
+          title="Reservar"
+          backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
+        />
         <Banner message={loadError} />
       </Screen>
     );
@@ -164,7 +168,10 @@ export default function BookingScreen() {
   if (!lot) {
     return (
       <Screen>
-        <BackHeader href={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }} />
+        <ScreenHeader
+          title="Reservar"
+          backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
+        />
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
       </Screen>
     );
@@ -173,11 +180,13 @@ export default function BookingScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <BackHeader href={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }} />
+        <ScreenHeader
+          title="Reservar"
+          backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
+        />
 
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 4 }]}>Reservar</Text>
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 20 }]}>
-          {lot.name} · ${lot.pricePerHour.toFixed(2)}/hora
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 20 }]}>
+          {lot.name} · {formatPricePerHour(lot.pricePerHour)}
         </Text>
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
@@ -253,10 +262,10 @@ export default function BookingScreen() {
         <View style={[styles.summaryCard, { backgroundColor: colors.primaryContainer }]}>
           <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>Total estimado</Text>
           <Text style={[typography.displayLarge, { color: colors.onPrimaryContainer }]}>
-            {estimatedPrice !== null ? `$${estimatedPrice.toFixed(2)}` : '—'}
+            {estimatedPrice !== null ? formatMoney(estimatedPrice) : '—'}
           </Text>
           <Text style={[typography.label, { color: colors.onPrimaryContainer, marginTop: 4 }]}>
-            Tu saldo: {walletBalance !== null ? `$${walletBalance.toFixed(2)}` : '—'}
+            Tu saldo: {walletBalance !== null ? formatMoney(walletBalance) : '—'}
           </Text>
         </View>
 

@@ -3,10 +3,10 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { RouteMap } from '@/features/directions/RouteMap';
 import { getDirections } from '@/features/directions/api';
 import type { DirectionsResult } from '@/features/directions/types';
@@ -75,7 +75,10 @@ export default function ParkingRouteScreen() {
 
   return (
     <Screen>
-      <BackHeader href={{ pathname: '/(client)/search/parking/[id]', params: { id } }} />
+      <ScreenHeader
+        title="Cómo llegar"
+        backHref={{ pathname: '/(client)/search/parking/[id]', params: { id } }}
+      />
 
       {location.errorMessage ? <Banner message={location.errorMessage} /> : null}
       {errorMessage ? <Banner message={errorMessage} /> : null}

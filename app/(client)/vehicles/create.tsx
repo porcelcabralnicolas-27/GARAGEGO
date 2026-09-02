@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
 import { ScrollView, Text } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { createVehicle, type VehicleInput } from '@/features/vehicle/api';
 import { VehicleForm } from '@/features/vehicle/VehicleForm';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -22,11 +22,7 @@ export default function CreateClientVehicleScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <BackHeader href="/(client)/vehicles" />
-
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 8 }]}>
-          Agregar vehículo
-        </Text>
+        <ScreenHeader title="Agregar vehículo" backHref="/(client)/vehicles" />
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 24 }]}>
           Completá los datos básicos. Después de guardar vas a poder agregar fotos.
         </Text>

@@ -3,11 +3,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getParkingLot, getRecurringAvailability, listParkingImages } from '@/features/parking/api';
+import { formatPricePerHour } from '@/lib/money';
 import { getProfile } from '@/features/profile/api';
 import { DAY_LABELS, type ParkingImage, type ParkingLot, type RecurringAvailability } from '@/features/parking/types';
 import { listRatingsForParkingLot } from '@/features/rating/api';
@@ -48,7 +49,7 @@ export default function ParkingDetailScreen() {
   if (errorMessage) {
     return (
       <Screen>
-        <BackHeader href="/(client)/search/list" />
+        <ScreenHeader title="Estacionamiento" backHref="/(client)/search/list" />
         <Banner message={errorMessage} />
       </Screen>
     );
@@ -65,7 +66,7 @@ export default function ParkingDetailScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <BackHeader href="/(client)/search/list" />
+        <ScreenHeader title={lot.name} backHref="/(client)/search/list" />
 
         {images.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
@@ -79,8 +80,9 @@ export default function ParkingDetailScreen() {
           </View>
         )}
 
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginTop: 16 }]}>{lot.name}</Text>
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 4 }]}>{lot.address}</Text>
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 16, marginBottom: 4 }]}>
+          {lot.address}
+        </Text>
         {ownerName ? (
           <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 12 }]}>
             Publicado por {ownerName}
@@ -88,7 +90,7 @@ export default function ParkingDetailScreen() {
         ) : null}
 
         <View style={styles.row}>
-          <Text style={[typography.titleLarge, { color: colors.accent }]}>${lot.pricePerHour.toFixed(2)}/hora</Text>
+          <Text style={[typography.titleLarge, { color: colors.accent }]}>{formatPricePerHour(lot.pricePerHour)}</Text>
           <View style={styles.ratingRow}>
             <Ionicons name="star" size={16} color={colors.onSurfaceVariant} />
             <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginLeft: 4 }]}>

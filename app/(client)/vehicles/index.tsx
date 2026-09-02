@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Banner } from '@/components/ui/Banner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { deleteVehicle, getVehicleCoverImageUrls, getVehicleErrorMessage, listMyVehicles } from '@/features/vehicle/api';
 import { MAX_VEHICLES, type Vehicle } from '@/features/vehicle/types';
 import { VehicleListItem } from '@/features/vehicle/VehicleListItem';
@@ -61,23 +62,33 @@ export default function ClientVehiclesScreen() {
 
   return (
     <Screen>
-      <BackHeader href="/(client)/profile" />
-
-      <View style={styles.header}>
-        <Text style={[typography.displayLarge, { color: colors.onBackground }]}>Mis vehículos</Text>
-        {vehicles.length < MAX_VEHICLES ? (
-          <Pressable onPress={() => router.push('/(client)/vehicles/create')} hitSlop={8}>
-            <Ionicons name="add-circle" size={32} color={colors.accent} />
-          </Pressable>
-        ) : null}
-      </View>
+      <ScreenHeader
+        title="Mis vehículos"
+        backHref="/(client)/profile"
+        action={
+          vehicles.length < MAX_VEHICLES ? (
+            <Pressable
+              onPress={() => router.push('/(client)/vehicles/create')}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Agregar vehículo"
+            >
+              <Ionicons name="add-circle" size={32} color={colors.accent} />
+            </Pressable>
+          ) : null
+        }
+      />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
       {!isLoading && vehicles.length === 0 && !errorMessage ? (
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-          Todavía no cargaste ningún vehículo. Tocá el + para agregar el primero.
-        </Text>
+        <EmptyState
+          icon="car-outline"
+          title="Todavía no cargaste ningún vehículo"
+          description={`Podés tener hasta ${MAX_VEHICLES}. Vas a elegir uno al hacer una reserva.`}
+          actionLabel="Agregar vehículo"
+          onAction={() => router.push('/(client)/vehicles/create')}
+        />
       ) : null}
 
       <FlatList
@@ -108,12 +119,3 @@ export default function ClientVehiclesScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-});

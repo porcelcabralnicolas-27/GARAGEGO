@@ -2,12 +2,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { AuthHeading } from '@/components/ui/AuthHeading';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { LinkText } from '@/components/ui/LinkText';
 import { Screen } from '@/components/ui/Screen';
 import { getAuthErrorMessage, resendSignUpConfirmation } from '@/features/auth/api';
-import { useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
@@ -32,10 +33,8 @@ export default function VerifyEmailScreen() {
 
   return (
     <Screen>
-      <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 12 }]}>
-        Verifica tu correo
-      </Text>
-      <Text style={[typography.bodyLarge, { color: colors.onSurfaceVariant, marginBottom: 24 }]}>
+      <AuthHeading title="Verifica tu correo" />
+      <Text style={[typography.bodyLarge, styles.intro, { color: colors.onSurfaceVariant }]}>
         Te enviamos un enlace de confirmación{email ? ` a ${email}` : ''}. Ábrelo para activar tu cuenta y poder
         iniciar sesión.
       </Text>
@@ -59,7 +58,11 @@ export default function VerifyEmailScreen() {
 }
 
 const styles = StyleSheet.create({
+  intro: {
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
   spacer: {
-    height: 16,
+    height: spacing.lg,
   },
 });

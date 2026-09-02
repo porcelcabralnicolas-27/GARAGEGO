@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 import { FlatList, Text } from 'react-native';
 
 import { ParkingCard } from '@/components/parking/ParkingCard';
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Banner } from '@/components/ui/Banner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getCoverImageUrls, searchParkingLots } from '@/features/parking/api';
 import type { ParkingLotWithDistance } from '@/features/parking/types';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
@@ -56,19 +57,22 @@ export default function ListScreen() {
 
   return (
     <Screen>
-      <BackHeader href="/(client)/search" />
-
-      <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>
-        {results.length} {results.length === 1 ? 'resultado' : 'resultados'}
-      </Text>
+      <ScreenHeader
+        title={`${results.length} ${results.length === 1 ? 'resultado' : 'resultados'}`}
+        backHref="/(client)/search"
+      />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
       {latitude === null && currentLocation.errorMessage ? <Banner message={currentLocation.errorMessage} /> : null}
 
       {!isLoading && results.length === 0 && !errorMessage ? (
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-          No encontramos estacionamientos con esos filtros. Probá ampliar la distancia o el precio.
-        </Text>
+        <EmptyState
+          icon="search-outline"
+          title="Sin resultados"
+          description="No encontramos estacionamientos con esos filtros. Probá ampliar la distancia o el precio."
+          actionLabel="Cambiar filtros"
+          onAction={() => router.replace('/(client)/search')}
+        />
       ) : null}
 
       <FlatList

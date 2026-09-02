@@ -4,15 +4,15 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AuthHeading } from '@/components/ui/AuthHeading';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { GoogleButton } from '@/components/ui/GoogleButton';
-import { Logo } from '@/components/ui/Logo';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { getAuthErrorMessage, signInWithGoogle, signUpWithPassword } from '@/features/auth/api';
 import { registerSchema, type RegisterFormValues } from '@/features/auth/schemas';
-import { useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -53,13 +53,13 @@ export default function RegisterScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <View style={styles.logoWrapper}>
-          <Logo size="medium" />
-        </View>
-
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 24 }]}>Crear cuenta</Text>
+        <AuthHeading title="Registro" compact />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
+
+        {/* En el Figma la opción de Google va arriba de los campos, no al final. */}
+        <GoogleButton onPress={handleGoogleSignIn} loading={isGoogleLoading} disabled={isSubmitting} />
+        <Text style={[typography.label, styles.divider, { color: colors.onSurfaceVariant }]}>O</Text>
 
         <Controller
           control={control}
@@ -140,10 +140,6 @@ export default function RegisterScreen() {
           disabled={isSubmitting}
         />
 
-        <Text style={[typography.label, styles.divider, { color: colors.onSurfaceVariant }]}>O</Text>
-
-        <GoogleButton onPress={handleGoogleSignIn} loading={isGoogleLoading} disabled={isSubmitting} />
-
         <Text style={[typography.bodyMedium, styles.footer, { color: colors.onSurfaceVariant }]}>
           ¿Ya tienes cuenta?{' '}
           <Link href="/(auth)/login">
@@ -156,20 +152,15 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  logoWrapper: {
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 20,
-  },
   footer: {
     textAlign: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
   },
   spacer: {
-    height: 12,
+    height: spacing.md,
   },
   divider: {
     textAlign: 'center',
-    marginVertical: 16,
+    marginVertical: spacing.lg,
   },
 });

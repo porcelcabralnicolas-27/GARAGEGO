@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AuthHeading } from '@/components/ui/AuthHeading';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { LinkText } from '@/components/ui/LinkText';
@@ -11,7 +12,7 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { getAuthErrorMessage, requestPasswordReset } from '@/features/auth/api';
 import { forgotPasswordSchema, type ForgotPasswordFormValues } from '@/features/auth/schemas';
-import { useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -40,10 +41,8 @@ export default function ForgotPasswordScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 12 }]}>
-          Recuperar contraseña
-        </Text>
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 24 }]}>
+        <AuthHeading title="Recuperar contraseña" />
+        <Text style={[typography.bodyMedium, styles.intro, { color: colors.onSurfaceVariant }]}>
           Te enviaremos un enlace a tu correo para restablecer tu contraseña.
         </Text>
 
@@ -86,7 +85,11 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
+  intro: {
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
   spacer: {
-    height: 12,
+    height: spacing.md,
   },
 });

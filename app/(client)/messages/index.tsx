@@ -3,17 +3,17 @@ import { useCallback, useState } from 'react';
 import { FlatList, Text } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { ConversationListItem } from '@/features/messaging/ConversationListItem';
 import { listClientConversations } from '@/features/messaging/api';
 import type { ConversationThread } from '@/features/messaging/types';
 import { listUnreadMessageNotifications } from '@/features/notifications/api';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useTheme } from '@/theme';
 
 export default function ClientMessagesScreen() {
   const router = useRouter();
-  const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
 
   const [threads, setThreads] = useState<ConversationThread[]>([]);
@@ -42,14 +42,16 @@ export default function ClientMessagesScreen() {
 
   return (
     <Screen>
-      <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>Mensajes</Text>
+      <ScreenHeader title="Mensajes" />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
       {!isLoading && threads.length === 0 && !errorMessage ? (
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-          Tus conversaciones con propietarios van a aparecer acá cuando hagas una reserva.
-        </Text>
+        <EmptyState
+          icon="chatbubbles-outline"
+          title="No tenés conversaciones"
+          description="Tus chats con los propietarios van a aparecer acá cuando hagas una reserva."
+        />
       ) : null}
 
       <FlatList

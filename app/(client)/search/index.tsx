@@ -6,6 +6,7 @@ import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useTheme } from '@/theme';
@@ -49,7 +50,7 @@ export default function SearchScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 24 }]}>Buscar</Text>
+        <ScreenHeader title="Buscar" backHref="/(client)" />
 
         {location.errorMessage ? (
           <>
