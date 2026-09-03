@@ -26,7 +26,7 @@
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
-          "apiKey": "REPLACE_WITH_ANDROID_GOOGLE_MAPS_KEY"
+          "apiKey": "AIzaSyA4qLRif64fuX91f-ev4QxfL9ZksWP94Pk"
         }
       },
       "permissions": [
