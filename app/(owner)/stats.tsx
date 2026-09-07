@@ -45,12 +45,12 @@ export default function OwnerStatsScreen() {
               Reservas por estado
             </Text>
             <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
-              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Pendientes</Text>
-              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{stats.pendingCount}</Text>
-            </View>
-            <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
               <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Confirmadas</Text>
               <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{stats.confirmedCount}</Text>
+            </View>
+            <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
+              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>En curso</Text>
+              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{stats.activeSessionsCount}</Text>
             </View>
             <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
               <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Finalizadas</Text>

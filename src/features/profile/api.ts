@@ -72,7 +72,7 @@ export async function topupWallet(amount: number): Promise<void> {
 
 export type WalletTransaction = {
   id: string;
-  type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge';
+  type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge' | 'earning';
   amount: number;
   createdAt: string;
 };

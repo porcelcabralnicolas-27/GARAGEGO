@@ -70,10 +70,9 @@ export async function getBookedIntervals(parkingLotId: string, fromDate: string)
   return data.map((row) => ({ date: row.date, startTime: row.start_time, endTime: row.end_time }));
 }
 
-export async function confirmBooking(bookingId: string): Promise<void> {
-  const { error } = await supabase.rpc('confirm_booking', { p_booking_id: bookingId });
-  if (error) throw error;
-}
+// `confirmBooking` se eliminó en la Fase 8.6: desde la migración 0024 el pago deja la reserva
+// confirmada y el propietario ya no aprueba nada. La RPC `confirm_booking` sigue existiendo en
+// la base (no se dropeó), pero la app no la llama desde ninguna pantalla.
 
 export async function completeBooking(bookingId: string): Promise<{ overtimeMinutes: number; overtimeCharge: number }> {
   const { data, error } = await supabase.rpc('complete_booking', { p_booking_id: bookingId });
@@ -110,6 +109,26 @@ export async function listMyBookings(userId: string): Promise<ClientBookingItem[
     const lot = lotsById.get(row.parking_lot_id);
     return { ...booking, parkingLotName: lot?.name ?? 'Estacionamiento', parkingLotAddress: lot?.address ?? '' };
   });
+}
+
+/** Una sola reserva del conductor, con los datos del estacionamiento. La usa la pantalla de
+ *  sesión activa, que se abre por id y no puede depender de que la lista esté cargada. */
+export async function getClientBooking(bookingId: string): Promise<ClientBookingItem> {
+  const { data: row, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
+  if (error) throw error;
+
+  const { data: lot, error: lotError } = await supabase
+    .from('parking_lots')
+    .select('name, address')
+    .eq('id', row.parking_lot_id)
+    .single();
+  if (lotError) throw lotError;
+
+  return {
+    ...mapBookingRow(row),
+    parkingLotName: lot.name,
+    parkingLotAddress: lot.address,
+  };
 }
 
 export async function listReceivedBookings(ownerId: string): Promise<OwnerBookingItem[]> {
@@ -164,6 +183,24 @@ export async function listReceivedBookings(ownerId: string): Promise<OwnerBookin
   });
 }
 
+/**
+ * Reservas que el usuario borró de SU historial.
+ *
+ * Es un ocultamiento por usuario, no un borrado: la reserva es compartida con la otra parte y
+ * de ella cuelgan la calificación, el chat y los movimientos de billetera. Ver la migración
+ * 0031 para el detalle.
+ */
+export async function listHiddenBookingIds(userId: string): Promise<Set<string>> {
+  const { data, error } = await supabase.from('hidden_bookings').select('booking_id').eq('user_id', userId);
+  if (error) throw error;
+  return new Set(data.map((row) => row.booking_id));
+}
+
+export async function hideBooking(bookingId: string, userId: string): Promise<void> {
+  const { error } = await supabase.from('hidden_bookings').insert({ booking_id: bookingId, user_id: userId });
+  if (error) throw error;
+}
+
 export function getBookingErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
@@ -184,6 +221,12 @@ export function getBookingErrorMessage(error: unknown): string {
     if (message.includes('vehicle_required')) return 'Elegí un vehículo para esta reserva.';
     if (message.includes('vehicle_not_found')) return 'Ese vehículo ya no está disponible. Elegí otro.';
     if (message.includes('already_started')) return 'Esta reserva ya fue iniciada.';
+    if (message.includes('start_too_early')) {
+      return 'Todavía es muy temprano. Podés iniciar desde 15 minutos antes del horario reservado.';
+    }
+    if (message.includes('start_window_over')) {
+      return 'El horario de esta reserva ya terminó, así que no se puede iniciar.';
+    }
     if (message.includes('no está disponible')) return 'Este estacionamiento ya no está disponible.';
     return message;
   }

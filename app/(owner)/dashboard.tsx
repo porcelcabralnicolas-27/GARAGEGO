@@ -20,6 +20,7 @@ const TX_LABELS: Record<WalletTransaction['type'], string> = {
   refund: 'Reintegro',
   adjustment: 'Ajuste',
   overtime_charge: 'Cargo por excedente',
+  earning: 'Cobro de reserva',
 };
 
 const TX_ICONS: Record<WalletTransaction['type'], keyof typeof Ionicons.glyphMap> = {
@@ -28,6 +29,7 @@ const TX_ICONS: Record<WalletTransaction['type'], keyof typeof Ionicons.glyphMap
   refund: 'arrow-undo-outline',
   adjustment: 'options-outline',
   overtime_charge: 'time-outline',
+  earning: 'cash-outline',
 };
 
 function formatTxDate(iso: string) {
@@ -64,7 +66,7 @@ export default function OwnerDashboardScreen() {
   const tiles = [
     { icon: 'checkmark-circle-outline' as const, value: stats ? String(stats.confirmedCount) : '—', label: 'Reservas confirmadas' },
     { icon: 'business-outline' as const, value: stats ? String(stats.activeListingsCount) : '—', label: 'Publicaciones activas' },
-    { icon: 'time-outline' as const, value: stats ? String(stats.pendingCount) : '—', label: 'Reservas pendientes' },
+    { icon: 'car-sport-outline' as const, value: stats ? String(stats.activeSessionsCount) : '—', label: 'Sesiones en curso' },
   ];
 
   return (

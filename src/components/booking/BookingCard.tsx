@@ -34,6 +34,8 @@ type BookingCardProps = {
   overtimeMinutes?: number;
   overtimeCharge?: number;
   actions?: ReactNode;
+  /** Si se pasa, la tarjeta entera se vuelve pulsable (p. ej. para abrir el detalle). */
+  onPress?: () => void;
 };
 
 export function BookingCard({
@@ -49,6 +51,7 @@ export function BookingCard({
   overtimeMinutes = 0,
   overtimeCharge = 0,
   actions,
+  onPress,
 }: BookingCardProps) {
   const { colors, typography } = useTheme();
 
@@ -56,7 +59,7 @@ export function BookingCard({
   const statusLabel = isInProgress ? 'En curso' : BOOKING_STATUS_LABELS[status];
 
   return (
-    <Card>
+    <Card onPress={onPress} accessibilityLabel={onPress ? `Ver la reserva de ${title}` : undefined}>
       <View style={styles.headerRow}>
         <Text style={[typography.titleMedium, { color: colors.onSurface, flex: 1 }]} numberOfLines={1}>
           {title}

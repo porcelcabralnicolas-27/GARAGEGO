@@ -8,7 +8,7 @@ import { useTheme } from '@/theme';
 export default function ClientLayout() {
   const { colors } = useTheme();
   const profile = useAuthStore((s) => s.profile);
-  const unreadMessages = useUnreadMessagesCount(profile?.id);
+  const unreadMessages = useUnreadMessagesCount(profile?.id, 'client');
 
   return (
     <Tabs
@@ -24,7 +24,7 @@ export default function ClientLayout() {
         options={{ title: 'Inicio', tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="bookings/index"
+        name="bookings"
         options={{
           title: 'Mis reservas',
           tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,

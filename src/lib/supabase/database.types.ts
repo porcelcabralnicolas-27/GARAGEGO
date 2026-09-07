@@ -240,6 +240,19 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      hidden_bookings: {
+        Row: {
+          booking_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          booking_id: string;
+          user_id: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       notifications: {
         Row: {
           id: string;
@@ -247,6 +260,7 @@ export type Database = {
           title: string;
           description: string | null;
           type: string;
+          audience: 'client' | 'owner' | null;
           related_booking_id: string | null;
           read: boolean;
           created_at: string;

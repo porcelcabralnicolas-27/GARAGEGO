@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -7,12 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import {
-  getBookedIntervals,
-  createBooking,
-  getBookingErrorMessage,
-  type BookedInterval,
-} from '@/features/booking/api';
+import { getBookedIntervals, type BookedInterval } from '@/features/booking/api';
 import {
   generateEndTimeOptions,
   generateStartTimeOptions,
@@ -20,6 +15,7 @@ import {
   listAvailableDates,
   toDateString,
 } from '@/features/booking/availability';
+import { computeBookingPrice } from '@/features/booking/pricing';
 import { getParkingLot, getAvailabilityExceptions, getRecurringAvailability } from '@/features/parking/api';
 import type { AvailabilityException, ParkingLot, RecurringAvailability } from '@/features/parking/types';
 import { listMyVehicles } from '@/features/vehicle/api';
@@ -38,22 +34,12 @@ function formatDateLabel(dateStr: string): string {
   return `${day} ${dd}/${mm}`;
 }
 
-function computePrice(pricePerHour: number, startTime: string, endTime: string): number | null {
-  if (!startTime || !endTime) return null;
-  const [startH, startM] = startTime.split(':').map(Number);
-  const [endH, endM] = endTime.split(':').map(Number);
-  const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
-  if (hours <= 0) return null;
-  return Math.round(pricePerHour * hours * 100) / 100;
-}
-
 export default function BookingScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const { parkingId } = useLocalSearchParams<{ parkingId: string }>();
   const profile = useAuthStore((s) => s.profile);
   const walletBalance = useAuthStore((s) => s.walletBalance);
-  const reloadProfile = useAuthStore((s) => s.reloadProfile);
 
   const [lot, setLot] = useState<ParkingLot | null>(null);
   const [recurring, setRecurring] = useState<RecurringAvailability[]>([]);
@@ -67,8 +53,6 @@ export default function BookingScreen() {
   const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -109,7 +93,8 @@ export default function BookingScreen() {
     [windowsForDate, selectedStart]
   );
 
-  const estimatedPrice = lot && selectedStart && selectedEnd ? computePrice(lot.pricePerHour, selectedStart, selectedEnd) : null;
+  const estimatedPrice =
+    lot && selectedStart && selectedEnd ? computeBookingPrice(lot.pricePerHour, selectedStart, selectedEnd) : null;
 
   const handleSelectDate = (date: string) => {
     setSelectedDate(date);
@@ -122,7 +107,10 @@ export default function BookingScreen() {
     setSelectedEnd(null);
   };
 
-  const onSubmit = async () => {
+  // La reserva ya no se crea acá: este paso solo junta los datos y los pasa a la pantalla de
+  // pago, que es la que llama `create_booking` (y con eso cobra). Ver el documento de decisión
+  // de la Fase 8, Q4·A.
+  const onContinue = () => {
     if (!selectedDate || !selectedStart || !selectedEnd) {
       setErrorMessage('Elegí fecha, hora de inicio y hora de fin.');
       return;
@@ -131,26 +119,17 @@ export default function BookingScreen() {
       setErrorMessage('Elegí el vehículo con el que vas a llegar.');
       return;
     }
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
     setErrorMessage(null);
-    try {
-      const bookingId = await createBooking({
-        parkingLotId: parkingId,
+    router.push({
+      pathname: '/(client)/search/booking/[parkingId]/payment',
+      params: {
+        parkingId,
         date: selectedDate,
         startTime: selectedStart,
         endTime: selectedEnd,
         vehicleId: selectedVehicleId,
-      });
-      reloadProfile();
-      router.replace({ pathname: '/(client)/bookings', params: { justCreated: bookingId } });
-    } catch (error) {
-      setErrorMessage(getBookingErrorMessage(error));
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
-    }
+      },
+    });
   };
 
   if (loadError) {
@@ -272,10 +251,9 @@ export default function BookingScreen() {
         <View style={styles.spacer} />
 
         <Button
-          label="Confirmar reserva"
-          onPress={onSubmit}
-          loading={isSubmitting}
-          disabled={isSubmitting || !selectedDate || !selectedStart || !selectedEnd || !selectedVehicleId}
+          label="Continuar al pago"
+          onPress={onContinue}
+          disabled={!selectedDate || !selectedStart || !selectedEnd || !selectedVehicleId}
         />
       </ScrollView>
     </Screen>

@@ -7,12 +7,11 @@ import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { cancelBooking, getBookingErrorMessage, listMyBookings, startBooking } from '@/features/booking/api';
+import { cancelBooking, getBookingErrorMessage, listMyBookings } from '@/features/booking/api';
 import type { ClientBookingItem } from '@/features/booking/types';
-import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
-import { listMyRatedBookingIds } from '@/features/rating/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
@@ -40,11 +39,15 @@ function isCancelLocked(booking: ClientBookingItem, now: Date): boolean {
  *
  *   Sesión activa       confirmed + ya iniciada
  *   Lugares reservados  confirmed + todavía no iniciada
- *   Pendientes          pending (esperando que el propietario apruebe)
- *   Sesiones completadas completed
- *   Canceladas          cancelled
+ *   Pendientes          pending (solo reservas viejas — ver abajo)
  *
- * Cada reserva cae en exactamente una, así que ninguna se pierde ni aparece dos veces.
+ * Las finalizadas y las canceladas NO están acá: viven en la pantalla de historial, a la que
+ * se entra por el ícono del encabezado. Esta pantalla queda solo con lo que está en curso o
+ * por venir, que es sobre lo que el conductor puede actuar.
+ *
+ * "Pendientes" ya no se genera: desde la migración 0024 el pago deja la reserva confirmada.
+ * La sección se mantiene igual para no esconder las reservas que quedaron en ese estado de
+ * antes (la 0025 las promueve, pero mientras no se corra tienen que seguir siendo visibles).
  */
 const SECTION_DEFS = [
   {
@@ -65,18 +68,6 @@ const SECTION_DEFS = [
     highlight: false,
     match: (b: ClientBookingItem) => b.status === 'pending',
   },
-  {
-    key: 'completed',
-    title: 'Sesiones completadas',
-    highlight: false,
-    match: (b: ClientBookingItem) => b.status === 'completed',
-  },
-  {
-    key: 'cancelled',
-    title: 'Canceladas',
-    highlight: false,
-    match: (b: ClientBookingItem) => b.status === 'cancelled',
-  },
 ] as const;
 
 export default function MyBookingsScreen() {
@@ -86,25 +77,19 @@ export default function MyBookingsScreen() {
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
 
   const [bookings, setBookings] = useState<ClientBookingItem[]>([]);
-  const [ratedBookingIds, setRatedBookingIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<ClientBookingItem | null>(null);
   const [lockedCancelTarget, setLockedCancelTarget] = useState<ClientBookingItem | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [rateTarget, setRateTarget] = useState<ClientBookingItem | null>(null);
-  const [startingId, setStartingId] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
     if (!profile) return;
     setIsLoading(true);
     setErrorMessage(null);
-    Promise.all([listMyBookings(profile.id), listMyRatedBookingIds(profile.id)])
-      .then(([bookingsResult, ratedIds]) => {
-        setBookings(bookingsResult);
-        setRatedBookingIds(ratedIds);
-      })
+    listMyBookings(profile.id)
+      .then(setBookings)
       .catch(() => setErrorMessage('No se pudieron cargar tus reservas.'))
       .finally(() => setIsLoading(false));
   }, [profile]);
@@ -144,19 +129,6 @@ export default function MyBookingsScreen() {
     });
   };
 
-  const handleStart = async (booking: ClientBookingItem) => {
-    setStartingId(booking.id);
-    setErrorMessage(null);
-    try {
-      await startBooking(booking.id);
-      load();
-    } catch (error) {
-      setErrorMessage(getBookingErrorMessage(error));
-    } finally {
-      setStartingId(null);
-    }
-  };
-
   const handleConfirmCancel = async () => {
     if (!cancelTarget) return;
     setIsCancelling(true);
@@ -175,15 +147,24 @@ export default function MyBookingsScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Mis reservas" />
+      <ScreenHeader
+        title="Mis reservas"
+        action={
+          <IconButton
+            name="time-outline"
+            accessibilityLabel="Ver historial de reservas"
+            onPress={() => router.push('/(client)/bookings/history')}
+          />
+        }
+      />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
-      {!isLoading && bookings.length === 0 && !errorMessage ? (
+      {!isLoading && sections.length === 0 && !errorMessage ? (
         <EmptyState
           icon="calendar-outline"
-          title="Todavía no hiciste ninguna reserva"
-          description="Buscá un estacionamiento cerca tuyo y reservá tu lugar."
+          title="No tenés reservas activas"
+          description="Acá vas a ver tu sesión en curso y los lugares que tengas reservados. Las finalizadas están en el historial."
           actionLabel="Buscar estacionamientos"
           onAction={() => router.push('/(client)/search')}
         />
@@ -229,8 +210,6 @@ export default function MyBookingsScreen() {
         )}
         renderItem={({ item }) => {
           const canCancel = item.status === 'pending' || item.status === 'confirmed';
-          const canStart = item.status === 'confirmed' && !item.actualStartAt;
-          const canRate = item.status === 'completed' && !ratedBookingIds.has(item.id);
           return (
             <BookingCard
               title={item.parkingLotName}
@@ -243,33 +222,21 @@ export default function MyBookingsScreen() {
               actualStartAt={item.actualStartAt}
               overtimeMinutes={item.overtimeMinutes}
               overtimeCharge={item.overtimeCharge}
+              // Iniciar y finalizar viven en el detalle: ahí están el contador, la ventana
+              // horaria y el anillo de progreso, que no entran en una tarjeta de lista.
+              onPress={() => router.push({ pathname: '/(client)/bookings/[id]', params: { id: item.id } })}
               actions={
-                canStart || canCancel || canRate ? (
-                  <>
-                    {canStart ? (
-                      <Button
-                        label="Iniciar"
-                        size="compact"
-                        onPress={() => handleStart(item)}
-                        loading={startingId === item.id}
-                        disabled={startingId !== null}
-                      />
-                    ) : null}
-                    {canCancel ? (
-                      <Button
-                        label="Cancelar"
-                        size="compact"
-                        variant="outlined"
-                        // El botón sigue visible aunque ya no se pueda cancelar: al tocarlo
-                        // aparece el cartel que explica por qué, en vez de un botón muerto.
-                        onPress={() =>
-                          isCancelLocked(item, new Date()) ? setLockedCancelTarget(item) : setCancelTarget(item)
-                        }
-                        disabled={startingId !== null}
-                      />
-                    ) : null}
-                    {canRate ? <Button label="Calificar" size="compact" onPress={() => setRateTarget(item)} /> : null}
-                  </>
+                canCancel ? (
+                  <Button
+                    label="Cancelar"
+                    size="compact"
+                    variant="outlined"
+                    // El botón sigue visible aunque ya no se pueda cancelar: al tocarlo
+                    // aparece el cartel que explica por qué, en vez de un botón muerto.
+                    onPress={() =>
+                      isCancelLocked(item, new Date()) ? setLockedCancelTarget(item) : setCancelTarget(item)
+                    }
+                  />
                 ) : undefined
               }
             />
@@ -302,20 +269,6 @@ export default function MyBookingsScreen() {
         onCancel={() => setLockedCancelTarget(null)}
       />
 
-      {rateTarget && profile ? (
-        <RateBookingDialog
-          visible={rateTarget !== null}
-          bookingId={rateTarget.id}
-          parkingLotId={rateTarget.parkingLotId}
-          userId={profile.id}
-          parkingLotName={rateTarget.parkingLotName}
-          onClose={() => setRateTarget(null)}
-          onSuccess={() => {
-            setRateTarget(null);
-            load();
-          }}
-        />
-      ) : null}
     </Screen>
   );
 }

@@ -25,7 +25,7 @@ export default function ClientMessagesScreen() {
     if (!profile) return;
     setIsLoading(true);
     setErrorMessage(null);
-    Promise.all([listClientConversations(profile.id), listUnreadMessageNotifications(profile.id)])
+    Promise.all([listClientConversations(profile.id), listUnreadMessageNotifications(profile.id, 'client')])
       .then(([threadsResult, unreadNotifications]) => {
         setThreads(threadsResult);
         setUnreadBookingIds(new Set(unreadNotifications.map((n) => n.relatedBookingId).filter((id): id is string => id !== null)));

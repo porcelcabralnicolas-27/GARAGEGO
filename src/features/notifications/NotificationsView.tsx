@@ -35,11 +35,11 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
     if (!profile) return;
     setIsLoading(true);
     setErrorMessage(null);
-    listNotifications(profile.id)
+    listNotifications(profile.id, role)
       .then(setNotifications)
       .catch(() => setErrorMessage('No se pudieron cargar tus notificaciones.'))
       .finally(() => setIsLoading(false));
-  }, [profile]);
+  }, [profile, role]);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,10 +49,10 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
 
   useEffect(() => {
     if (!profile) return;
-    return subscribeToNotifications(profile.id, (notification) => {
+    return subscribeToNotifications(profile.id, role, (notification) => {
       setNotifications((current) => [notification, ...current]);
     });
-  }, [profile]);
+  }, [profile, role]);
 
   const hasUnread = notifications.some((n) => !n.read);
 
@@ -71,6 +71,17 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
       return;
     }
 
+    // Las notificaciones de reserva (pago, inicio, finalización, excedente) llevan al detalle
+    // de esa reserva, que es donde está la acción. El propietario no tiene pantalla de detalle,
+    // así que para él sigue siendo la lista.
+    if (role === 'client' && notification.relatedBookingId) {
+      router.push({
+        pathname: '/(client)/bookings/[id]',
+        params: { id: notification.relatedBookingId },
+      });
+      return;
+    }
+
     router.push(role === 'client' ? '/(client)/bookings' : '/(owner)/bookings');
   };
 
@@ -85,7 +96,7 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
   const handleMarkAllAsRead = () => {
     if (!profile) return;
     setNotifications((current) => current.map((n) => ({ ...n, read: true })));
-    markAllNotificationsAsRead(profile.id).catch(() => load());
+    markAllNotificationsAsRead(profile.id, role).catch(() => load());
   };
 
   const handleDelete = (notification: AppNotification) => {
@@ -100,7 +111,7 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
     if (!profile) return;
     setIsDeletingAll(true);
     try {
-      await deleteAllNotifications(profile.id);
+      await deleteAllNotifications(profile.id, role);
       setNotifications([]);
       setIsConfirmingDeleteAll(false);
     } catch {

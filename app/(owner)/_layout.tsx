@@ -8,7 +8,7 @@ import { useTheme } from '@/theme';
 export default function OwnerLayout() {
   const { colors } = useTheme();
   const profile = useAuthStore((s) => s.profile);
-  const unreadMessages = useUnreadMessagesCount(profile?.id);
+  const unreadMessages = useUnreadMessagesCount(profile?.id, 'owner');
 
   return (
     <Tabs
@@ -31,7 +31,7 @@ export default function OwnerLayout() {
         }}
       />
       <Tabs.Screen
-        name="bookings/index"
+        name="bookings"
         options={{
           title: 'Reservas',
           tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,

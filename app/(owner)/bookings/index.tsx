@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
@@ -7,12 +7,12 @@ import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import {
   cancelBooking,
   completeBooking,
-  confirmBooking,
   getBookingErrorMessage,
   listReceivedBookings,
 } from '@/features/booking/api';
@@ -26,21 +26,35 @@ const COLLAPSED_LIMIT = 3;
 
 /**
  * Secciones de la pantalla, en orden de urgencia para el propietario. Cada reserva cae en
- * exactamente una: "Pendientes" es lo que espera su acción (confirmar), y va destacada.
+ * exactamente una.
  *
- *   Pendientes   pending (esperando que el propietario confirme)
- *   En curso     confirmed (acordada — próxima o ya iniciada por el cliente)
- *   Finalizadas  completed
- *   Canceladas   cancelled
+ * Ya no hay sección "Pendientes": desde la migración 0024 el pago deja la reserva confirmada
+ * y el propietario no aprueba nada, así que el estado `pending` no se genera más. Las secciones
+ * quedan espejando las del conductor, separando lo que está pasando ahora de lo que viene.
+ *
+ *   En curso     confirmed + ya iniciada por el conductor  (va destacada)
+ *   Próximas     confirmed + todavía no iniciada
+ *
+ * Las finalizadas y las canceladas viven en la pantalla de historial, a la que se entra por el
+ * ícono del encabezado: acá queda solo lo que está pasando o por pasar.
  */
 const SECTION_DEFS = [
-  { key: 'pending', title: 'Pendientes', highlight: true, match: (b: OwnerBookingItem) => b.status === 'pending' },
-  { key: 'active', title: 'En curso', highlight: false, match: (b: OwnerBookingItem) => b.status === 'confirmed' },
-  { key: 'done', title: 'Finalizadas', highlight: false, match: (b: OwnerBookingItem) => b.status === 'completed' },
-  { key: 'cancelled', title: 'Canceladas', highlight: false, match: (b: OwnerBookingItem) => b.status === 'cancelled' },
+  {
+    key: 'active',
+    title: 'En curso',
+    highlight: true,
+    match: (b: OwnerBookingItem) => b.status === 'confirmed' && b.actualStartAt !== null,
+  },
+  {
+    key: 'upcoming',
+    title: 'Próximas',
+    highlight: false,
+    match: (b: OwnerBookingItem) => b.status === 'confirmed' && b.actualStartAt === null,
+  },
 ] as const;
 
 export default function OwnerBookingsScreen() {
+  const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
@@ -95,19 +109,6 @@ export default function OwnerBookingsScreen() {
     });
   };
 
-  const handleConfirm = async (booking: OwnerBookingItem) => {
-    setBusyId(booking.id);
-    setErrorMessage(null);
-    try {
-      await confirmBooking(booking.id);
-      load();
-    } catch (error) {
-      setErrorMessage(getBookingErrorMessage(error));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const handleComplete = async (booking: OwnerBookingItem) => {
     setBusyId(booking.id);
     setErrorMessage(null);
@@ -143,16 +144,25 @@ export default function OwnerBookingsScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Reservas recibidas" />
+      <ScreenHeader
+        title="Reservas recibidas"
+        action={
+          <IconButton
+            name="time-outline"
+            accessibilityLabel="Ver historial de reservas"
+            onPress={() => router.push('/(owner)/bookings/history')}
+          />
+        }
+      />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
       {infoMessage ? <Banner message={infoMessage} variant="success" /> : null}
 
-      {!isLoading && bookings.length === 0 && !errorMessage ? (
+      {!isLoading && sections.length === 0 && !errorMessage ? (
         <EmptyState
           icon="calendar-outline"
-          title="Todavía no recibiste ninguna reserva"
-          description="Cuando alguien reserve en uno de tus estacionamientos, va a aparecer acá para que la confirmes."
+          title="No tenés reservas activas"
+          description="Acá vas a ver las reservas en curso y las próximas. Las finalizadas están en el historial."
         />
       ) : null}
 
@@ -206,26 +216,20 @@ export default function OwnerBookingsScreen() {
             overtimeMinutes={item.overtimeMinutes}
             overtimeCharge={item.overtimeCharge}
             actions={
-              <>
-                {item.status === 'pending' ? (
-                  <Button
-                    label="Confirmar"
-                    size="compact"
-                    onPress={() => handleConfirm(item)}
-                    loading={busyId === item.id}
-                    disabled={busyId !== null}
-                  />
-                ) : null}
-                {item.status === 'confirmed' ? (
-                  <Button
-                    label="Finalizar"
-                    size="compact"
-                    onPress={() => handleComplete(item)}
-                    loading={busyId === item.id}
-                    disabled={busyId !== null}
-                  />
-                ) : null}
-                {item.status === 'pending' || item.status === 'confirmed' ? (
+              item.status === 'confirmed' ? (
+                <>
+                  {/* Finalizar solo tiene sentido con el conductor ya adentro. Si todavía no
+                      llegó, lo que corresponde es cancelar, no cerrar una sesión que no
+                      empezó (y que dispararía el cobro del excedente). */}
+                  {item.actualStartAt ? (
+                    <Button
+                      label="Finalizar"
+                      size="compact"
+                      onPress={() => handleComplete(item)}
+                      loading={busyId === item.id}
+                      disabled={busyId !== null}
+                    />
+                  ) : null}
                   <Button
                     label="Cancelar"
                     size="compact"
@@ -233,8 +237,8 @@ export default function OwnerBookingsScreen() {
                     onPress={() => setCancelTarget(item)}
                     disabled={busyId !== null}
                   />
-                ) : null}
-              </>
+                </>
+              ) : undefined
             }
           />
         )}

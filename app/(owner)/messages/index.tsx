@@ -26,7 +26,7 @@ export default function OwnerMessagesScreen() {
     if (!profile) return;
     setIsLoading(true);
     setErrorMessage(null);
-    Promise.all([listOwnerConversations(profile.id), listUnreadMessageNotifications(profile.id)])
+    Promise.all([listOwnerConversations(profile.id), listUnreadMessageNotifications(profile.id, 'owner')])
       .then(([threadsResult, unreadNotifications]) => {
         setThreads(threadsResult);
         setUnreadBookingIds(new Set(unreadNotifications.map((n) => n.relatedBookingId).filter((id): id is string => id !== null)));

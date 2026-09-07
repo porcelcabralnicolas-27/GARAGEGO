@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 
-import type { AppNotification } from './types';
+import type { AppNotification, NotificationAudience } from './types';
 
 function mapNotificationRow(row: {
   id: string;
@@ -8,6 +8,7 @@ function mapNotificationRow(row: {
   title: string;
   description: string | null;
   type: string;
+  audience: string | null;
   related_booking_id: string | null;
   read: boolean;
   created_at: string;
@@ -18,17 +19,37 @@ function mapNotificationRow(row: {
     title: row.title,
     description: row.description,
     type: row.type,
+    audience: (row.audience as NotificationAudience | null) ?? null,
     relatedBookingId: row.related_booking_id,
     read: row.read,
     createdAt: row.created_at,
   };
 }
 
-export async function listNotifications(userId: string): Promise<AppNotification[]> {
+/**
+ * Filtro de rol para las consultas: las del rol activo más las que no tienen rol definido.
+ *
+ * Las `audience is null` son notificaciones viejas (previas a la 0030) que no se pudieron
+ * clasificar. Se muestran en las dos vistas a propósito: esconderlas sería perder avisos que
+ * el usuario nunca vio.
+ */
+const audienceFilter = (audience: NotificationAudience) => `audience.is.null,audience.eq.${audience}`;
+
+/** ¿Esta notificación corresponde al rol activo? Misma regla que `audienceFilter`, para los
+ *  eventos de realtime, que llegan sin pasar por el filtro de la consulta. */
+export function matchesAudience(notification: AppNotification, audience: NotificationAudience): boolean {
+  return notification.audience === null || notification.audience === audience;
+}
+
+export async function listNotifications(
+  userId: string,
+  audience: NotificationAudience
+): Promise<AppNotification[]> {
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
+    .or(audienceFilter(audience))
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data.map(mapNotificationRow);
@@ -39,28 +60,44 @@ export async function markNotificationAsRead(notificationId: string): Promise<vo
   if (error) throw error;
 }
 
-export async function markAllNotificationsAsRead(userId: string): Promise<void> {
-  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+export async function markAllNotificationsAsRead(
+  userId: string,
+  audience: NotificationAudience
+): Promise<void> {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .or(audienceFilter(audience))
+    .eq('read', false);
   if (error) throw error;
 }
 
-export async function countUnreadMessageNotifications(userId: string): Promise<number> {
+export async function countUnreadMessageNotifications(
+  userId: string,
+  audience: NotificationAudience
+): Promise<number> {
   const { count, error } = await supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('type', 'new_message')
+    .or(audienceFilter(audience))
     .eq('read', false);
   if (error) throw error;
   return count ?? 0;
 }
 
-export async function listUnreadMessageNotifications(userId: string): Promise<AppNotification[]> {
+export async function listUnreadMessageNotifications(
+  userId: string,
+  audience: NotificationAudience
+): Promise<AppNotification[]> {
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .eq('type', 'new_message')
+    .or(audienceFilter(audience))
     .eq('read', false);
   if (error) throw error;
   return data.map(mapNotificationRow);
@@ -69,6 +106,9 @@ export async function listUnreadMessageNotifications(userId: string): Promise<Ap
 /**
  * Marca como leídas las notificaciones de mensaje de una conversación completa.
  * Recibe varias reservas porque un chat agrupa todas las reservas del mismo estacionamiento.
+ *
+ * No hace falta filtrar por rol: nadie puede reservar su propia cochera, así que para una
+ * reserva dada el usuario está de un solo lado.
  */
 export async function markMessageNotificationsAsRead(userId: string, bookingIds: string[]): Promise<void> {
   if (bookingIds.length === 0) return;
@@ -87,18 +127,33 @@ export async function deleteNotification(notificationId: string): Promise<void> 
   if (error) throw error;
 }
 
-export async function deleteAllNotifications(userId: string): Promise<void> {
-  const { error } = await supabase.from('notifications').delete().eq('user_id', userId);
+/** Borra solo las del rol activo: estando como propietario no se borran las del conductor. */
+export async function deleteAllNotifications(
+  userId: string,
+  audience: NotificationAudience
+): Promise<void> {
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', userId)
+    .or(audienceFilter(audience));
   if (error) throw error;
 }
 
-export function subscribeToNotifications(userId: string, onInsert: (notification: AppNotification) => void): () => void {
+export function subscribeToNotifications(
+  userId: string,
+  audience: NotificationAudience,
+  onInsert: (notification: AppNotification) => void
+): () => void {
   const channel = supabase
-    .channel(`notifications:${userId}`)
+    .channel(`notifications:${userId}:${audience}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-      (payload) => onInsert(mapNotificationRow(payload.new as never))
+      (payload) => {
+        const notification = mapNotificationRow(payload.new as never);
+        if (matchesAudience(notification, audience)) onInsert(notification);
+      }
     )
     .subscribe();
 
@@ -109,6 +164,7 @@ export function subscribeToNotifications(userId: string, onInsert: (notification
 
 export function subscribeToMessageNotificationChanges(
   userId: string,
+  audience: NotificationAudience,
   handlers: {
     onInsert?: (notification: AppNotification) => void;
     onRead?: (notification: AppNotification) => void;
@@ -116,13 +172,15 @@ export function subscribeToMessageNotificationChanges(
   }
 ): () => void {
   const channel = supabase
-    .channel(`message-notifications:${userId}`)
+    .channel(`message-notifications:${userId}:${audience}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
       (payload) => {
         const notification = mapNotificationRow(payload.new as never);
-        if (notification.type === 'new_message') handlers.onInsert?.(notification);
+        if (notification.type === 'new_message' && matchesAudience(notification, audience)) {
+          handlers.onInsert?.(notification);
+        }
       }
     )
     .on(
@@ -130,7 +188,9 @@ export function subscribeToMessageNotificationChanges(
       { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
       (payload) => {
         const notification = mapNotificationRow(payload.new as never);
-        if (notification.type === 'new_message' && notification.read) handlers.onRead?.(notification);
+        if (notification.type === 'new_message' && notification.read && matchesAudience(notification, audience)) {
+          handlers.onRead?.(notification);
+        }
       }
     )
     // En un DELETE, Postgres solo publica la clave primaria (salvo REPLICA IDENTITY FULL),

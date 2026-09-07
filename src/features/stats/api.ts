@@ -4,7 +4,7 @@ import type { OwnerStats } from './types';
 
 const EMPTY_STATS: OwnerStats = {
   totalEarnings: 0,
-  pendingCount: 0,
+  activeSessionsCount: 0,
   confirmedCount: 0,
   completedCount: 0,
   cancelledCount: 0,
@@ -27,21 +27,24 @@ export async function getOwnerStats(ownerId: string): Promise<OwnerStats> {
 
   const { data: bookings, error: bookingsError } = await supabase
     .from('bookings')
-    .select('parking_lot_id, status, total_price')
+    .select('parking_lot_id, status, total_price, actual_start_at')
     .in('parking_lot_id', lotIds);
   if (bookingsError) throw bookingsError;
 
   let totalEarnings = 0;
-  let pendingCount = 0;
+  let activeSessionsCount = 0;
   let confirmedCount = 0;
   let completedCount = 0;
   let cancelledCount = 0;
   const revenueByLotMap = new Map<string, { revenue: number; bookingsCount: number }>();
 
   for (const booking of bookings) {
-    if (booking.status === 'pending') pendingCount += 1;
-    else if (booking.status === 'confirmed') confirmedCount += 1;
-    else if (booking.status === 'cancelled') cancelledCount += 1;
+    if (booking.status === 'confirmed') {
+      confirmedCount += 1;
+      // Una reserva confirmada que ya arrancó es una sesión en curso: alguien está usando el
+      // lugar ahora mismo. Es el número más accionable del panel.
+      if (booking.actual_start_at !== null) activeSessionsCount += 1;
+    } else if (booking.status === 'cancelled') cancelledCount += 1;
     else if (booking.status === 'completed') {
       completedCount += 1;
       totalEarnings += booking.total_price;
@@ -67,7 +70,7 @@ export async function getOwnerStats(ownerId: string): Promise<OwnerStats> {
 
   return {
     totalEarnings,
-    pendingCount,
+    activeSessionsCount,
     confirmedCount,
     completedCount,
     cancelledCount,
