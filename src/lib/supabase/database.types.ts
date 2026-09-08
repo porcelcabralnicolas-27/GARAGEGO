@@ -13,6 +13,9 @@ export type Database = {
           avatar_url: string | null;
           active_role: 'client' | 'owner';
           is_owner_enabled: boolean;
+          /** Habilita el backoffice. Solo lectura desde el cliente: la migración 0033 tiene un
+           *  trigger que ignora cualquier intento de cambiarla vía PostgREST. */
+          is_admin: boolean;
           created_at: string;
         };
         Insert: {
