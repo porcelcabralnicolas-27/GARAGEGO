@@ -95,6 +95,15 @@ export type Database = {
           is_active: boolean;
           created_at: string;
           updated_at: string;
+          // Moderación (migración 0034). El trigger `parking_lots_protect_moderation` (0037)
+          // impide cambiar todo esto desde el cliente salvo reenviar a revisión.
+          approval_status: 'pending' | 'approved' | 'rejected' | 'changes_requested';
+          rejection_reason: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          moderation_state: 'live' | 'paused_by_admin' | 'suspended';
+          pause_reason: string | null;
+          suspended_until: string | null;
         };
         Insert: {
           id?: string;
@@ -115,6 +124,8 @@ export type Database = {
           longitude?: number;
           price_per_hour?: number;
           is_active?: boolean;
+          // Solo la transición changes_requested → pending pasa el trigger (0037/0038).
+          approval_status?: 'pending';
         };
         Relationships: [];
       };
@@ -265,6 +276,8 @@ export type Database = {
           type: string;
           audience: 'client' | 'owner' | null;
           related_booking_id: string | null;
+          /** Migración 0041: apunta al ticket de soporte (notificaciones support_*). */
+          related_ticket_id: string | null;
           read: boolean;
           created_at: string;
         };
@@ -272,6 +285,53 @@ export type Database = {
         Update: {
           read?: boolean;
         };
+        Relationships: [];
+      };
+      support_tickets: {
+        Row: {
+          id: string;
+          code: string;
+          reporter_id: string;
+          reporter_role: 'client' | 'owner';
+          subject: string;
+          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          status: 'open' | 'resolved';
+          related_booking_id: string | null;
+          related_parking_lot_id: string | null;
+          created_at: string;
+          updated_at: string;
+          last_message_at: string;
+        };
+        Insert: {
+          id?: string;
+          reporter_id: string;
+          reporter_role: 'client' | 'owner';
+          subject: string;
+          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          related_booking_id?: string | null;
+          related_parking_lot_id?: string | null;
+        };
+        // El usuario no actualiza tickets desde el cliente (solo el admin, vía policy).
+        Update: never;
+        Relationships: [];
+      };
+      support_ticket_messages: {
+        Row: {
+          id: string;
+          ticket_id: string;
+          author_id: string;
+          author_role: 'user' | 'admin';
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          ticket_id: string;
+          author_id: string;
+          author_role: 'user' | 'admin';
+          body: string;
+        };
+        Update: never;
         Relationships: [];
       };
       vehicles: {

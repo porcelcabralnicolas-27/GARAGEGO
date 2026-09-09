@@ -2,7 +2,9 @@ import { supabase } from '@/lib/supabase/client';
 
 import {
   MAX_PARKING_IMAGES,
+  type ApprovalStatus,
   type AvailabilityException,
+  type ModerationState,
   type ParkingImage,
   type ParkingLot,
   type ParkingLotWithDistance,
@@ -23,6 +25,11 @@ function mapParkingLotRow(row: {
   rating_avg: number;
   is_active: boolean;
   created_at: string;
+  // `search_parking_lots` (RPC) no devuelve estas columnas: sus filas ya están aprobadas y en
+  // vivo por definición, así que se les asume el valor bueno.
+  approval_status?: ApprovalStatus;
+  rejection_reason?: string | null;
+  moderation_state?: ModerationState;
 }): ParkingLot {
   return {
     id: row.id,
@@ -36,6 +43,9 @@ function mapParkingLotRow(row: {
     ratingAvg: row.rating_avg,
     isActive: row.is_active,
     createdAt: row.created_at,
+    approvalStatus: row.approval_status ?? 'approved',
+    rejectionReason: row.rejection_reason ?? null,
+    moderationState: row.moderation_state ?? 'live',
   };
 }
 
@@ -133,6 +143,21 @@ export async function updateParkingLot(id: string, input: ParkingLotInput): Prom
 
 export async function setParkingLotActive(id: string, isActive: boolean): Promise<void> {
   const { error } = await supabase.from('parking_lots').update({ is_active: isActive }).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Reenvía a revisión una publicación que el equipo marcó con "cambios pedidos"
+ * (`changes_requested`). El trigger `parking_lots_protect_moderation` (migraciones 0037/0038)
+ * solo deja pasar esa transición a `pending` y limpia el motivo y la revisión anterior;
+ * cualquier otro `approval_status` que mande el cliente se ignora — en particular, una
+ * publicación `rejected` no vuelve nunca a la cola.
+ */
+export async function resubmitParkingLot(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('parking_lots')
+    .update({ approval_status: 'pending' })
+    .eq('id', id);
   if (error) throw error;
 }
 

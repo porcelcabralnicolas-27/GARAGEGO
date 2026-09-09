@@ -10,6 +10,7 @@ function mapNotificationRow(row: {
   type: string;
   audience: string | null;
   related_booking_id: string | null;
+  related_ticket_id: string | null;
   read: boolean;
   created_at: string;
 }): AppNotification {
@@ -21,6 +22,7 @@ function mapNotificationRow(row: {
     type: row.type,
     audience: (row.audience as NotificationAudience | null) ?? null,
     relatedBookingId: row.related_booking_id,
+    relatedTicketId: row.related_ticket_id,
     read: row.read,
     createdAt: row.created_at,
   };
@@ -118,6 +120,17 @@ export async function markMessageNotificationsAsRead(userId: string, bookingIds:
     .eq('user_id', userId)
     .eq('type', 'new_message')
     .in('related_booking_id', bookingIds)
+    .eq('read', false);
+  if (error) throw error;
+}
+
+/** Marca como leídas las notificaciones de un ticket de soporte (respuesta / resuelto). */
+export async function markTicketNotificationsAsRead(userId: string, ticketId: string): Promise<void> {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .eq('related_ticket_id', ticketId)
     .eq('read', false);
   if (error) throw error;
 }

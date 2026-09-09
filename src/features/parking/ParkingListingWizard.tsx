@@ -12,6 +12,7 @@ import { AvailabilityEditor } from '@/features/parking/AvailabilityEditor';
 import {
   createParkingLot,
   deleteParkingLot,
+  resubmitParkingLot,
   setParkingLotActive,
   updateParkingLot,
   type ParkingLotInput,
@@ -114,6 +115,18 @@ export function ParkingListingWizard(props: WizardProps) {
   const [isFinishing, setIsFinishing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // El equipo pidió cambios: al guardar cualquier edición se vuelve a mandar a revisión
+  // (transición que habilita el trigger `parking_lots_protect_moderation`). Una publicación
+  // rechazada es terminal y ni siquiera llega hasta acá (lo corta `[id]/edit.tsx`).
+  const needsResubmit = props.mode === 'edit' && props.lot.approvalStatus === 'changes_requested';
+  const [resubmitted, setResubmitted] = useState(false);
+
+  const maybeResubmit = async (id: string) => {
+    if (!needsResubmit || resubmitted) return;
+    await resubmitParkingLot(id);
+    setResubmitted(true);
+  };
+
   // Solo en edición
   const [isTogglingActive, setIsTogglingActive] = useState(false);
   const [confirmToggle, setConfirmToggle] = useState(false);
@@ -126,6 +139,7 @@ export function ParkingListingWizard(props: WizardProps) {
     if (!profile) return;
     if (lotId) {
       await updateParkingLot(lotId, input);
+      await maybeResubmit(lotId);
     } else {
       const lot = await createParkingLot(profile.id, input, { isActive: false });
       setLotId(lot.id);
@@ -136,6 +150,8 @@ export function ParkingListingWizard(props: WizardProps) {
   const handleFinish = async () => {
     if (!lotId) return;
     if (isEdit) {
+      // Cubre el caso de editar solo fotos o disponibilidad, sin pasar por "Guardar y seguir".
+      await maybeResubmit(lotId).catch(() => undefined);
       router.replace('/(owner)/parkings');
       return;
     }
@@ -209,6 +225,23 @@ export function ParkingListingWizard(props: WizardProps) {
         <StepIndicator step={step} reachableUpTo={reachableUpTo} onJump={setStep} />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
+
+        {resubmitted ? (
+          <Banner
+            variant="success"
+            message="Cambios guardados. La publicación volvió a la cola de revisión del equipo."
+          />
+        ) : needsResubmit ? (
+          <Banner
+            message={
+              'El equipo pidió cambios' +
+              (props.mode === 'edit' && props.lot.rejectionReason
+                ? `: ${props.lot.rejectionReason}`
+                : '') +
+              '. Editá lo que haga falta y guardá para volver a enviarla a revisión.'
+            }
+          />
+        ) : null}
 
         {/* El paso 1 se mantiene montado (oculto) para no perder lo escrito al volver atrás. */}
         <View style={step === 1 ? undefined : styles.hidden}>

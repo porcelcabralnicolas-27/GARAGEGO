@@ -1,0 +1,197 @@
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { Banner } from '@/components/ui/Banner';
+import { Button } from '@/components/ui/Button';
+import { ChipSelect } from '@/components/ui/ChipSelect';
+import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { TextField } from '@/components/ui/TextField';
+import { createTicket, getSupportErrorMessage, listTicketTargets } from '@/features/support/api';
+import {
+  TICKET_CATEGORY_LABELS,
+  TICKET_CATEGORIES_BY_ROLE,
+  type ReporterRole,
+  type TicketCategory,
+  type TicketTargetOption,
+} from '@/features/support/types';
+import { useAuthStore } from '@/store/useAuthStore';
+import { radius, spacing, useTheme } from '@/theme';
+
+const LIST_HREF = {
+  client: '/(client)/profile/support',
+  owner: '/(owner)/profile/support',
+} as const;
+
+export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
+  const router = useRouter();
+  const { colors, typography } = useTheme();
+  const profile = useAuthStore((s) => s.profile);
+
+  const categories = TICKET_CATEGORIES_BY_ROLE[role];
+  const [category, setCategory] = useState<TicketCategory>(categories[0]);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [targetKey, setTargetKey] = useState<string | null>(null);
+
+  const [targets, setTargets] = useState<TicketTargetOption[]>([]);
+  const [isLoadingTargets, setIsLoadingTargets] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    listTicketTargets(role, profile.id)
+      .then(setTargets)
+      .catch((error) => setErrorMessage(getSupportErrorMessage(error)))
+      .finally(() => setIsLoadingTargets(false));
+  }, [profile, role]);
+
+  const target = useMemo(() => targets.find((t) => t.key === targetKey) ?? null, [targets, targetKey]);
+  const canSubmit = subject.trim().length > 0 && body.trim().length >= 10 && target !== null;
+
+  const handleSubmit = async () => {
+    if (!profile || !target || !canSubmit || isSubmitting) return;
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const ticket = await createTicket({
+        reporterId: profile.id,
+        reporterRole: role,
+        subject,
+        category,
+        body,
+        relatedBookingId: target.bookingId,
+        relatedParkingLotId: target.parkingLotId,
+      });
+      router.replace({
+        pathname: role === 'client' ? '/(client)/profile/support/[id]' : '/(owner)/profile/support/[id]',
+        params: { id: ticket.id },
+      });
+    } catch (error) {
+      setErrorMessage(getSupportErrorMessage(error));
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Screen>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScreenHeader title="Nueva consulta" backHref={LIST_HREF[role]} />
+
+        {errorMessage ? <Banner message={errorMessage} /> : null}
+
+        <Text style={[typography.label, styles.fieldLabel, { color: colors.onSurfaceVariant }]}>
+          CATEGORÍA
+        </Text>
+        <View style={styles.chips}>
+          <ChipSelect
+            options={categories.map((c) => ({ value: c, label: TICKET_CATEGORY_LABELS[c] }))}
+            value={category}
+            onChange={setCategory}
+          />
+        </View>
+
+        <Text style={[typography.label, styles.fieldLabel, { color: colors.onSurfaceVariant }]}>
+          {role === 'owner' ? '¿SOBRE QUÉ COCHERA?' : '¿SOBRE QUÉ RESERVA?'}
+        </Text>
+        {isLoadingTargets ? (
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: spacing.lg }]}>
+            Cargando…
+          </Text>
+        ) : targets.length === 0 ? (
+          <Banner
+            message={
+              role === 'owner'
+                ? 'Todavía no tenés cocheras publicadas para asociar a una consulta.'
+                : 'Todavía no tenés reservas para asociar a una consulta.'
+            }
+          />
+        ) : (
+          <View style={styles.targetList}>
+            {targets.map((t) => {
+              const selected = t.key === targetKey;
+              return (
+                <Pressable
+                  key={t.key}
+                  onPress={() => setTargetKey(t.key)}
+                  style={[
+                    styles.targetRow,
+                    {
+                      borderColor: selected ? colors.primary : colors.outline,
+                      backgroundColor: selected ? colors.primaryContainer : colors.surface,
+                    },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.bodyMedium, { color: colors.onSurface }]} numberOfLines={1}>
+                      {t.label}
+                    </Text>
+                    {t.sublabel ? (
+                      <Text
+                        style={[typography.label, { color: colors.onSurfaceVariant }]}
+                        numberOfLines={1}
+                      >
+                        {t.sublabel}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        <TextField
+          label="Asunto"
+          placeholder="Resumí el problema en una línea"
+          value={subject}
+          onChangeText={setSubject}
+          maxLength={140}
+        />
+
+        <TextField
+          label="Contanos qué pasó"
+          placeholder="Describí el problema con el mayor detalle posible (mínimo 10 caracteres)."
+          value={body}
+          onChangeText={setBody}
+          multiline
+          numberOfLines={5}
+          style={styles.bodyInput}
+          maxLength={4000}
+        />
+
+        <Button
+          label="Enviar consulta"
+          onPress={handleSubmit}
+          loading={isSubmitting}
+          disabled={!canSubmit}
+        />
+      </ScrollView>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  fieldLabel: {
+    marginBottom: spacing.sm,
+    letterSpacing: 1,
+  },
+  chips: {
+    marginBottom: spacing.lg,
+  },
+  targetList: {
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  targetRow: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  bodyInput: {
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+});

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
+import type { ListingStatus } from '@/features/parking/types';
 import { formatPricePerHour } from '@/lib/money';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -10,10 +11,24 @@ type ParkingCardProps = {
   address: string;
   pricePerHour: number;
   ratingAvg: number;
-  isActive?: boolean;
+  /** Solo lo pasa el propietario. En la búsqueda no hay chapa (todo está aprobado y en vivo). */
+  status?: ListingStatus;
+  /** Texto secundario bajo la dirección (p. ej. el motivo del rechazo). */
+  note?: string | null;
   imageUrl?: string | null;
   distanceKm?: number;
   onPress: () => void;
+};
+
+/** Etiqueta y tono de cada estado. `tone`: 'ok' relleno de marca, 'muted' gris, 'alert' rojo. */
+const STATUS_BADGE: Record<ListingStatus, { label: string; tone: 'ok' | 'muted' | 'alert' }> = {
+  active: { label: 'ACTIVA', tone: 'ok' },
+  paused: { label: 'PAUSADA', tone: 'muted' },
+  pending: { label: 'EN REVISIÓN', tone: 'muted' },
+  changes_requested: { label: 'CORREGIR', tone: 'alert' },
+  rejected: { label: 'RECHAZADA', tone: 'alert' },
+  paused_by_admin: { label: 'PAUSADA', tone: 'alert' },
+  suspended: { label: 'SUSPENDIDA', tone: 'alert' },
 };
 
 export function ParkingCard({
@@ -21,12 +36,21 @@ export function ParkingCard({
   address,
   pricePerHour,
   ratingAvg,
-  isActive,
+  status,
+  note,
   imageUrl,
   distanceKm,
   onPress,
 }: ParkingCardProps) {
   const { colors, typography } = useTheme();
+
+  const badge = status ? STATUS_BADGE[status] : null;
+  const badgeStyle =
+    badge?.tone === 'ok'
+      ? { backgroundColor: colors.primary, color: colors.onPrimary, borderColor: colors.primary }
+      : badge?.tone === 'alert'
+        ? { backgroundColor: colors.error, color: colors.onError, borderColor: colors.error }
+        : { backgroundColor: colors.surfaceVariant, color: colors.onSurfaceVariant, borderColor: colors.outline };
 
   return (
     // padding "none": la imagen llega hasta el borde de la tarjeta.
@@ -42,24 +66,16 @@ export function ParkingCard({
           )}
 
           {/* Estado de la publicación: solo lo pasa el propietario (en la búsqueda todos los
-              lotes ya están activos). */}
-          {isActive !== undefined ? (
+              lotes ya están aprobados y en vivo). */}
+          {badge ? (
             <View
               style={[
                 styles.badge,
-                isActive
-                  ? { backgroundColor: colors.primary }
-                  : { backgroundColor: colors.surfaceVariant, borderColor: colors.outline, borderWidth: 1 },
+                { backgroundColor: badgeStyle.backgroundColor, borderColor: badgeStyle.borderColor, borderWidth: 1 },
               ]}
             >
-              <Text
-                style={[
-                  typography.label,
-                  styles.badgeText,
-                  { color: isActive ? colors.onPrimary : colors.onSurfaceVariant },
-                ]}
-              >
-                {isActive ? 'ACTIVA' : 'PAUSADA'}
+              <Text style={[typography.label, styles.badgeText, { color: badgeStyle.color }]}>
+                {badge.label}
               </Text>
             </View>
           ) : null}
@@ -72,6 +88,11 @@ export function ParkingCard({
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
             {address}
           </Text>
+          {note ? (
+            <Text style={[typography.label, { color: colors.error, marginTop: 2 }]} numberOfLines={2}>
+              {note}
+            </Text>
+          ) : null}
           {distanceKm !== undefined ? (
             <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{distanceKm.toFixed(1)} km</Text>
           ) : null}

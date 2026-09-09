@@ -19,16 +19,25 @@ Los puertos (5180 dev, 5181 preview) están elegidos para no chocar con Metro (8
 
 ## Qué es real y qué es simulado
 
-**Real:** solamente el inicio de sesión. Se autentica contra Supabase Auth y después lee la
-bandera `profiles.is_admin` del propio perfil. Si no es admin, cierra la sesión.
+**Real:**
 
-**Simulado:** absolutamente todo lo demás. Los datos viven en `src/mocks/` y se manipulan con un
-reducer en `src/state/`. Las acciones (aprobar, pausar, ocultar, responder) modifican ese estado
-en memoria y se guardan en `sessionStorage`, así una recarga durante una demo no pierde lo hecho.
-El botón "Restablecer datos de demo" de la sidebar vuelve todo al estado inicial.
+- El inicio de sesión. Se autentica contra Supabase Auth y después lee la bandera
+  `profiles.is_admin` del propio perfil. Si no es admin, cierra la sesión.
+- **Toda la sección Inventario** (`src/pages/inventory/`). Lee `parking_lots` con dueños, fotos
+  y estadísticas de reservas.
+  - "Aprobaciones": aprobar / rechazar / pedir cambios con `admin_review_parking_lot`.
+  - "Cocheras publicadas": pausar / suspender / reactivar con `admin_set_parking_lot_moderation`.
+  Migraciones **0034–0040**.
+- **La pestaña "Tickets" de Soporte** (`src/pages/support/ticketsApi.ts` + `useTickets.ts`).
+  Lee `support_tickets` / `support_ticket_messages`, responde, resuelve y reabre. Migración
+  **0041**. La pestaña "Transacciones" de esa misma página sigue en mock (es parte de Dashboard).
+- Los badges de la sidebar (`src/shell/usePendingCounts.ts`): dos `count` reales.
 
-La topbar lleva siempre el chip **"Datos simulados"** para que nadie confunda la demo con
-producción.
+**Simulado:** Usuarios, Dashboard, y la pestaña Transacciones de Soporte. Los datos viven en
+`src/mocks/` con un reducer en `src/state/`. El botón "Restablecer datos de demo" de la sidebar
+vuelve ese estado al inicial.
+
+La topbar lleva el chip **"Datos simulados"**: sigue ahí mientras queden secciones demo.
 
 ## Habilitar un administrador
 
@@ -63,41 +72,46 @@ momento de conectar la base, se reemplazan esos selectores por queries y **las v
 
 ## Lo que falta en la base para que esto sea real
 
-El panel muestra cuatro cosas que hoy **no existen** en el esquema. Cada pantalla lo aclara con
-una nota al pie. Estas migraciones están pensadas pero **no escritas**:
+### 1. Inventario (moderación de publicaciones) — ✅ HECHO (migraciones 0034–0040)
 
-### 1. Moderación de publicaciones
+`0034_listing_moderation.sql` agrega a `parking_lots` las columnas `approval_status`,
+`moderation_state` y compañía, hace el backfill (lo ya publicado se da por aprobado), suma el
+helper `is_admin()`, y ajusta la policy de lectura pública + `search_parking_lots` para que
+exijan `approval_status = 'approved' and moderation_state = 'live'`.
 
-Es la funcionalidad central del panel y hoy no tiene contraparte. `parking_lots` solo tiene
-`is_active`, y ese campo **ya está ocupado**: `ParkingListingWizard.tsx` crea la cochera con
-`is_active: false` como borrador y la activa al terminar. Un estado de aprobación tiene que ser
-un campo nuevo.
+`0035_listing_moderation_rpcs.sql` agrega las RPC `admin_review_parking_lot` y
+`admin_set_parking_lot_moderation`, ambas `security definer` y con validación de admin adentro.
 
-```sql
-alter table public.parking_lots
-  add column if not exists approval_status text not null default 'pending'
-    check (approval_status in ('pending','approved','rejected','changes_requested')),
-  add column if not exists rejection_reason text,
-  add column if not exists reviewed_at timestamptz,
-  add column if not exists reviewed_by uuid references public.profiles (id),
-  add column if not exists moderation_state text not null default 'live'
-    check (moderation_state in ('live','paused_by_admin','suspended')),
-  add column if not exists pause_reason text,
-  add column if not exists suspended_until timestamptz;
+`0036_notify_owner_on_review.sql` reemplaza `admin_review_parking_lot` para que además le inserte
+una notificación al propietario (`audience = 'owner'`) con el resultado de la revisión.
 
--- Backfill: lo que ya está publicado se da por aprobado.
-update public.parking_lots set approval_status = 'approved' where is_active;
+`0037_protect_parking_lot_moderation.sql` — trigger que congela esas columnas para el cliente
+(sin él, un propietario se auto-aprueba con un PATCH).
 
--- Y la policy de lectura pública pasa a exigir aprobación:
---   (is_active and approval_status = 'approved' and moderation_state = 'live')
---   or owner_id = auth.uid()
--- Ojo: `search_parking_lots` (0032) también tiene que filtrar por esto.
-```
+`0038_rejection_is_terminal.sql` — ajusta ese trigger: la única transición que el propietario
+puede hacer es `changes_requested` → `pending` (reenvío tras "Pedir cambios"). Una publicación
+`rejected` es definitiva.
 
-### 2. Tickets de soporte
+`0039_admin_lot_stats.sql` — RPC `security definer` `admin_lot_stats()` con los agregados de
+`bookings` por cochera (reservas/30 d, sesión en curso, próximas 7 días), que el admin no puede
+leer directo. La usa la pestaña "Cocheras publicadas".
 
-No existe ninguna tabla. El único canal de la app es `messages`, atado a una reserva; no hay
-canal usuario ↔ plataforma. Harían falta `support_tickets` y `support_ticket_messages`.
+`0040_booked_lot_stays_visible.sql` — el conductor que ya reservó una cochera sigue viendo su
+nombre aunque el admin la pause/suspenda (`or public.user_has_booking_on_lot(id)` en la policy
+de lectura; el helper es `security definer` para no recursar con `bookings_select`).
+
+Del lado de la app Expo, "Mis publicaciones" del propietario muestra el estado (En revisión /
+Corregir / Rechazada) y el reenvío.
+
+### 2. Tickets de soporte — ✅ HECHO (migración 0041)
+
+`0041_support_tickets.sql` crea `support_tickets` + `support_ticket_messages`. El conductor
+abre un ticket sobre una reserva suya, el propietario sobre una cochera suya (RLS lo obliga).
+Triggers `security definer`: un mensaje del usuario reabre un ticket resuelto; el equipo
+respondiendo o resolviendo le notifica al usuario (`notifications.related_ticket_id`, tipos
+`support_reply` / `support_resolved`). RPC `admin_ticket_context()` para el nombre de la
+cochera (el admin no lee `bookings`). Del lado de la app: `src/features/support/` +
+`app/(client|owner)/profile/support/`, entrada desde Perfil → "Centro de ayuda".
 
 ### 3. Moderación de reseñas
 
@@ -124,4 +138,7 @@ las cocheras inactivas — justo las que necesita moderar.
 
 Para conectar datos reales hay tres caminos: policies con un predicado `is_admin(auth.uid())` en
 cada tabla, RPCs `security definer` que validen admin adentro, o un backend con la service key.
-Ninguno está hecho todavía.
+
+Para moderación de publicaciones ya se tomó el camino mixto (migraciones 0034/0035): la lectura
+de `parking_lots` va por policy (`... or public.is_admin(auth.uid())`) y las escrituras por RPC
+`security definer`. El resto de las tablas sigue sin acceso de admin.

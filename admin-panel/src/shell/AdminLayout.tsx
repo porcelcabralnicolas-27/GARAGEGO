@@ -2,8 +2,8 @@ import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 import { useMock } from '../state/MockDataProvider';
-import { selectPendingCounts } from '../state/selectors';
 import { Badge, Button } from '../ui/primitives';
+import { usePendingCounts } from './usePendingCounts';
 
 const NAV = [
   { to: '/dashboard', icon: '◫', label: 'Dashboard' },
@@ -38,10 +38,10 @@ export function RequireAdmin() {
 
 function AdminLayout() {
   const { user, signOut } = useAuth();
-  const { state, reset } = useMock();
+  const { reset } = useMock();
   const location = useLocation();
 
-  const counts = selectPendingCounts(state);
+  const counts = usePendingCounts();
   const title = TITLES[`/${location.pathname.split('/')[1]}`] ?? 'Panel';
 
   const countFor = (to: string) =>

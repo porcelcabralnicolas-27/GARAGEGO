@@ -314,6 +314,16 @@ export function ProfileView() {
               />
             </View>
 
+            <Button
+              label="Centro de ayuda"
+              variant="outlined"
+              icon="help-buoy-outline"
+              onPress={() =>
+                router.push(isOwnerActive ? '/(owner)/profile/support' : '/(client)/profile/support')
+              }
+            />
+            <View style={styles.spacer} />
+
             <Button label="Cerrar sesión" onPress={signOut} fullWidth />
           </>
         )}

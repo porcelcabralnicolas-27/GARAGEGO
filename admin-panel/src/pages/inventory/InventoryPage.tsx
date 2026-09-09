@@ -7,22 +7,22 @@ import {
   type ApprovalStatus,
   type ModerationState,
 } from '../../mocks/types';
-import { useMock } from '../../state/MockDataProvider';
-import { selectLotRows, slaLevel, type LotRow } from '../../state/selectors';
+import { slaLevel, type LotRow } from '../../state/selectors';
 import { PageHeader } from '../../shell/PageHeader';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Modal } from '../../ui/overlays';
 import { SearchInput, SubTabs, Tabs, Toolbar, FilterSelect } from '../../ui/controls';
-import { Badge, Button, Callout, EmptyState, SchemaNote, Toggle } from '../../ui/primitives';
+import { Badge, Button, Callout, EmptyState, Toggle } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
 import { ListingReviewPanel } from './ListingReviewPanel';
+import { type ReviewDecision } from './moderationApi';
+import { useModerationQueue, type ModerationQueue } from './useModerationQueue';
 
 type MainTab = 'approvals' | 'active';
 
 export function InventoryPage() {
-  const { state } = useMock();
-  const rows = useMemo(() => selectLotRows(state), [state]);
-  const pendingCount = rows.filter((r) => r.lot.approvalStatus === 'pending').length;
+  const queue = useModerationQueue();
+  const pendingCount = queue.rows.filter((r) => r.lot.approvalStatus === 'pending').length;
 
   const [tab, setTab] = useState<MainTab>('approvals');
 
@@ -42,7 +42,25 @@ export function InventoryPage() {
         ]}
       />
 
-      {tab === 'approvals' ? <ApprovalQueue rows={rows} /> : <ActiveListings rows={rows} />}
+      {queue.loading && queue.rows.length === 0 ? (
+        <EmptyState icon="⏳" title="Cargando inventario" description="Un momento." />
+      ) : queue.error ? (
+        <div style={{ padding: 'var(--gg-s4)' }}>
+          <Callout tone="danger">
+            <div>
+              <strong>No se pudo cargar el inventario.</strong>
+              <p style={{ marginTop: 4 }}>{queue.error}</p>
+              <div style={{ marginTop: 'var(--gg-s3)' }}>
+                <Button onClick={queue.refetch}>Reintentar</Button>
+              </div>
+            </div>
+          </Callout>
+        </div>
+      ) : tab === 'approvals' ? (
+        <ApprovalQueue queue={queue} />
+      ) : (
+        <ActiveListings queue={queue} />
+      )}
     </>
   );
 }
@@ -51,13 +69,14 @@ export function InventoryPage() {
 
 type QueueTab = ApprovalStatus;
 
-function ApprovalQueue({ rows }: { rows: LotRow[] }) {
-  const { state, dispatch } = useMock();
+function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
+  const { rows, review } = queue;
   const { show } = useToast();
 
   const [queueTab, setQueueTab] = useState<QueueTab>('pending');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const now = Date.now();
 
   const countOf = (status: ApprovalStatus) =>
     rows.filter((r) => r.lot.approvalStatus === status).length;
@@ -88,15 +107,21 @@ function ApprovalQueue({ rows }: { rows: LotRow[] }) {
     setSelectedId(next?.lot.id ?? null);
   };
 
-  const moderateWithUndo = (
+  /** Ejecuta la decisión contra la base. Ya no hay "deshacer": `admin_review_parking_lot` no
+   *  tiene reverso y un rechazo se corrige volviendo a aprobar. */
+  const runReview = async (
     lot: AdminParkingLot,
-    action: () => void,
-    message: string
+    decision: ReviewDecision,
+    reason: string | null,
+    okMessage: string
   ) => {
-    const snapshot = { ...lot };
-    action();
     advance(lot.id);
-    show(message, { onUndo: () => dispatch({ type: 'RESTORE_LOT', lot: snapshot }) });
+    try {
+      await review(lot.id, decision, reason);
+      show(okMessage);
+    } catch (err) {
+      show(`Error: ${err instanceof Error ? err.message : 'no se pudo completar la acción'}`);
+    }
   };
 
   return (
@@ -138,7 +163,7 @@ function ApprovalQueue({ rows }: { rows: LotRow[] }) {
               <ApprovalListItem
                 key={row.lot.id}
                 row={row}
-                now={state.now}
+                now={now}
                 isSelected={selected?.lot.id === row.lot.id}
                 onSelect={() => setSelectedId(row.lot.id)}
               />
@@ -151,28 +176,19 @@ function ApprovalQueue({ rows }: { rows: LotRow[] }) {
         {selected ? (
           <ListingReviewPanel
             row={selected}
-            now={state.now}
-            events={state.moderationEvents
-              .filter((e) => e.parkingLotId === selected.lot.id)
-              .sort((a, b) => b.at.localeCompare(a.at))}
+            now={now}
+            events={historyOf(selected.lot)}
             onApprove={() =>
-              moderateWithUndo(
-                selected.lot,
-                () => dispatch({ type: 'APPROVE_LOT', lotId: selected.lot.id }),
-                `"${selected.lot.name}" aprobada y publicada`
-              )
+              runReview(selected.lot, 'approved', null, `"${selected.lot.name}" aprobada y publicada`)
             }
             onReject={(reason) =>
-              moderateWithUndo(
-                selected.lot,
-                () => dispatch({ type: 'REJECT_LOT', lotId: selected.lot.id, reason }),
-                `"${selected.lot.name}" rechazada`
-              )
+              runReview(selected.lot, 'rejected', reason, `"${selected.lot.name}" rechazada`)
             }
             onRequestChanges={(note) =>
-              moderateWithUndo(
+              runReview(
                 selected.lot,
-                () => dispatch({ type: 'REQUEST_CHANGES_LOT', lotId: selected.lot.id, note }),
+                'changes_requested',
+                note,
                 `Se pidieron cambios en "${selected.lot.name}"`
               )
             }
@@ -187,6 +203,28 @@ function ApprovalQueue({ rows }: { rows: LotRow[] }) {
       </div>
     </div>
   );
+}
+
+/** Historial de moderación derivado de la fila: el envío a revisión y la última decisión, si
+ *  la hubo. Cuando exista una tabla `listing_moderation_events` se reemplaza por su query. */
+function historyOf(
+  lot: AdminParkingLot
+): Array<{ id: string; label: string; detail: string | null; at: string }> {
+  const events: Array<{ id: string; label: string; detail: string | null; at: string }> = [
+    { id: `${lot.id}-submit`, label: 'Enviada a revisión', detail: null, at: lot.submittedAt },
+  ];
+  if (lot.reviewedAt) {
+    const label =
+      lot.approvalStatus === 'approved'
+        ? 'Aprobada por el equipo'
+        : lot.approvalStatus === 'rejected'
+          ? 'Rechazada por el equipo'
+          : lot.approvalStatus === 'changes_requested'
+            ? 'Se pidieron cambios'
+            : 'Revisada';
+    events.push({ id: `${lot.id}-review`, label, detail: lot.rejectionReason, at: lot.reviewedAt });
+  }
+  return events.sort((a, b) => b.at.localeCompare(a.at));
 }
 
 const SLA_TONE = {
@@ -284,14 +322,17 @@ function ApprovalListItem({
 
 type StateFilter = ModerationState | 'all';
 
-function ActiveListings({ rows }: { rows: LotRow[] }) {
-  const { state, dispatch } = useMock();
+function ActiveListings({ queue }: { queue: ModerationQueue }) {
+  const { rows, setModeration } = queue;
   const { show } = useToast();
+  const now = Date.now();
 
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
   const [pauseTarget, setPauseTarget] = useState<LotRow | null>(null);
   const [detail, setDetail] = useState<LotRow | null>(null);
+
+  const approvedCount = rows.filter((r) => r.lot.approvalStatus === 'approved').length;
 
   const published = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -307,16 +348,23 @@ function ActiveListings({ rows }: { rows: LotRow[] }) {
       );
   }, [rows, search, stateFilter]);
 
-  const reactivate = (row: LotRow) => {
-    dispatch({
-      type: 'SET_LOT_MODERATION',
-      lotIds: [row.lot.id],
-      state: 'live',
-      reason: null,
-      until: null,
-    });
-    show(`"${row.lot.name}" volvió a estar en vivo`);
+  const runModeration = async (
+    row: LotRow,
+    state: ModerationState,
+    reason: string | null,
+    until: string | null,
+    okMessage: string
+  ) => {
+    try {
+      await setModeration(row.lot.id, state, reason, until);
+      show(okMessage);
+    } catch (err) {
+      show(`Error: ${err instanceof Error ? err.message : 'no se pudo cambiar el estado'}`);
+    }
   };
+
+  const reactivate = (row: LotRow) =>
+    runModeration(row, 'live', null, null, `"${row.lot.name}" volvió a estar en vivo`);
 
   const columns: Column<LotRow>[] = [
     {
@@ -398,7 +446,7 @@ function ActiveListings({ rows }: { rows: LotRow[] }) {
 
   return (
     <>
-      <Toolbar count={`${published.length} de ${rows.filter((r) => r.lot.approvalStatus === 'approved').length}`}>
+      <Toolbar count={`${published.length} de ${approvedCount}`}>
         <SearchInput value={search} onChange={setSearch} placeholder="Cochera, dirección o propietario" />
         <FilterSelect
           label="Estado"
@@ -422,32 +470,22 @@ function ActiveListings({ rows }: { rows: LotRow[] }) {
         emptyDescription="Cuando apruebes publicaciones van a aparecer acá."
       />
 
-      <div style={{ marginTop: 'var(--gg-s3)' }}>
-        <SchemaNote>
-          Pausar y suspender son estados que todavía no existen en la base: `parking_lots` solo
-          tiene `is_active`, y ese campo ya lo usa el asistente de alta como borrador. Hace falta
-          una migración con `moderation_state` antes de conectar esto de verdad.
-        </SchemaNote>
-      </div>
-
       <ForcePauseDialog
         row={pauseTarget}
         onClose={() => setPauseTarget(null)}
         onConfirm={(nextState, reason, until) => {
           if (!pauseTarget) return;
-          dispatch({
-            type: 'SET_LOT_MODERATION',
-            lotIds: [pauseTarget.lot.id],
-            state: nextState,
+          const target = pauseTarget;
+          setPauseTarget(null);
+          void runModeration(
+            target,
+            nextState,
             reason,
             until,
-          });
-          show(
             nextState === 'suspended'
-              ? `"${pauseTarget.lot.name}" suspendida`
-              : `"${pauseTarget.lot.name}" pausada`
+              ? `"${target.lot.name}" suspendida`
+              : `"${target.lot.name}" pausada`
           );
-          setPauseTarget(null);
         }}
       />
 
@@ -455,10 +493,8 @@ function ActiveListings({ rows }: { rows: LotRow[] }) {
         <Modal open title={detail.lot.name} onClose={() => setDetail(null)} wide>
           <ListingReviewPanel
             row={detail}
-            now={state.now}
-            events={state.moderationEvents
-              .filter((e) => e.parkingLotId === detail.lot.id)
-              .sort((a, b) => b.at.localeCompare(a.at))}
+            now={now}
+            events={historyOf(detail.lot)}
             onApprove={() => undefined}
             onReject={() => undefined}
             onRequestChanges={() => undefined}

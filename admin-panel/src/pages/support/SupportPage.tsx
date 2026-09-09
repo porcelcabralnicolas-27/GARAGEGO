@@ -18,7 +18,6 @@ import {
 } from '../../mocks/types';
 import { useMock } from '../../state/MockDataProvider';
 import {
-  selectTicketRows,
   selectTransactionRows,
   selectTransactionStats,
   type TransactionRow,
@@ -31,18 +30,20 @@ import { MetricCard } from '../../ui/MetricCard';
 import {
   Badge,
   Button,
+  Callout,
   EmptyState,
   KeyValue,
   SchemaNote,
   UserCell,
 } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
+import { useTickets, type TicketsState } from './useTickets';
 
 type MainTab = 'transactions' | 'tickets';
 
 export function SupportPage() {
-  const { state } = useMock();
-  const openTickets = state.tickets.filter((t) => t.status === 'open').length;
+  const tickets = useTickets();
+  const openTickets = tickets.tickets.filter((t) => t.status === 'open').length;
   const [tab, setTab] = useState<MainTab>('transactions');
 
   return (
@@ -61,7 +62,7 @@ export function SupportPage() {
         ]}
       />
 
-      {tab === 'transactions' ? <TransactionsView /> : <TicketsView />}
+      {tab === 'transactions' ? <TransactionsView /> : <TicketsView q={tickets} />}
     </>
   );
 }
@@ -269,44 +270,85 @@ function TransactionsView() {
 
 type TicketTab = TicketStatus | 'all';
 
-function TicketsView() {
-  const { state, dispatch } = useMock();
+function TicketsView({ q }: { q: TicketsState }) {
   const { show } = useToast();
+  const { tickets, loading, error, refetch, reply: sendReplyRpc, setStatus } = q;
 
-  const rows = useMemo(() => selectTicketRows(state), [state]);
   const [tab, setTab] = useState<TicketTab>('open');
   const [category, setCategory] = useState<TicketCategory | 'all'>('all');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reply, setReply] = useState('');
   const [resolveOnSend, setResolveOnSend] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const now = Date.now();
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (tab !== 'all' && r.ticket.status !== tab) return false;
-      if (category !== 'all' && r.ticket.category !== category) return false;
+    return tickets.filter((t) => {
+      if (tab !== 'all' && t.status !== tab) return false;
+      if (category !== 'all' && t.category !== category) return false;
       if (!term) return true;
       return (
-        r.ticket.subject.toLowerCase().includes(term) ||
-        r.ticket.code.toLowerCase().includes(term) ||
-        r.ticket.messages.some((m) => m.body.toLowerCase().includes(term))
+        t.subject.toLowerCase().includes(term) ||
+        t.code.toLowerCase().includes(term) ||
+        t.reporterName.toLowerCase().includes(term) ||
+        t.messages.some((m) => m.body.toLowerCase().includes(term))
       );
     });
-  }, [rows, tab, category, search]);
+  }, [tickets, tab, category, search]);
 
-  const selected = visible.find((r) => r.ticket.id === selectedId) ?? visible[0] ?? null;
+  const selected = visible.find((t) => t.id === selectedId) ?? visible[0] ?? null;
 
-  const sendReply = () => {
-    if (!selected || reply.trim().length === 0) return;
-    dispatch({ type: 'ADD_TICKET_REPLY', ticketId: selected.ticket.id, body: reply.trim() });
-    if (resolveOnSend) {
-      dispatch({ type: 'SET_TICKET_STATUS', ticketId: selected.ticket.id, status: 'resolved' });
+  const sendReply = async () => {
+    if (!selected || reply.trim().length === 0 || busy) return;
+    setBusy(true);
+    try {
+      await sendReplyRpc(selected.id, reply.trim());
+      if (resolveOnSend) await setStatus(selected.id, 'resolved');
+      setReply('');
+      setResolveOnSend(false);
+      show(resolveOnSend ? 'Respuesta enviada y ticket resuelto' : 'Respuesta enviada');
+    } catch (err) {
+      show(`Error: ${err instanceof Error ? err.message : 'no se pudo enviar'}`);
+    } finally {
+      setBusy(false);
     }
-    setReply('');
-    setResolveOnSend(false);
-    show(resolveOnSend ? 'Respuesta enviada y ticket resuelto' : 'Respuesta enviada');
   };
+
+  const toggleStatus = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    try {
+      await setStatus(selected.id, selected.status === 'open' ? 'resolved' : 'open');
+      show(selected.status === 'open' ? 'Ticket resuelto' : 'Ticket reabierto');
+    } catch (err) {
+      show(`Error: ${err instanceof Error ? err.message : 'no se pudo cambiar el estado'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading && tickets.length === 0) {
+    return <EmptyState icon="⏳" title="Cargando tickets" description="Un momento." />;
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 'var(--gg-s4)' }}>
+        <Callout tone="danger">
+          <div>
+            <strong>No se pudieron cargar los tickets.</strong>
+            <p style={{ marginTop: 4 }}>{error}</p>
+            <div style={{ marginTop: 'var(--gg-s3)' }}>
+              <Button onClick={refetch}>Reintentar</Button>
+            </div>
+          </div>
+        </Callout>
+      </div>
+    );
+  }
 
   return (
     <div className="gg-split">
@@ -315,9 +357,9 @@ function TicketsView() {
           value={tab}
           onChange={setTab}
           items={[
-            { value: 'open', label: 'Abiertos', count: rows.filter((r) => r.ticket.status === 'open').length },
-            { value: 'resolved', label: 'Resueltos', count: rows.filter((r) => r.ticket.status === 'resolved').length },
-            { value: 'all', label: 'Todos', count: rows.length },
+            { value: 'open', label: 'Abiertos', count: tickets.filter((t) => t.status === 'open').length },
+            { value: 'resolved', label: 'Resueltos', count: tickets.filter((t) => t.status === 'resolved').length },
+            { value: 'all', label: 'Todos', count: tickets.length },
           ]}
         />
 
@@ -344,11 +386,11 @@ function TicketsView() {
           <EmptyState icon="✓" title="Sin tickets" description="No hay reportes en este estado." />
         ) : (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {visible.map((row) => (
-              <li key={row.ticket.id}>
+            {visible.map((t) => (
+              <li key={t.id}>
                 <button
                   type="button"
-                  onClick={() => setSelectedId(row.ticket.id)}
+                  onClick={() => setSelectedId(t.id)}
                   style={{
                     display: 'block',
                     width: '100%',
@@ -356,16 +398,15 @@ function TicketsView() {
                     padding: 'var(--gg-s3)',
                     border: 0,
                     borderBottom: '1px solid var(--gg-border)',
-                    background:
-                      selected?.ticket.id === row.ticket.id ? 'var(--gg-surface-3)' : 'transparent',
+                    background: selected?.id === t.id ? 'var(--gg-surface-3)' : 'transparent',
                   }}
                 >
                   <div className="gg-row">
                     <span className="gg-mono" style={{ color: 'var(--gg-text-faint)' }}>
-                      {row.ticket.code}
+                      {t.code}
                     </span>
-                    <Badge tone={row.ticket.status === 'open' ? 'warn' : 'ok'}>
-                      {row.ticket.status === 'open' ? 'Abierto' : 'Resuelto'}
+                    <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>
+                      {t.status === 'open' ? 'Abierto' : 'Resuelto'}
                     </Badge>
                     <span
                       style={{
@@ -374,16 +415,16 @@ function TicketsView() {
                         fontSize: 'var(--gg-fs-sm)',
                       }}
                     >
-                      {formatRelative(row.ticket.updatedAt, state.now)}
+                      {formatRelative(t.updatedAt, now)}
                     </span>
                   </div>
-                  <div style={{ fontWeight: 600, marginTop: 2 }}>{row.ticket.subject}</div>
+                  <div style={{ fontWeight: 600, marginTop: 2 }}>{t.subject}</div>
                   <div
                     className="gg-row"
                     style={{ marginTop: 4, color: 'var(--gg-text-soft)', fontSize: 'var(--gg-fs-sm)' }}
                   >
-                    {row.reporter ? fullName(row.reporter) : '—'}
-                    <Badge tone="neutral">{TICKET_CATEGORY_LABELS[row.ticket.category]}</Badge>
+                    {t.reporterName}
+                    <Badge tone="neutral">{TICKET_CATEGORY_LABELS[t.category]}</Badge>
                   </div>
                 </button>
               </li>
@@ -400,37 +441,35 @@ function TicketsView() {
             <header style={{ padding: 'var(--gg-s4)', borderBottom: '1px solid var(--gg-border)' }}>
               <div className="gg-row">
                 <h2 style={{ fontSize: 'var(--gg-fs-lg)', fontWeight: 600, flex: 1 }}>
-                  {selected.ticket.subject}
+                  {selected.subject}
                 </h2>
-                <Badge tone={selected.ticket.status === 'open' ? 'warn' : 'ok'}>
-                  {selected.ticket.status === 'open' ? 'Abierto' : 'Resuelto'}
+                <Badge tone={selected.status === 'open' ? 'warn' : 'ok'}>
+                  {selected.status === 'open' ? 'Abierto' : 'Resuelto'}
                 </Badge>
               </div>
               <div
                 className="gg-row"
                 style={{ marginTop: 6, color: 'var(--gg-text-soft)', fontSize: 'var(--gg-fs-sm)' }}
               >
-                <span className="gg-mono">{selected.ticket.code}</span>
+                <span className="gg-mono">{selected.code}</span>
                 <span>·</span>
-                {selected.reporter ? (
-                  <span>
-                    {fullName(selected.reporter)} (
-                    {selected.ticket.reporterSide === 'owner' ? 'propietario' : 'conductor'})
-                  </span>
-                ) : null}
+                <span>
+                  {selected.reporterName} (
+                  {selected.reporterRole === 'owner' ? 'propietario' : 'conductor'})
+                </span>
                 <span>·</span>
-                <span>Creado {formatDate(selected.ticket.createdAt)}</span>
-                {selected.lot ? (
+                <span>Creado {formatDate(selected.createdAt)}</span>
+                {selected.contextLabel ? (
                   <>
                     <span>·</span>
-                    <span>{selected.lot.name}</span>
+                    <span>{selected.contextLabel}</span>
                   </>
                 ) : null}
               </div>
             </header>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--gg-s4)' }}>
-              {selected.ticket.messages.map((m) => (
+              {selected.messages.map((m) => (
                 <div
                   key={m.id}
                   style={{
@@ -482,28 +521,12 @@ function TicketsView() {
 
                 <span style={{ marginLeft: 'auto' }} />
 
-                <Button
-                  onClick={() =>
-                    dispatch({
-                      type: 'SET_TICKET_STATUS',
-                      ticketId: selected.ticket.id,
-                      status: selected.ticket.status === 'open' ? 'resolved' : 'open',
-                    })
-                  }
-                >
-                  {selected.ticket.status === 'open' ? 'Marcar como resuelto' : 'Reabrir'}
+                <Button disabled={busy} onClick={toggleStatus}>
+                  {selected.status === 'open' ? 'Marcar como resuelto' : 'Reabrir'}
                 </Button>
-                <Button variant="primary" disabled={reply.trim().length === 0} onClick={sendReply}>
+                <Button variant="primary" disabled={busy || reply.trim().length === 0} onClick={sendReply}>
                   Responder
                 </Button>
-              </div>
-
-              <div style={{ marginTop: 'var(--gg-s3)' }}>
-                <SchemaNote>
-                  Los tickets son 100 % simulados: no existe ninguna tabla de soporte. El único
-                  canal de la app es `messages`, atado a una reserva, y no hay ningún canal
-                  usuario ↔ plataforma.
-                </SchemaNote>
               </div>
             </footer>
           </div>

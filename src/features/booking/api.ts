@@ -117,17 +117,20 @@ export async function getClientBooking(bookingId: string): Promise<ClientBooking
   const { data: row, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
   if (error) throw error;
 
+  // `maybeSingle` y no `single`: si el admin pausó o suspendió la cochera, la policy de lectura
+  // deja de devolverla y `single` tiraría error, rompiendo la pantalla de sesión activa de un
+  // conductor que ya está adentro. Se degrada igual que `listMyBookings`.
   const { data: lot, error: lotError } = await supabase
     .from('parking_lots')
     .select('name, address')
     .eq('id', row.parking_lot_id)
-    .single();
+    .maybeSingle();
   if (lotError) throw lotError;
 
   return {
     ...mapBookingRow(row),
-    parkingLotName: lot.name,
-    parkingLotAddress: lot.address,
+    parkingLotName: lot?.name ?? 'Estacionamiento',
+    parkingLotAddress: lot?.address ?? '',
   };
 }
 

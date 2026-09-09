@@ -71,6 +71,25 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
       return;
     }
 
+    // Revisión de una publicación por el equipo: lleva a "Mis publicaciones", donde el
+    // propietario ve el estado y puede editar para reenviar a revisión.
+    if (notification.type.startsWith('listing_')) {
+      router.push('/(owner)/parkings');
+      return;
+    }
+
+    // Soporte: abre el hilo del ticket.
+    if (notification.type.startsWith('support_') && notification.relatedTicketId) {
+      router.push({
+        pathname:
+          role === 'client'
+            ? '/(client)/profile/support/[id]'
+            : '/(owner)/profile/support/[id]',
+        params: { id: notification.relatedTicketId },
+      });
+      return;
+    }
+
     // Las notificaciones de reserva (pago, inicio, finalización, excedente) llevan al detalle
     // de esa reserva, que es donde está la acción. El propietario no tiene pantalla de detalle,
     // así que para él sigue siendo la lista.

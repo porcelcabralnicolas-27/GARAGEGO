@@ -6,6 +6,14 @@ export type NotificationType =
   | 'booking_completed'
   | 'overtime_charged'
   | 'new_message'
+  // Revisión de una publicación por el equipo (panel de admin, RPC admin_review_parking_lot).
+  // Sin `related_booking_id`; llegan con `audience = 'owner'`.
+  | 'listing_approved'
+  | 'listing_rejected'
+  | 'listing_changes_requested'
+  // Soporte (migración 0041). Llegan con `related_ticket_id` y `audience` del rol que abrió.
+  | 'support_reply'
+  | 'support_resolved'
   | string;
 
 /**
@@ -25,6 +33,7 @@ export type AppNotification = {
   type: NotificationType;
   audience: NotificationAudience | null;
   relatedBookingId: string | null;
+  relatedTicketId: string | null;
   read: boolean;
   createdAt: string;
 };

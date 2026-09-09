@@ -10,17 +10,28 @@ import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getCoverImageUrls, listMyParkingLots } from '@/features/parking/api';
-import type { ParkingLot } from '@/features/parking/types';
+import { getListingStatus, type ParkingLot } from '@/features/parking/types';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
-type Filter = 'all' | 'active' | 'paused';
+type Filter = 'all' | 'active' | 'paused' | 'pending' | 'rejected';
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Todas' },
   { value: 'active', label: 'Activas' },
   { value: 'paused', label: 'Pausadas' },
+  { value: 'pending', label: 'Pendientes' },
+  { value: 'rejected', label: 'Rechazadas' },
 ];
+
+/** ¿Bajo qué filtro cae esta publicación? Un lote está en exactamente uno. */
+function filterBucket(lot: ParkingLot): Exclude<Filter, 'all'> {
+  const status = getListingStatus(lot);
+  if (status === 'rejected') return 'rejected';
+  if (status === 'pending' || status === 'changes_requested') return 'pending';
+  if (status === 'active') return 'active';
+  return 'paused'; // paused, paused_by_admin, suspended
+}
 
 export default function OwnerParkingsScreen() {
   const router = useRouter();
@@ -52,9 +63,8 @@ export default function OwnerParkingsScreen() {
   );
 
   const visibleLots = useMemo(() => {
-    if (filter === 'active') return lots.filter((lot) => lot.isActive);
-    if (filter === 'paused') return lots.filter((lot) => !lot.isActive);
-    return lots;
+    if (filter === 'all') return lots;
+    return lots.filter((lot) => filterBucket(lot) === filter);
   }, [lots, filter]);
 
   return (
@@ -73,7 +83,7 @@ export default function OwnerParkingsScreen() {
       />
 
       <Text style={[typography.bodyMedium, styles.subtitle, { color: colors.onSurfaceVariant }]}>
-        Gestioná tus anuncios activos y pausados.
+        Gestioná tus anuncios y seguí el estado de revisión del equipo.
       </Text>
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
@@ -96,7 +106,7 @@ export default function OwnerParkingsScreen() {
 
       {!isLoading && lots.length > 0 && visibleLots.length === 0 ? (
         <Text style={[typography.bodyMedium, styles.emptyFilter, { color: colors.onSurfaceVariant }]}>
-          No tenés publicaciones {filter === 'active' ? 'activas' : 'pausadas'}.
+          No tenés publicaciones {FILTERS.find((f) => f.value === filter)?.label.toLowerCase()}.
         </Text>
       ) : null}
 
@@ -105,17 +115,25 @@ export default function OwnerParkingsScreen() {
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
         onRefresh={load}
-        renderItem={({ item }) => (
-          <ParkingCard
-            name={item.name}
-            address={item.address}
-            pricePerHour={item.pricePerHour}
-            ratingAvg={item.ratingAvg}
-            isActive={item.isActive}
-            imageUrl={coverImages[item.id]}
-            onPress={() => router.push({ pathname: '/(owner)/parkings/[id]/edit', params: { id: item.id } })}
-          />
-        )}
+        renderItem={({ item }) => {
+          const status = getListingStatus(item);
+          const note =
+            (status === 'rejected' || status === 'changes_requested') && item.rejectionReason
+              ? item.rejectionReason
+              : null;
+          return (
+            <ParkingCard
+              name={item.name}
+              address={item.address}
+              pricePerHour={item.pricePerHour}
+              ratingAvg={item.ratingAvg}
+              status={status}
+              note={note}
+              imageUrl={coverImages[item.id]}
+              onPress={() => router.push({ pathname: '/(owner)/parkings/[id]/edit', params: { id: item.id } })}
+            />
+          );
+        }}
       />
     </Screen>
   );

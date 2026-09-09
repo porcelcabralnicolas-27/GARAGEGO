@@ -1,3 +1,9 @@
+/** Revisión de alta por el equipo (panel de admin). Migración 0034. */
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested';
+
+/** Palanca operativa del admin sobre una cochera ya aprobada. Migración 0034. */
+export type ModerationState = 'live' | 'paused_by_admin' | 'suspended';
+
 export type ParkingLot = {
   id: string;
   ownerId: string;
@@ -10,9 +16,36 @@ export type ParkingLot = {
   ratingAvg: number;
   isActive: boolean;
   createdAt: string;
+  approvalStatus: ApprovalStatus;
+  rejectionReason: string | null;
+  moderationState: ModerationState;
 };
 
 export type ParkingLotWithDistance = ParkingLot & { distanceKm: number };
+
+/**
+ * Estado que ve el propietario en "Mis publicaciones". Combina las tres dimensiones
+ * (publicada por el dueño / aprobada por el equipo / frenada por el admin) en una sola
+ * etiqueta, porque para el dueño son un único "¿por qué no me entran reservas?".
+ */
+export type ListingStatus =
+  | 'active'
+  | 'paused'
+  | 'pending'
+  | 'changes_requested'
+  | 'rejected'
+  | 'paused_by_admin'
+  | 'suspended';
+
+export function getListingStatus(lot: ParkingLot): ListingStatus {
+  if (lot.approvalStatus === 'rejected') return 'rejected';
+  if (lot.approvalStatus === 'changes_requested') return 'changes_requested';
+  if (lot.approvalStatus === 'pending') return 'pending';
+  // approved: manda lo que haya hecho el admin, y si no, lo que decidió el dueño.
+  if (lot.moderationState === 'suspended') return 'suspended';
+  if (lot.moderationState === 'paused_by_admin') return 'paused_by_admin';
+  return lot.isActive ? 'active' : 'paused';
+}
 
 export const MAX_PARKING_IMAGES = 3;
 
