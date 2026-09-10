@@ -1,17 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { formatDate, formatMoney, formatRelative, fullName } from '../../lib/format';
-import type { AdminProfile } from '../../mocks/types';
-import { useMock } from '../../state/MockDataProvider';
-import {
-  selectDrivers,
-  selectOwners,
-  selectRatingRows,
-  selectRatingStats,
-  type DriverRow,
-  type OwnerRow,
-  type RatingRow,
-} from '../../state/selectors';
 import { PageHeader } from '../../shell/PageHeader';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer, DrawerSection, Modal } from '../../ui/overlays';
@@ -21,19 +10,25 @@ import {
   Badge,
   Button,
   Callout,
+  EmptyState,
   KeyValue,
   SchemaNote,
   StarRating,
   UserCell,
 } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
+import { computeRatingStats, type PanelRating } from './ratingsApi';
+import { useRatings } from './useRatings';
+import { fetchUserDetail, type UserDetail, type UserDirectoryEntry } from './usersApi';
+import { useUsers, type UsersState } from './useUsers';
 
 type Tab = 'drivers' | 'owners' | 'reviews';
 type AgeFilter = 'all' | '7' | '30' | '90';
 
 export function UsersPage() {
   const [tab, setTab] = useState<Tab>('drivers');
-  const [detail, setDetail] = useState<AdminProfile | null>(null);
+  const [detail, setDetail] = useState<UserDirectoryEntry | null>(null);
+  const users = useUsers();
 
   return (
     <>
@@ -52,17 +47,35 @@ export function UsersPage() {
         ]}
       />
 
-      {tab === 'drivers' ? <DriversTable onOpen={setDetail} /> : null}
-      {tab === 'owners' ? <OwnersTable onOpen={setDetail} /> : null}
-      {tab === 'reviews' ? <ReviewsAudit /> : null}
+      {tab === 'reviews' ? (
+        <ReviewsAudit />
+      ) : users.loading && users.users.length === 0 ? (
+        <EmptyState icon="⏳" title="Cargando usuarios" description="Un momento." />
+      ) : users.error ? (
+        <div style={{ padding: 'var(--gg-s4)' }}>
+          <Callout tone="danger">
+            <div>
+              <strong>No se pudo cargar el directorio.</strong>
+              <p style={{ marginTop: 4 }}>{users.error}</p>
+              <div style={{ marginTop: 'var(--gg-s3)' }}>
+                <Button onClick={users.refetch}>Reintentar</Button>
+              </div>
+            </div>
+          </Callout>
+        </div>
+      ) : tab === 'drivers' ? (
+        <DriversTable users={users} onOpen={setDetail} />
+      ) : (
+        <OwnersTable users={users} onOpen={setDetail} />
+      )}
 
-      <UserDetailDrawer profile={detail} onClose={() => setDetail(null)} />
+      <UserDetailDrawer user={detail} onClose={() => setDetail(null)} />
     </>
   );
 }
 
 /** Filtra por texto y antigüedad de alta. Lo comparten las dos tablas de usuarios. */
-function useUserFilters<T extends { profile: AdminProfile }>(rows: T[], now: number) {
+function useUserFilters(rows: UserDirectoryEntry[], now: number) {
   const [search, setSearch] = useState('');
   const [age, setAge] = useState<AgeFilter>('all');
 
@@ -70,12 +83,11 @@ function useUserFilters<T extends { profile: AdminProfile }>(rows: T[], now: num
     const term = search.trim().toLowerCase();
     const maxAgeMs = age === 'all' ? Infinity : Number(age) * 86_400_000;
 
-    return rows.filter((row) => {
-      const p = row.profile;
+    return rows.filter((p) => {
       const matchesTerm =
         !term ||
         fullName(p).toLowerCase().includes(term) ||
-        p.email.toLowerCase().includes(term) ||
+        (p.email ?? '').toLowerCase().includes(term) ||
         (p.phone ?? '').toLowerCase().includes(term);
       const matchesAge = now - new Date(p.createdAt).getTime() <= maxAgeMs;
       return matchesTerm && matchesAge;
@@ -104,82 +116,87 @@ function useUserFilters<T extends { profile: AdminProfile }>(rows: T[], now: num
 
 /* ---------------------------------------------------------------- Conductores */
 
-function DriversTable({ onOpen }: { onOpen: (p: AdminProfile) => void }) {
-  const { state } = useMock();
-  const rows = useMemo(() => selectDrivers(state), [state]);
-  const { filtered, toolbar } = useUserFilters(rows, state.now);
+function DriversTable({
+  users,
+  onOpen,
+}: {
+  users: UsersState;
+  onOpen: (u: UserDirectoryEntry) => void;
+}) {
+  const rows = users.users;
+  const { filtered, toolbar } = useUserFilters(rows, Date.now());
 
-  const columns: Column<DriverRow>[] = [
+  const columns: Column<UserDirectoryEntry>[] = [
     {
       key: 'name',
       header: 'Conductor',
-      render: (r) => <UserCell person={r.profile} online={r.isOnline} sub={r.profile.email} />,
-      sortValue: (r) => fullName(r.profile),
+      render: (r) => <UserCell person={r} sub={r.email ?? '—'} />,
+      sortValue: (r) => fullName(r),
     },
-    { key: 'phone', header: 'Teléfono', render: (r) => r.profile.phone ?? '—' },
+    { key: 'phone', header: 'Teléfono', render: (r) => r.phone ?? '—' },
     {
       key: 'role',
       header: 'Rol activo',
       render: (r) => (
-        <Badge tone={r.profile.activeRole === 'owner' ? 'accent' : 'neutral'}>
-          {r.profile.activeRole === 'owner' ? 'Propietario' : 'Conductor'}
+        <Badge tone={r.activeRole === 'owner' ? 'accent' : 'neutral'}>
+          {r.activeRole === 'owner' ? 'Propietario' : 'Conductor'}
         </Badge>
       ),
-      sortValue: (r) => r.profile.activeRole,
+      sortValue: (r) => r.activeRole,
     },
-    { key: 'vehicles', header: 'Vehículos', align: 'num', render: (r) => r.vehicles, sortValue: (r) => r.vehicles },
-    { key: 'bookings', header: 'Reservas', align: 'num', render: (r) => r.bookings, sortValue: (r) => r.bookings },
     {
-      key: 'seen',
-      header: 'Última actividad',
-      render: (r) => (r.profile.lastSeenAt ? formatRelative(r.profile.lastSeenAt, state.now) : '—'),
-      sortValue: (r) => r.profile.lastSeenAt ?? '',
+      key: 'vehicles',
+      header: 'Vehículos',
+      align: 'num',
+      render: (r) => r.vehiclesCount,
+      sortValue: (r) => r.vehiclesCount,
+    },
+    {
+      key: 'bookings',
+      header: 'Reservas',
+      align: 'num',
+      render: (r) => r.bookingsMade,
+      sortValue: (r) => r.bookingsMade,
     },
     {
       key: 'created',
       header: 'Alta',
-      render: (r) => formatDate(r.profile.createdAt),
-      sortValue: (r) => r.profile.createdAt,
+      render: (r) => formatDate(r.createdAt),
+      sortValue: (r) => r.createdAt,
     },
   ];
 
   return (
     <>
       <Toolbar count={`${filtered.length} de ${rows.length}`}>{toolbar}</Toolbar>
-      <DataTable
-        columns={columns}
-        rows={filtered}
-        rowKey={(r) => r.profile.id}
-        onRowClick={(r) => onOpen(r.profile)}
-      />
-      <div style={{ marginTop: 'var(--gg-s3)' }}>
-        <SchemaNote>
-          El email no está en `profiles` (vive en `auth.users`, ilegible con la anon key) y la
-          última actividad tampoco existe. Ambos son datos simulados.
-        </SchemaNote>
-      </div>
+      <DataTable columns={columns} rows={filtered} rowKey={(r) => r.id} onRowClick={onOpen} />
     </>
   );
 }
 
 /* ---------------------------------------------------------------- Propietarios */
 
-function OwnersTable({ onOpen }: { onOpen: (p: AdminProfile) => void }) {
-  const { state } = useMock();
-  const rows = useMemo(() => selectOwners(state), [state]);
-  const { filtered, toolbar } = useUserFilters(rows, state.now);
+function OwnersTable({
+  users,
+  onOpen,
+}: {
+  users: UsersState;
+  onOpen: (u: UserDirectoryEntry) => void;
+}) {
+  const rows = useMemo(() => users.users.filter((u) => u.isOwnerEnabled), [users.users]);
+  const { filtered, toolbar } = useUserFilters(rows, Date.now());
 
-  const columns: Column<OwnerRow>[] = [
+  const columns: Column<UserDirectoryEntry>[] = [
     {
       key: 'name',
       header: 'Propietario',
       render: (r) => (
         <div className="gg-row">
-          <UserCell person={r.profile} online={r.isOnline} sub={r.profile.email} />
+          <UserCell person={r} sub={r.email ?? '—'} />
           {r.lotsPending > 0 ? <Badge tone="warn">{r.lotsPending} por aprobar</Badge> : null}
         </div>
       ),
-      sortValue: (r) => fullName(r.profile),
+      sortValue: (r) => fullName(r),
     },
     {
       key: 'lots',
@@ -217,8 +234,8 @@ function OwnersTable({ onOpen }: { onOpen: (p: AdminProfile) => void }) {
     {
       key: 'created',
       header: 'Alta',
-      render: (r) => formatDate(r.profile.createdAt),
-      sortValue: (r) => r.profile.createdAt,
+      render: (r) => formatDate(r.createdAt),
+      sortValue: (r) => r.createdAt,
     },
   ];
 
@@ -228,8 +245,8 @@ function OwnersTable({ onOpen }: { onOpen: (p: AdminProfile) => void }) {
       <DataTable
         columns={columns}
         rows={filtered}
-        rowKey={(r) => r.profile.id}
-        onRowClick={(r) => onOpen(r.profile)}
+        rowKey={(r) => r.id}
+        onRowClick={onOpen}
         defaultSort={{ key: 'earnings', dir: 'desc' }}
       />
     </>
@@ -242,31 +259,63 @@ type ScoreFilter = 'all' | '1' | '2' | '3' | '4' | '5';
 type VisibilityFilter = 'visible' | 'hidden' | 'all';
 
 function ReviewsAudit() {
-  const { state, dispatch } = useMock();
   const { show } = useToast();
-
-  const rows = useMemo(() => selectRatingRows(state), [state]);
-  const stats = useMemo(() => selectRatingStats(state), [state]);
+  const { ratings, loading, error, refetch, setHidden } = useRatings();
+  const now = Date.now();
+  const stats = useMemo(() => computeRatingStats(ratings, now), [ratings, now]);
 
   const [score, setScore] = useState<ScoreFilter>('all');
   const [visibility, setVisibility] = useState<VisibilityFilter>('visible');
   const [search, setSearch] = useState('');
-  const [hideTarget, setHideTarget] = useState<RatingRow | null>(null);
+  const [hideTarget, setHideTarget] = useState<PanelRating | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (score !== 'all' && r.rating.score !== Number(score)) return false;
-      if (visibility === 'visible' && r.rating.isHidden) return false;
-      if (visibility === 'hidden' && !r.rating.isHidden) return false;
+    return ratings.filter((r) => {
+      if (score !== 'all' && r.score !== Number(score)) return false;
+      if (visibility === 'visible' && r.isHidden) return false;
+      if (visibility === 'hidden' && !r.isHidden) return false;
       if (!term) return true;
       return (
-        (r.rating.comment ?? '').toLowerCase().includes(term) ||
-        (r.author ? fullName(r.author).toLowerCase().includes(term) : false) ||
-        (r.lot?.name ?? '').toLowerCase().includes(term)
+        (r.comment ?? '').toLowerCase().includes(term) ||
+        r.authorName.toLowerCase().includes(term) ||
+        (r.lotName ?? '').toLowerCase().includes(term)
       );
     });
-  }, [rows, score, visibility, search]);
+  }, [ratings, score, visibility, search]);
+
+  const runHide = async (ratingId: string, hidden: boolean, reason: string | null) => {
+    setBusy(true);
+    try {
+      await setHidden(ratingId, hidden, reason);
+      show(hidden ? 'Reseña ocultada' : 'Reseña restaurada');
+    } catch (err) {
+      show(`Error: ${err instanceof Error ? err.message : 'no se pudo completar la acción'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading && ratings.length === 0) {
+    return <EmptyState icon="⏳" title="Cargando reseñas" description="Un momento." />;
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 'var(--gg-s4)' }}>
+        <Callout tone="danger">
+          <div>
+            <strong>No se pudieron cargar las reseñas.</strong>
+            <p style={{ marginTop: 4 }}>{error}</p>
+            <div style={{ marginTop: 'var(--gg-s3)' }}>
+              <Button onClick={refetch}>Reintentar</Button>
+            </div>
+          </div>
+        </Callout>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -290,7 +339,7 @@ function ReviewsAudit() {
         <MetricCard label="Ocultas" value={stats.hidden} />
       </div>
 
-      <Toolbar count={`${filtered.length} de ${rows.length}`}>
+      <Toolbar count={`${filtered.length} de ${ratings.length}`}>
         <SearchInput value={search} onChange={setSearch} placeholder="Comentario, autor o cochera" />
         <FilterSelect
           label="Puntaje"
@@ -321,56 +370,43 @@ function ReviewsAudit() {
           justamente lo que hay que evaluar para moderar. */}
       <div className="gg-stack">
         {filtered.map((row) => (
-          <article key={row.rating.id} className="gg-card">
+          <article key={row.id} className="gg-card">
             <div className="gg-row" style={{ alignItems: 'flex-start' }}>
               <div style={{ minWidth: 120 }}>
-                <StarRating value={row.rating.score} size={16} />
+                <StarRating value={row.score} size={16} />
                 <div style={{ color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)' }}>
-                  {formatRelative(row.rating.createdAt, state.now)}
+                  {formatRelative(row.createdAt, now)}
                 </div>
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="gg-row">
-                  {row.author ? <UserCell person={row.author} /> : <span>Autor desconocido</span>}
+                  <strong>{row.authorName}</strong>
                   <span style={{ color: 'var(--gg-text-soft)' }}>
-                    sobre <strong>{row.lot?.name ?? 'cochera eliminada'}</strong>
-                    {row.owner ? ` de ${fullName(row.owner)}` : ''}
+                    sobre <strong>{row.lotName ?? 'cochera eliminada'}</strong>
+                    {row.ownerName ? ` de ${row.ownerName}` : ''}
                   </span>
-                  {row.rating.isHidden ? <Badge tone="danger">Oculta</Badge> : null}
+                  {row.isHidden ? <Badge tone="danger">Oculta</Badge> : null}
                 </div>
 
                 <p style={{ marginTop: 'var(--gg-s2)', lineHeight: 1.6 }}>
-                  {row.rating.comment ?? (
-                    <em style={{ color: 'var(--gg-text-faint)' }}>Sin comentario</em>
-                  )}
+                  {row.comment ?? <em style={{ color: 'var(--gg-text-faint)' }}>Sin comentario</em>}
                 </p>
 
-                {row.rating.hiddenReason ? (
+                {row.hiddenReason ? (
                   <div style={{ marginTop: 'var(--gg-s2)' }}>
-                    <Callout tone="neutral">Motivo: {row.rating.hiddenReason}</Callout>
+                    <Callout tone="neutral">Motivo: {row.hiddenReason}</Callout>
                   </div>
                 ) : null}
               </div>
 
               <div className="gg-row" style={{ flexShrink: 0 }}>
-                {row.rating.isHidden ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      dispatch({
-                        type: 'SET_RATING_HIDDEN',
-                        ratingId: row.rating.id,
-                        hidden: false,
-                        reason: null,
-                      });
-                      show('Reseña restaurada');
-                    }}
-                  >
+                {row.isHidden ? (
+                  <Button size="sm" disabled={busy} onClick={() => runHide(row.id, false, null)}>
                     Restaurar
                   </Button>
                 ) : (
-                  <Button size="sm" variant="danger" onClick={() => setHideTarget(row)}>
+                  <Button size="sm" variant="danger" disabled={busy} onClick={() => setHideTarget(row)}>
                     Ocultar
                   </Button>
                 )}
@@ -380,35 +416,14 @@ function ReviewsAudit() {
         ))}
       </div>
 
-      <div style={{ marginTop: 'var(--gg-s4)' }}>
-        <SchemaNote>
-          Ocultar una reseña todavía no es posible en la base: `ratings` no tiene ningún campo de
-          moderación, y tampoco hay policy de UPDATE ni DELETE, así que hoy nadie puede editarlas
-          desde el cliente.
-        </SchemaNote>
-      </div>
-
       <HideReviewDialog
         row={hideTarget}
         onClose={() => setHideTarget(null)}
         onConfirm={(reason) => {
           if (!hideTarget) return;
-          dispatch({
-            type: 'SET_RATING_HIDDEN',
-            ratingId: hideTarget.rating.id,
-            hidden: true,
-            reason,
-          });
-          show('Reseña ocultada', {
-            onUndo: () =>
-              dispatch({
-                type: 'SET_RATING_HIDDEN',
-                ratingId: hideTarget.rating.id,
-                hidden: false,
-                reason: null,
-              }),
-          });
+          const id = hideTarget.id;
           setHideTarget(null);
+          void runHide(id, true, reason);
         }}
       />
     </>
@@ -428,7 +443,7 @@ function HideReviewDialog({
   onClose,
   onConfirm,
 }: {
-  row: RatingRow | null;
+  row: PanelRating | null;
   onClose: () => void;
   onConfirm: (reason: string) => void;
 }) {
@@ -463,7 +478,7 @@ function HideReviewDialog({
           borderRadius: 'var(--gg-r2)',
         }}
       >
-        {row.rating.comment ?? 'Sin comentario'}
+        {row.comment ?? 'Sin comentario'}
       </blockquote>
 
       <div className="gg-field">
@@ -482,132 +497,159 @@ function HideReviewDialog({
 
 /* ---------------------------------------------------------------- Detalle de usuario */
 
+const LOT_STATUS_LABELS: Record<string, string> = {
+  approved: 'Aprobada',
+  pending: 'Pendiente',
+  rejected: 'Rechazada',
+  changes_requested: 'Cambios pedidos',
+};
+
 function UserDetailDrawer({
-  profile,
+  user,
   onClose,
 }: {
-  profile: AdminProfile | null;
+  user: UserDirectoryEntry | null;
   onClose: () => void;
 }) {
-  const { state } = useMock();
   const { show } = useToast();
+  const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!profile) return null;
+  useEffect(() => {
+    setDetail(null);
+    setError(null);
+    if (!user) return;
+    let cancelled = false;
+    fetchUserDetail(user.id)
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'No se pudo cargar la ficha.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
-  const vehicles = state.vehicles.filter((v) => v.userId === profile.id);
-  const lots = state.parkingLots.filter((l) => l.ownerId === profile.id);
-  const bookings = state.bookings
-    .filter((b) => b.userId === profile.id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 5);
-  const txs = state.transactions.filter((t) => t.userId === profile.id).slice(0, 5);
-  const balance = state.transactions
-    .filter((t) => t.userId === profile.id && t.status === 'completed')
-    .reduce((s, t) => s + t.amount, 0);
+  if (!user) return null;
 
   return (
     <Drawer
       open
-      title={fullName(profile)}
-      subtitle={profile.email}
+      title={fullName(user)}
+      subtitle={user.email ?? undefined}
       onClose={onClose}
       footer={
-        <>
-          <Button
-            onClick={() => {
-              navigator.clipboard?.writeText(profile.id);
-              show('ID copiado');
-            }}
-          >
-            Copiar ID
-          </Button>
-        </>
+        <Button
+          onClick={() => {
+            navigator.clipboard?.writeText(user.id);
+            show('ID copiado');
+          }}
+        >
+          Copiar ID
+        </Button>
       }
     >
       <DrawerSection title="Perfil">
         <KeyValue
           items={[
-            ['Teléfono', profile.phone ?? '—'],
-            ['Alta', formatDate(profile.createdAt)],
+            ['Email', user.email ?? '—'],
+            ['Teléfono', user.phone ?? '—'],
+            ['Alta', formatDate(user.createdAt)],
             [
               'Rol activo',
-              <Badge key="r" tone={profile.activeRole === 'owner' ? 'accent' : 'neutral'}>
-                {profile.activeRole === 'owner' ? 'Propietario' : 'Conductor'}
+              <Badge key="r" tone={user.activeRole === 'owner' ? 'accent' : 'neutral'}>
+                {user.activeRole === 'owner' ? 'Propietario' : 'Conductor'}
               </Badge>,
             ],
-            ['Propietario habilitado', profile.isOwnerEnabled ? 'Sí' : 'No'],
-            ['ID', <span key="id" className="gg-mono">{profile.id}</span>],
+            ['Propietario habilitado', user.isOwnerEnabled ? 'Sí' : 'No'],
+            ['ID', <span key="id" className="gg-mono">{user.id}</span>],
           ]}
         />
       </DrawerSection>
 
-      {vehicles.length > 0 ? (
-        <DrawerSection title={`Vehículos (${vehicles.length})`}>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {vehicles.map((v) => (
-              <li key={v.id} style={{ padding: '4px 0' }}>
-                <span className="gg-mono">{v.plate}</span> · {v.brand} {v.model} · {v.color}
-              </li>
-            ))}
-          </ul>
-        </DrawerSection>
+      {error ? <Callout tone="danger">{error}</Callout> : null}
+      {!detail && !error ? (
+        <p style={{ color: 'var(--gg-text-faint)' }}>Cargando ficha…</p>
       ) : null}
 
-      {lots.length > 0 ? (
-        <DrawerSection title={`Cocheras (${lots.length})`}>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {lots.map((l) => (
-              <li key={l.id} className="gg-row" style={{ padding: '4px 0' }}>
-                <span style={{ flex: 1, minWidth: 0 }}>{l.name}</span>
-                <Badge tone={l.approvalStatus === 'approved' ? 'ok' : l.approvalStatus === 'pending' ? 'warn' : 'neutral'}>
-                  {l.approvalStatus === 'approved'
-                    ? 'Aprobada'
-                    : l.approvalStatus === 'pending'
-                      ? 'Pendiente'
-                      : l.approvalStatus === 'rejected'
-                        ? 'Rechazada'
-                        : 'Cambios pedidos'}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        </DrawerSection>
-      ) : null}
+      {detail ? (
+        <>
+          {detail.vehicles.length > 0 ? (
+            <DrawerSection title={`Vehículos (${detail.vehicles.length})`}>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {detail.vehicles.map((v, i) => (
+                  <li key={`${v.plate}-${i}`} style={{ padding: '4px 0' }}>
+                    <span className="gg-mono">{v.plate}</span>
+                    {v.brand || v.model ? ` · ${v.brand ?? ''} ${v.model ?? ''}`.trim() : ''}
+                    {v.color ? ` · ${v.color}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </DrawerSection>
+          ) : null}
 
-      <DrawerSection title="Últimas reservas">
-        {bookings.length === 0 ? (
-          <p style={{ color: 'var(--gg-text-faint)' }}>Sin reservas.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {bookings.map((b) => {
-              const lot = state.parkingLots.find((l) => l.id === b.parkingLotId);
-              return (
-                <li key={b.id} className="gg-row" style={{ padding: '4px 0' }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>{lot?.name ?? '—'}</span>
-                  <span style={{ color: 'var(--gg-text-faint)' }}>{b.date}</span>
-                  <span className="gg-mono">{formatMoney(b.totalPrice)}</span>
+          {detail.lots.length > 0 ? (
+            <DrawerSection title={`Cocheras (${detail.lots.length})`}>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {detail.lots.map((l, i) => (
+                  <li key={`${l.name}-${i}`} className="gg-row" style={{ padding: '4px 0' }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>{l.name}</span>
+                    <Badge
+                      tone={
+                        l.approvalStatus === 'approved'
+                          ? 'ok'
+                          : l.approvalStatus === 'pending'
+                            ? 'warn'
+                            : 'neutral'
+                      }
+                    >
+                      {LOT_STATUS_LABELS[l.approvalStatus] ?? l.approvalStatus}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </DrawerSection>
+          ) : null}
+
+          <DrawerSection title="Últimas reservas">
+            {detail.recentBookings.length === 0 ? (
+              <p style={{ color: 'var(--gg-text-faint)' }}>Sin reservas.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {detail.recentBookings.map((b, i) => (
+                  <li key={i} className="gg-row" style={{ padding: '4px 0' }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>{b.lot_name ?? '—'}</span>
+                    <span style={{ color: 'var(--gg-text-faint)' }}>{b.date}</span>
+                    <span className="gg-mono">{formatMoney(b.total_price)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DrawerSection>
+
+          <DrawerSection title="Billetera">
+            <p style={{ marginBottom: 'var(--gg-s2)' }}>
+              Saldo actual: <strong>{formatMoney(detail.balance)}</strong>
+            </p>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {detail.recentTransactions.map((t, i) => (
+                <li
+                  key={i}
+                  className="gg-row"
+                  style={{ padding: '3px 0', fontSize: 'var(--gg-fs-sm)' }}
+                >
+                  <span style={{ flex: 1 }}>{t.type}</span>
+                  <span className={t.amount >= 0 ? 'gg-amount--pos' : 'gg-amount--neg'}>
+                    {formatMoney(t.amount)}
+                  </span>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </DrawerSection>
-
-      <DrawerSection title="Billetera">
-        <p style={{ marginBottom: 'var(--gg-s2)' }}>
-          Saldo calculado: <strong>{formatMoney(balance)}</strong>
-        </p>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {txs.map((t) => (
-            <li key={t.id} className="gg-row" style={{ padding: '3px 0', fontSize: 'var(--gg-fs-sm)' }}>
-              <span style={{ flex: 1 }}>{t.type}</span>
-              <span className={t.amount >= 0 ? 'gg-amount--pos' : 'gg-amount--neg'}>
-                {formatMoney(t.amount)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </DrawerSection>
+              ))}
+            </ul>
+          </DrawerSection>
+        </>
+      ) : null}
 
       <SchemaNote>
         Suspender o dar de baja una cuenta requeriría una migración: `profiles` no tiene ningún

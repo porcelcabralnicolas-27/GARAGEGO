@@ -7,7 +7,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
-import type { TicketCategory, TicketStatus } from '../../mocks/types';
+import type { TicketCategory, TicketStatus } from '../../domain';
 
 export type PanelTicketMessage = {
   id: string;

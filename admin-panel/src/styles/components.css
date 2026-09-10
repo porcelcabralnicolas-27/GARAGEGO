@@ -615,17 +615,6 @@ button.gg-metric:hover {
   overflow: visible;
 }
 
-.gg-avatar__online {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--gg-ok);
-  border: 2px solid var(--gg-surface);
-}
-
 .gg-user-cell {
   display: flex;
   align-items: center;

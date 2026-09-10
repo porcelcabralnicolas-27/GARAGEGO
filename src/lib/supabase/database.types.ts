@@ -225,6 +225,11 @@ export type Database = {
           score: number;
           comment: string | null;
           created_at: string;
+          // Moderación (migración 0044). Solo se cambian por la RPC admin_set_rating_hidden.
+          is_hidden: boolean;
+          hidden_reason: string | null;
+          hidden_at: string | null;
+          hidden_by: string | null;
         };
         Insert: {
           id?: string;

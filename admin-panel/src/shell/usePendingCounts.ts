@@ -3,9 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 /**
- * Contadores de los badges de la sidebar, con datos reales. Dos `count` baratos, refrescados
- * cada 20 s para que sigan al día mientras el equipo trabaja. (Inventario y Soporte ya no son
- * mock; el selector `selectPendingCounts` que se usaba antes leía el estado simulado.)
+ * Contadores de los badges de la sidebar. Dos `count` baratos, refrescados cada 20 s para que
+ * sigan al día mientras el equipo trabaja.
  */
 export function usePendingCounts(): { pendingLots: number; openTickets: number } {
   const [counts, setCounts] = useState({ pendingLots: 0, openTickets: 0 });

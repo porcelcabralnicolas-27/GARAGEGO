@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '../../auth/AuthProvider';
-import type { TicketCategory, TicketStatus } from '../../mocks/types';
+import type { TicketCategory, TicketStatus } from '../../domain';
 import {
   fetchTickets,
   replyToTicket,

@@ -15,8 +15,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
-import type { AdminParkingLot, AdminProfile, ApprovalStatus, ModerationState } from '../../mocks/types';
-import type { LotRow } from '../../state/selectors';
+import type { AdminParkingLot, AdminProfile, ApprovalStatus, LotRow, ModerationState } from '../../domain';
 
 const STORAGE_BUCKET = 'parking-images';
 
@@ -99,7 +98,6 @@ function toAdminProfile(row: ProfileRow): AdminProfile {
     isOwnerEnabled: row.is_owner_enabled,
     createdAt: row.created_at,
     email: '', // no legible con la anon key
-    lastSeenAt: null, // no existe en el esquema
   };
 }
 

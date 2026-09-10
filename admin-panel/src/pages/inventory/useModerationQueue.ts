@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { ModerationState } from '../../mocks/types';
-import type { LotRow } from '../../state/selectors';
+import type { LotRow, ModerationState } from '../../domain';
 import {
   fetchModerationLots,
   reviewLot,

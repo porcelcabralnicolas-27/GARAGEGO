@@ -17,27 +17,23 @@ npm run dev                # http://localhost:5180
 Los puertos (5180 dev, 5181 preview) están elegidos para no chocar con Metro (8081). El
 `expo start` de la raíz y este servidor pueden correr al mismo tiempo.
 
-## Qué es real y qué es simulado
+## Qué lee cada pantalla
 
-**Real:**
+Todo el panel funciona con datos reales de Supabase (migraciones **0033–0045**). No hay mock:
+cada pantalla tiene su par `xxxApi.ts` + `useXxx.ts` y todo lo derivado se calcula ahí.
 
-- El inicio de sesión. Se autentica contra Supabase Auth y después lee la bandera
-  `profiles.is_admin` del propio perfil. Si no es admin, cierra la sesión.
-- **Toda la sección Inventario** (`src/pages/inventory/`). Lee `parking_lots` con dueños, fotos
-  y estadísticas de reservas.
-  - "Aprobaciones": aprobar / rechazar / pedir cambios con `admin_review_parking_lot`.
-  - "Cocheras publicadas": pausar / suspender / reactivar con `admin_set_parking_lot_moderation`.
-  Migraciones **0034–0040**.
-- **La pestaña "Tickets" de Soporte** (`src/pages/support/ticketsApi.ts` + `useTickets.ts`).
-  Lee `support_tickets` / `support_ticket_messages`, responde, resuelve y reabre. Migración
-  **0041**. La pestaña "Transacciones" de esa misma página sigue en mock (es parte de Dashboard).
-- Los badges de la sidebar (`src/shell/usePendingCounts.ts`): dos `count` reales.
+| Sección | Cómo lee | Migraciones |
+|---|---|---|
+| Login | Supabase Auth + `profiles.is_admin` | 0033 |
+| Inventario (aprobaciones + pausar/suspender) | policy `is_admin()` sobre `parking_lots` + RPCs | 0034–0040 |
+| Soporte · Tickets | `support_tickets` / `_messages` por policy + RPCs | 0041 |
+| Soporte · Transacciones | `admin_transactions()` + `admin_transaction_summary()` | 0042, 0045 |
+| Dashboard | `admin_active_sessions()`, `admin_growth()`, `admin_transaction_summary()` | 0042 |
+| Usuarios · Conductores/Propietarios | `admin_user_directory()` + `admin_user_detail()` (incluye email de `auth.users`) | 0043 |
+| Usuarios · Reseñas | `ratings` por policy + `admin_set_rating_hidden()` | 0044 |
+| Badges de la sidebar | dos `count` (`src/shell/usePendingCounts.ts`) | — |
 
-**Simulado:** Usuarios, Dashboard, y la pestaña Transacciones de Soporte. Los datos viven en
-`src/mocks/` con un reducer en `src/state/`. El botón "Restablecer datos de demo" de la sidebar
-vuelve ese estado al inicial.
-
-La topbar lleva el chip **"Datos simulados"**: sigue ahí mientras queden secciones demo.
+Tipos y helpers de dominio compartidos: `src/domain.ts`.
 
 ## Habilitar un administrador
 
@@ -57,22 +53,18 @@ policy `profiles_update_own` no restringe columnas.
 
 ```
 src/
-  auth/      Login real y guard de admin (lo único que toca la base)
-  shell/     Sidebar, topbar y layout
+  auth/      Login real y guard de admin
+  shell/     Sidebar, topbar, layout, contadores de la sidebar
   ui/        Sistema de diseño propio: botones, tabla, badges, modales, gráficos SVG
-  mocks/     Tipos + generación determinista de los datos de demo
-  state/     Reducer del mock y SELECTORES (ver abajo)
-  pages/     Las 4 secciones
+  domain.ts  Tipos y helpers de dominio compartidos
+  pages/     Las 4 secciones — cada una con su xxxApi.ts + useXxx.ts
+  lib/       Cliente de Supabase, formateo
   styles/    Tokens CSS y estilos
 ```
 
-**`src/state/selectors.ts` es la pieza clave para el futuro.** Todo lo derivado (ocupación,
-series de crecimiento, filas de tablas, estadísticas) se calcula ahí y solo ahí. Cuando llegue el
-momento de conectar la base, se reemplazan esos selectores por queries y **las vistas no cambian**.
+## Historia: cómo se conectó cada sección
 
-## Lo que falta en la base para que esto sea real
-
-### 1. Inventario (moderación de publicaciones) — ✅ HECHO (migraciones 0034–0040)
+### Inventario (moderación de publicaciones) — migraciones 0034–0040
 
 `0034_listing_moderation.sql` agrega a `parking_lots` las columnas `approval_status`,
 `moderation_state` y compañía, hace el backfill (lo ya publicado se da por aprobado), suma el
@@ -103,7 +95,7 @@ de lectura; el helper es `security definer` para no recursar con `bookings_selec
 Del lado de la app Expo, "Mis publicaciones" del propietario muestra el estado (En revisión /
 Corregir / Rechazada) y el reenvío.
 
-### 2. Tickets de soporte — ✅ HECHO (migración 0041)
+### Tickets de soporte — migración 0041
 
 `0041_support_tickets.sql` crea `support_tickets` + `support_ticket_messages`. El conductor
 abre un ticket sobre una reserva suya, el propietario sobre una cochera suya (RLS lo obliga).
@@ -113,32 +105,44 @@ respondiendo o resolviendo le notifica al usuario (`notifications.related_ticket
 cochera (el admin no lee `bookings`). Del lado de la app: `src/features/support/` +
 `app/(client|owner)/profile/support/`, entrada desde Perfil → "Centro de ayuda".
 
-### 3. Moderación de reseñas
+### Dashboard — migración 0042
 
-`ratings` no tiene flag de moderación, y tampoco tiene policy de UPDATE ni DELETE: hoy nadie
-puede tocar una reseña desde el cliente. Haría falta `ratings.is_hidden` + `hidden_reason`.
+`0042_admin_dashboard.sql` agrega tres RPCs `security definer`: `admin_active_sessions()`
+(sesiones en curso con cochera / propietario / conductor / patente), `admin_growth(days, buckets)`
+y `admin_transaction_summary(days)` (volumen y desglose de movimientos). La ocupación total sale
+de un `count` directo sobre `parking_lots`.
 
-### 4. Email y presencia
+El gráfico de crecimiento es un **funnel, no dos tipos disjuntos**: "usuarios nuevos"
+(`profiles.created_at`) y "publicaron su 1ª cochera" (`min(parking_lots.created_at)` por owner),
+que es un subconjunto — en la app todo el que se registra es conductor y ser propietario es un
+flag sin fecha.
 
-- **Email**: no está en `profiles`, vive en `auth.users` y es ilegible con la anon key. Se
-  resuelve con una vista `security definer` que haga el join, o con la Admin API desde un
-  backend. **Nunca con la service key en este bundle**, que se sirve al navegador.
-- **Presencia**: no hay ningún campo de actividad. Sería `profiles.last_seen_at` o Realtime
-  Presence de Supabase.
+### Usuarios — migración 0043
 
-Un detalle que **no** necesita migración: la serie de "propietarios" del gráfico de crecimiento
-se calcula con la fecha de la primera cochera de cada owner
-(`min(parking_lots.created_at) group by owner_id`), que ya son datos existentes.
+`0043_admin_users.sql` agrega `admin_user_directory()` (una fila por usuario: perfil + email de
+`auth.users` + agregados de vehículos / reservas / cocheras / plata) y `admin_user_detail(id)`
+(la ficha completa como `jsonb`). El email se lee dentro del RPC `security definer` (postgres
+sí puede leer `auth.users`).
+
+### Moderación de reseñas — migración 0044
+
+`0044_rating_moderation.sql` agrega `ratings.is_hidden` / `hidden_reason` / `hidden_at` /
+`hidden_by`, cambia la policy de lectura (el público no ve las ocultas; el autor sí ve la suya;
+el admin ve todo) y agrega `admin_set_rating_hidden(id, hidden, reason)`. Ocultar deja de
+mostrarla en la ficha pública **pero sigue contando para el promedio**. Del lado de la app:
+`listRatingsForParkingLot` filtra `is_hidden = false`.
+
+### Transacciones — migración 0045
+
+`0045_admin_transactions.sql` agrega `admin_transactions(limit)`: los N movimientos más
+recientes con el titular y (si aplica) la cochera. El resumen ya lo daba `admin_transaction_summary`.
 
 ## Además: RLS
 
-Hoy un admin autenticado como usuario normal **solo puede leer `profiles` y `ratings` completas**
-(las dos tienen policy `using (true)`). No vería reservas ajenas, billeteras, notificaciones, ni
-las cocheras inactivas — justo las que necesita moderar.
+Por policy directa, un admin lee `profiles`, `ratings` (ambas `using (true)`) y `parking_lots`
+(`... or public.is_admin(auth.uid())`, migración 0034). Todo lo demás que el panel usa —
+`bookings`, `vehicles`, `wallet_transactions`, `support_tickets`— entra por **RPCs
+`security definer`** que validan admin adentro y devuelven agregados o listas acotadas, nunca
+acceso libre. `wallets` y las notificaciones ajenas siguen sin ningún acceso (nadie los usa aún).
 
-Para conectar datos reales hay tres caminos: policies con un predicado `is_admin(auth.uid())` en
-cada tabla, RPCs `security definer` que validen admin adentro, o un backend con la service key.
-
-Para moderación de publicaciones ya se tomó el camino mixto (migraciones 0034/0035): la lectura
-de `parking_lots` va por policy (`... or public.is_admin(auth.uid())`) y las escrituras por RPC
-`security definer`. El resto de las tablas sigue sin acceso de admin.
+El camino descartado es el backend con service key: este bundle se sirve al navegador.

@@ -6,7 +6,6 @@ import {
   formatMoney,
   formatRelative,
   formatSigned,
-  fullName,
 } from '../../lib/format';
 import {
   TICKET_CATEGORY_LABELS,
@@ -15,29 +14,17 @@ import {
   type TicketStatus,
   type TransactionStatus,
   type TransactionType,
-} from '../../mocks/types';
-import { useMock } from '../../state/MockDataProvider';
-import {
-  selectTransactionRows,
-  selectTransactionStats,
-  type TransactionRow,
-} from '../../state/selectors';
+} from '../../domain';
 import { PageHeader } from '../../shell/PageHeader';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer, DrawerSection } from '../../ui/overlays';
 import { FilterSelect, SearchInput, SubTabs, Tabs, Toolbar } from '../../ui/controls';
 import { MetricCard } from '../../ui/MetricCard';
-import {
-  Badge,
-  Button,
-  Callout,
-  EmptyState,
-  KeyValue,
-  SchemaNote,
-  UserCell,
-} from '../../ui/primitives';
+import { Badge, Button, Callout, EmptyState, KeyValue, SchemaNote } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
+import { TRANSACTION_SIDE_LABEL, type PanelTransaction } from './transactionsApi';
 import { useTickets, type TicketsState } from './useTickets';
+import { useTransactions } from './useTransactions';
 
 type MainTab = 'transactions' | 'tickets';
 
@@ -73,50 +60,44 @@ type TypeFilter = TransactionType | 'all';
 type StatusFilter = TransactionStatus | 'all';
 
 function TransactionsView() {
-  const { state } = useMock();
-  const rows = useMemo(() => selectTransactionRows(state), [state]);
-  const stats = useMemo(() => selectTransactionStats(state), [state]);
+  const { transactions, summary, loading, error, refetch } = useTransactions();
 
   const [search, setSearch] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [detail, setDetail] = useState<TransactionRow | null>(null);
+  const [detail, setDetail] = useState<PanelTransaction | null>(null);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (type !== 'all' && r.tx.type !== type) return false;
-      if (status !== 'all' && r.tx.status !== status) return false;
+    return transactions.filter((r) => {
+      if (type !== 'all' && r.type !== type) return false;
+      if (status !== 'all' && r.status !== status) return false;
       if (!term) return true;
       return (
-        r.tx.id.toLowerCase().includes(term) ||
-        (r.tx.paymentGatewayRef ?? '').toLowerCase().includes(term) ||
-        (r.user ? fullName(r.user).toLowerCase().includes(term) : false)
+        r.id.toLowerCase().includes(term) ||
+        (r.paymentGatewayRef ?? '').toLowerCase().includes(term) ||
+        r.userName.toLowerCase().includes(term)
       );
     });
-  }, [rows, search, type, status]);
+  }, [transactions, search, type, status]);
 
-  const columns: Column<TransactionRow>[] = [
+  const columns: Column<PanelTransaction>[] = [
     {
       key: 'date',
       header: 'Fecha',
-      render: (r) => formatDateTime(r.tx.createdAt),
-      sortValue: (r) => r.tx.createdAt,
+      render: (r) => formatDateTime(r.createdAt),
+      sortValue: (r) => r.createdAt,
     },
     {
       key: 'user',
       header: 'Titular',
-      render: (r) =>
-        r.user ? (
-          <UserCell
-            person={r.user}
-            sub={r.user.isOwnerEnabled ? 'Propietario' : 'Conductor'}
-            size={24}
-          />
-        ) : (
-          '—'
-        ),
-      sortValue: (r) => (r.user ? fullName(r.user) : ''),
+      render: (r) => (
+        <div style={{ minWidth: 0 }}>
+          <div>{r.userName}</div>
+          <div className="gg-user-cell__sub">{TRANSACTION_SIDE_LABEL[r.side]}</div>
+        </div>
+      ),
+      sortValue: (r) => r.userName,
     },
     {
       key: 'type',
@@ -124,65 +105,83 @@ function TransactionsView() {
       render: (r) => (
         <Badge
           tone={
-            r.tx.type === 'topup' || r.tx.type === 'refund' || r.tx.type === 'earning'
+            r.type === 'topup' || r.type === 'refund' || r.type === 'earning'
               ? 'ok'
-              : r.tx.type === 'overtime_charge'
+              : r.type === 'overtime_charge'
                 ? 'warn'
-                : r.tx.type === 'adjustment'
+                : r.type === 'adjustment'
                   ? 'info'
                   : 'neutral'
           }
         >
-          {TRANSACTION_TYPE_LABELS[r.tx.type]}
+          {TRANSACTION_TYPE_LABELS[r.type] ?? r.type}
         </Badge>
       ),
-      sortValue: (r) => r.tx.type,
+      sortValue: (r) => r.type,
     },
     {
       key: 'amount',
       header: 'Monto',
       align: 'num',
       render: (r) => (
-        <span className={r.tx.amount >= 0 ? 'gg-amount--pos' : 'gg-amount--neg'}>
-          {formatSigned(r.tx.amount)}
+        <span className={r.amount >= 0 ? 'gg-amount--pos' : 'gg-amount--neg'}>
+          {formatSigned(r.amount)}
         </span>
       ),
-      sortValue: (r) => r.tx.amount,
+      sortValue: (r) => r.amount,
     },
     {
       key: 'status',
       header: 'Estado',
       render: (r) => (
-        <Badge
-          tone={r.tx.status === 'completed' ? 'ok' : r.tx.status === 'failed' ? 'danger' : 'warn'}
-        >
-          {r.tx.status === 'completed' ? 'Completada' : r.tx.status === 'failed' ? 'Fallida' : 'Pendiente'}
+        <Badge tone={r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'danger' : 'warn'}>
+          {r.status === 'completed' ? 'Completada' : r.status === 'failed' ? 'Fallida' : 'Pendiente'}
         </Badge>
       ),
-      sortValue: (r) => r.tx.status,
+      sortValue: (r) => r.status,
     },
     {
       key: 'booking',
       header: 'Reserva',
       render: (r) =>
-        r.lot ? (
-          <span style={{ color: 'var(--gg-text-soft)' }}>{r.lot.name}</span>
+        r.lotName ? (
+          <span style={{ color: 'var(--gg-text-soft)' }}>{r.lotName}</span>
         ) : (
           <span style={{ color: 'var(--gg-text-faint)' }}>—</span>
         ),
     },
   ];
 
+  if (loading && transactions.length === 0) {
+    return <EmptyState icon="⏳" title="Cargando movimientos" description="Un momento." />;
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 'var(--gg-s4)' }}>
+        <Callout tone="danger">
+          <div>
+            <strong>No se pudieron cargar los movimientos.</strong>
+            <p style={{ marginTop: 4 }}>{error}</p>
+            <div style={{ marginTop: 'var(--gg-s3)' }}>
+              <Button onClick={refetch}>Reintentar</Button>
+            </div>
+          </div>
+        </Callout>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="gg-grid-4" style={{ marginBottom: 'var(--gg-s4)' }}>
-        <MetricCard label="Volumen 30 días" value={formatMoney(stats.volume)} hint="movimientos completados" />
-        <MetricCard label="Recargas" value={formatMoney(stats.topups)} />
-        <MetricCard label="Pagos de reservas" value={formatMoney(stats.payments)} />
-        <MetricCard label="Acreditado a propietarios" value={formatMoney(stats.earnings)} />
+        <MetricCard label="Volumen 30 días" value={formatMoney(summary?.volume ?? 0)} hint="movimientos completados" />
+        <MetricCard label="Recargas" value={formatMoney(summary?.topups ?? 0)} />
+        <MetricCard label="Pagos de reservas" value={formatMoney(summary?.payments ?? 0)} />
+        <MetricCard label="Acreditado a propietarios" value={formatMoney(summary?.earnings ?? 0)} />
       </div>
 
-      <Toolbar count={`${filtered.length} de ${rows.length}`}>
+      <Toolbar count={`${filtered.length} de ${transactions.length}`}>
         <SearchInput value={search} onChange={setSearch} placeholder="ID, titular o referencia" />
         <FilterSelect
           label="Tipo"
@@ -211,18 +210,17 @@ function TransactionsView() {
 
       <DataTable
         columns={columns}
-        rows={filtered.slice(0, 120)}
-        rowKey={(r) => r.tx.id}
+        rows={filtered}
+        rowKey={(r) => r.id}
         onRowClick={setDetail}
         defaultSort={{ key: 'date', dir: 'desc' }}
       />
 
       <div style={{ marginTop: 'var(--gg-s3)' }}>
         <SchemaNote>
-          Solo lectura. Un ajuste manual de saldo usaría `wallet_transactions.type = 'adjustment'`
-          (está en el constraint pero ningún código lo emite hoy) y tendría que hacerse con una
-          función `security definer`: la tabla `wallets` no tiene policy de UPDATE, así que no se
-          puede tocar el saldo desde el cliente.
+          Solo lectura (los 300 movimientos más recientes). Un ajuste manual de saldo
+          (`wallet_transactions.type = 'adjustment'`) sería otra RPC `security definer`: `wallets`
+          no tiene policy de UPDATE.
         </SchemaNote>
       </div>
 
@@ -230,24 +228,24 @@ function TransactionsView() {
         <Drawer
           open
           title="Detalle del movimiento"
-          subtitle={TRANSACTION_TYPE_LABELS[detail.tx.type]}
+          subtitle={TRANSACTION_TYPE_LABELS[detail.type] ?? detail.type}
           onClose={() => setDetail(null)}
         >
           <DrawerSection title="Datos">
             <KeyValue
               items={[
-                ['Monto', formatSigned(detail.tx.amount)],
-                ['Fecha', formatDateTime(detail.tx.createdAt)],
-                ['Titular', detail.user ? fullName(detail.user) : '—'],
-                ['Estado', detail.tx.status],
-                ['Cochera', detail.lot?.name ?? '—'],
+                ['Monto', formatSigned(detail.amount)],
+                ['Fecha', formatDateTime(detail.createdAt)],
+                ['Titular', detail.userName],
+                ['Vista', TRANSACTION_SIDE_LABEL[detail.side]],
+                ['Estado', detail.status],
+                ['Cochera', detail.lotName ?? '—'],
+                ['Referencia', detail.paymentGatewayRef ?? '—'],
               ]}
             />
           </DrawerSection>
 
           <DrawerSection title="Registro crudo">
-            {/* A propósito: cuando se conecte la base de verdad, esto sirve para comparar el
-                mapeo campo por campo contra la fila real. */}
             <pre
               style={{
                 background: 'var(--gg-surface-3)',
@@ -257,7 +255,7 @@ function TransactionsView() {
                 overflowX: 'auto',
               }}
             >
-              {JSON.stringify(detail.tx, null, 2)}
+              {JSON.stringify(detail, null, 2)}
             </pre>
           </DrawerSection>
         </Drawer>

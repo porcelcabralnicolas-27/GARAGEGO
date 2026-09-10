@@ -3,11 +3,12 @@ import { useMemo, useState } from 'react';
 import { formatMoney, formatRelative, fullName } from '../../lib/format';
 import {
   MODERATION_STATE_LABELS,
+  slaLevel,
   type AdminParkingLot,
   type ApprovalStatus,
+  type LotRow,
   type ModerationState,
-} from '../../mocks/types';
-import { slaLevel, type LotRow } from '../../state/selectors';
+} from '../../domain';
 import { PageHeader } from '../../shell/PageHeader';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Modal } from '../../ui/overlays';

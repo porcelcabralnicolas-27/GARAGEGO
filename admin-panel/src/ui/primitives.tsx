@@ -96,8 +96,7 @@ export function Callout({
   );
 }
 
-/** Nota que explica un hueco entre el mock y el esquema real. Aparece en varias pantallas y
- *  siempre significa lo mismo: "esto todavía no existe en la base". */
+/** Nota al pie en gris chico: aclara una limitación o el alcance de una pantalla. */
 export function SchemaNote({ children }: { children: ReactNode }) {
   return <p className="gg-schema-note">{children}</p>;
 }
@@ -135,11 +134,9 @@ export function Toggle({
 export function Avatar({
   person,
   size = 28,
-  online,
 }: {
   person: { firstName: string; lastName: string };
   size?: number;
-  online?: boolean;
 }) {
   return (
     <span
@@ -148,7 +145,6 @@ export function Avatar({
       aria-hidden
     >
       {initials(person)}
-      {online ? <span className="gg-avatar__online" /> : null}
     </span>
   );
 }
@@ -157,17 +153,15 @@ export function Avatar({
 export function UserCell({
   person,
   sub,
-  online,
   size,
 }: {
   person: { firstName: string; lastName: string };
   sub?: string;
-  online?: boolean;
   size?: number;
 }) {
   return (
     <div className="gg-user-cell">
-      <Avatar person={person} online={online} size={size} />
+      <Avatar person={person} size={size} />
       <div style={{ minWidth: 0 }}>
         <div className="gg-user-cell__name">
           {person.firstName} {person.lastName}

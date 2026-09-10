@@ -1,8 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Cliente de Supabase. Es lo ÚNICO del panel que toca datos reales: se usa para el login y para
- * leer la bandera `is_admin` del propio perfil. Todo el resto de las pantallas trabaja con mocks.
+ * Cliente de Supabase. Lo usa todo el panel: login, RPCs y queries de cada sección.
  *
  * Si faltan las variables de entorno no se tira una excepción: se expone `configError` y la app
  * muestra una pantalla explicando qué falta. Un `throw` acá dejaría la pantalla en blanco, que es

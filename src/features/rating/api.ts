@@ -50,6 +50,10 @@ export async function listRatingsForParkingLot(parkingLotId: string): Promise<Ra
     .from('ratings')
     .select('*')
     .eq('parking_lot_id', parkingLotId)
+    // Las reseñas que el equipo ocultó (migración 0044) no van en la ficha pública. La RLS ya
+    // no las devolvería a un tercero, pero el autor sí ve la suya: se filtra acá para que
+    // nadie las vea en el listado del lote.
+    .eq('is_hidden', false)
     .order('created_at', { ascending: false });
   if (error) throw error;
   if (ratingRows.length === 0) return [];

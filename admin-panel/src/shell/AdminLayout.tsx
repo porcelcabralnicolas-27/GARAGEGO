@@ -1,8 +1,7 @@
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
-import { useMock } from '../state/MockDataProvider';
-import { Badge, Button } from '../ui/primitives';
+import { Button } from '../ui/primitives';
 import { usePendingCounts } from './usePendingCounts';
 
 const NAV = [
@@ -38,7 +37,6 @@ export function RequireAdmin() {
 
 function AdminLayout() {
   const { user, signOut } = useAuth();
-  const { reset } = useMock();
   const location = useLocation();
 
   const counts = usePendingCounts();
@@ -86,23 +84,11 @@ function AdminLayout() {
             })}
           </div>
 
-          <div className="gg-sidebar__foot">
-            <Button size="sm" variant="ghost" onClick={reset} block>
-              Restablecer datos de demo
-            </Button>
-            <p className="gg-sidebar__foot-note">
-              Salvo el inicio de sesión, todo lo que ves es simulado.
-            </p>
-          </div>
         </nav>
 
         <div className="gg-main">
           <header className="gg-topbar">
             <span className="gg-topbar__title">{title}</span>
-            {/* Siempre visible: nadie tiene que confundir la demo con producción. */}
-            <Badge tone="warn" dot>
-              Datos simulados
-            </Badge>
             <span className="gg-topbar__spacer" />
             <span className="gg-topbar__user">
               {user ? `${user.firstName} ${user.lastName}`.trim() || user.email : ''}
