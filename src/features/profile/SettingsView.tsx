@@ -1,19 +1,73 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useState, type ComponentProps } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { signOut } from '@/features/auth/api';
-import { useAuthStore } from '@/store/useAuthStore';
-import { useTheme } from '@/theme';
+import { radius, shadows, spacing, useTheme } from '@/theme';
 
-export function SettingsView({ backHref }: { backHref: Href }) {
+type Role = 'client' | 'owner';
+
+type SettingsItem = {
+  key: string;
+  label: string;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  /** Sin destino, la tarjeta se muestra como "Próximamente" y no navega. */
+  href?: Href;
+};
+
+// Grilla del Figma de Ajustes. El conductor tiene "Mis vehículos" en el lugar que el Figma
+// le da a "Seguridad"; el propietario no maneja vehículos, así que en su lugar tiene
+// "Seguridad". Seguridad, Legal e Información todavía no tienen contenido.
+const ITEMS: Record<Role, SettingsItem[]> = {
+  client: [
+    { key: 'vehicles', label: 'Mis vehículos', icon: 'car-outline', href: '/(client)/vehicles' },
+    { key: 'support', label: 'Soporte y ayuda', icon: 'headset-outline', href: '/(client)/profile/support' },
+    { key: 'legal', label: 'Legal', icon: 'document-text-outline' },
+    { key: 'info', label: 'Información', icon: 'information-circle-outline' },
+  ],
+  owner: [
+    { key: 'security', label: 'Seguridad', icon: 'shield-checkmark-outline' },
+    { key: 'support', label: 'Soporte y ayuda', icon: 'headset-outline', href: '/(owner)/profile/support' },
+    { key: 'legal', label: 'Legal', icon: 'document-text-outline' },
+    { key: 'info', label: 'Información', icon: 'information-circle-outline' },
+  ],
+};
+
+function SettingsCard({ item }: { item: SettingsItem }) {
   const router = useRouter();
   const { colors, typography } = useTheme();
-  const profile = useAuthStore((s) => s.profile);
+  const href = item.href;
+
+  return (
+    <Pressable
+      onPress={href ? () => router.push(href) : undefined}
+      disabled={!href}
+      accessibilityRole="button"
+      accessibilityLabel={href ? item.label : `${item.label}, próximamente`}
+      style={({ pressed }) => [
+        styles.card,
+        shadows.card,
+        { backgroundColor: colors.surface, transform: [{ scale: pressed ? 0.98 : 1 }] },
+      ]}
+    >
+      <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
+        <Ionicons name={item.icon} size={30} color={colors.onSurface} />
+      </View>
+      <Text style={[typography.titleMedium, styles.cardLabel, { color: colors.onSurface }]}>
+        {item.label.toUpperCase()}
+      </Text>
+      {!href ? (
+        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>Próximamente</Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+export function SettingsView({ backHref, role }: { backHref: Href; role: Role }) {
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = async () => {
@@ -27,41 +81,47 @@ export function SettingsView({ backHref }: { backHref: Href }) {
 
   return (
     <Screen>
-      <ScreenHeader title="Ajustes" backHref={backHref} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <ScreenHeader title="Ajustes" backHref={backHref} />
 
-      <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Cuenta</Text>
-      <Button
-        label="Mis vehículos"
-        variant="outlined"
-        onPress={() => router.push(profile?.activeRole === 'owner' ? '/(owner)/vehicles' : '/(client)/vehicles')}
-      />
+        <View style={styles.grid}>
+          {ITEMS[role].map((item) => (
+            <SettingsCard key={item.key} item={item} />
+          ))}
+        </View>
 
-      <View style={styles.spacerLarge} />
-
-      <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Notificaciones</Text>
-      <View style={[styles.placeholderCard, { backgroundColor: colors.surfaceVariant, borderColor: colors.outline }]}>
-        <Ionicons name="notifications-outline" size={20} color={colors.onSurfaceVariant} />
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginLeft: 10, flex: 1 }]}>
-          Notificaciones push — próximamente
-        </Text>
-      </View>
-
-      <View style={styles.spacerLarge} />
-
-      <Button label="Cerrar sesión" variant="text" onPress={handleSignOut} loading={isSigningOut} disabled={isSigningOut} />
+        <Button label="Cerrar sesión" onPress={handleSignOut} loading={isSigningOut} disabled={isSigningOut} fullWidth />
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  placeholderCard: {
+  grid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.md,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
   },
-  spacerLarge: {
-    height: 24,
+  card: {
+    width: '48%',
+    aspectRatio: 1,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  cardLabel: {
+    textAlign: 'center',
   },
 });

@@ -64,7 +64,7 @@ export default function ClientVehiclesScreen() {
     <Screen>
       <ScreenHeader
         title="Mis vehículos"
-        backHref="/(client)/profile"
+        backHref="/(client)/profile/settings"
         action={
           vehicles.length < MAX_VEHICLES ? (
             <Pressable

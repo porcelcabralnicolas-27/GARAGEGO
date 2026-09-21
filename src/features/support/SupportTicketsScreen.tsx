@@ -16,7 +16,8 @@ import {
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
-const PROFILE_HREF = { client: '/(client)/profile', owner: '/(owner)/profile' } as const;
+// Se entra desde Ajustes, así que volver lleva ahí y no al perfil.
+const SETTINGS_HREF = { client: '/(client)/profile/settings', owner: '/(owner)/profile/settings' } as const;
 const NEW_HREF = { client: '/(client)/profile/support/new', owner: '/(owner)/profile/support/new' } as const;
 
 function formatWhen(iso: string): string {
@@ -52,7 +53,7 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
     <Screen>
       <ScreenHeader
         title="Centro de ayuda"
-        backHref={PROFILE_HREF[role]}
+        backHref={SETTINGS_HREF[role]}
         action={
           tickets.length > 0 ? (
             <Button label="Nuevo" size="compact" onPress={() => router.push(NEW_HREF[role])} />

@@ -237,8 +237,9 @@ export function ProfileView() {
             <InfoField label="Correo electrónico" value={session.user.email ?? '—'} />
             <InfoField label="Teléfono" value={profile.phone || 'No registrado'} />
 
-            {/* El saldo, la recarga y los vehículos son del conductor. En modo propietario el
-                perfil es solo identidad + cambio de rol; el saldo y el retiro viven en su panel. */}
+            {/* El saldo y la recarga son del conductor. En modo propietario el perfil es solo
+                identidad + cambio de rol; el saldo y el retiro viven en su panel. Vehículos,
+                centro de ayuda y cierre de sesión están en Ajustes (la tuerca). */}
             {!isOwnerActive ? (
               <>
                 <Text style={[typography.titleLarge, styles.balanceHeading, { color: colors.onSurface }]}>Saldo:</Text>
@@ -265,21 +266,6 @@ export function ProfileView() {
                       disabled={toppingUpAmount !== null}
                     />
                   ))}
-                </View>
-
-                <View style={styles.vehicleRow}>
-                  <Button
-                    label="Mis vehículos"
-                    variant="outlined"
-                    icon="car-outline"
-                    onPress={() => router.push('/(client)/vehicles')}
-                  />
-                  <View style={styles.spacer} />
-                  <Button
-                    label="Agregar vehículo"
-                    icon="add"
-                    onPress={() => router.push('/(client)/vehicles/create')}
-                  />
                 </View>
               </>
             ) : null}
@@ -313,18 +299,6 @@ export function ProfileView() {
                 thumbColor={colors.surface}
               />
             </View>
-
-            <Button
-              label="Centro de ayuda"
-              variant="outlined"
-              icon="help-buoy-outline"
-              onPress={() =>
-                router.push(isOwnerActive ? '/(owner)/profile/support' : '/(client)/profile/support')
-              }
-            />
-            <View style={styles.spacer} />
-
-            <Button label="Cerrar sesión" onPress={signOut} fullWidth />
           </>
         )}
       </ScrollView>
@@ -378,9 +352,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  vehicleRow: {
     marginBottom: spacing.xl,
   },
   roleBlock: {

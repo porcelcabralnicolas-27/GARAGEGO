@@ -53,7 +53,6 @@ export default function OwnerLayout() {
         }}
       />
       <Tabs.Screen name="stats" options={{ href: null }} />
-      <Tabs.Screen name="vehicles" options={{ href: null }} />
       <Tabs.Screen
         name="profile"
         options={{ title: 'Perfil', tabBarIcon: ({ color, size }) => <Ionicons name="person" color={color} size={size} /> }}
