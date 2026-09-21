@@ -94,7 +94,7 @@ export async function listClientConversations(userId: string): Promise<Conversat
 
   const ownerIds = [...new Set(lots.map((l) => l.owner_id))];
   const { data: owners, error: ownersError } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id, first_name, last_name')
     .in('id', ownerIds);
   if (ownersError) throw ownersError;
@@ -144,7 +144,7 @@ export async function listOwnerConversations(ownerId: string): Promise<Conversat
 
   const clientIds = [...new Set(bookings.map((b) => b.user_id))];
   const { data: clients, error: clientsError } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id, first_name, last_name')
     .in('id', clientIds);
   if (clientsError) throw clientsError;
@@ -215,7 +215,7 @@ export async function getThreadRefForBooking(
 
   const peerId = role === 'client' ? lot.owner_id : booking.user_id;
 
-  const { data: peer } = await supabase.from('profiles').select('first_name, last_name').eq('id', peerId).maybeSingle();
+  const { data: peer } = await supabase.from('public_profiles').select('first_name, last_name').eq('id', peerId).maybeSingle();
   const peerName = peer ? `${peer.first_name} ${peer.last_name}`.trim() : null;
 
   return {

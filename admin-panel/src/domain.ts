@@ -44,6 +44,8 @@ export type AdminParkingLot = {
   moderationState: ModerationState;
   pauseReason: string | null;
   suspendedUntil: string | null;
+  /** Borrada por el propietario pero conservada por tener historial de reservas (0053). */
+  archivedAt: string | null;
 };
 
 export type TicketStatus = 'open' | 'resolved';

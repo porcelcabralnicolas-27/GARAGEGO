@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { deleteParkingLot, getParkingLot } from '@/features/parking/api';
+import { deleteParkingLot, getParkingErrorMessage, getParkingLot } from '@/features/parking/api';
 import { ParkingListingWizard } from '@/features/parking/ParkingListingWizard';
 import type { ParkingLot } from '@/features/parking/types';
 import { spacing, useTheme } from '@/theme';
@@ -63,8 +63,8 @@ function RejectedListingNotice({ lot }: { lot: ParkingLot }) {
     try {
       await deleteParkingLot(lot.id);
       router.replace('/(owner)/parkings');
-    } catch {
-      setErrorMessage('No se pudo eliminar la publicación.');
+    } catch (error) {
+      setErrorMessage(getParkingErrorMessage(error));
       setIsDeleting(false);
       setConfirmDelete(false);
     }
@@ -102,7 +102,7 @@ function RejectedListingNotice({ lot }: { lot: ParkingLot }) {
       <ConfirmDialog
         visible={confirmDelete}
         title="Eliminar publicación"
-        message="¿Seguro que querés eliminar este estacionamiento? Esta acción no se puede deshacer."
+        message="¿Seguro que querés eliminar este estacionamiento? Deja de publicarse y no se puede deshacer. Si ya tuvo reservas, su historial se conserva."
         confirmLabel="Eliminar"
         loading={isDeleting}
         onConfirm={handleDelete}

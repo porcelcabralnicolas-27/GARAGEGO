@@ -78,6 +78,8 @@ export async function listMyParkingLots(ownerId: string): Promise<ParkingLot[]> 
     .from('parking_lots')
     .select('*')
     .eq('owner_id', ownerId)
+    // Las archivadas (borradas con historial, ver deleteParkingLot) ya no se listan.
+    .is('archived_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data.map(mapParkingLotRow);
@@ -161,9 +163,25 @@ export async function resubmitParkingLot(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function deleteParkingLot(id: string): Promise<void> {
-  const { error } = await supabase.from('parking_lots').delete().eq('id', id);
+/**
+ * Borra una cochera vía la RPC `delete_parking_lot` (0053):
+ *  - con reservas vigentes falla con `lot_has_active_bookings`;
+ *  - con historial se archiva (deja de listarse, pero sus reservas y fotos se conservan);
+ *  - sin reservas se borra de verdad, y acá se limpian sus fotos del bucket.
+ */
+export async function deleteParkingLot(id: string): Promise<'deleted' | 'archived'> {
+  // Las rutas se leen antes: si la cochera se borra, sus filas de parking_images se van en
+  // cascada y ya no habría forma de saber qué archivos limpiar.
+  const { data: images } = await supabase.from('parking_images').select('storage_path').eq('parking_lot_id', id);
+
+  const { data, error } = await supabase.rpc('delete_parking_lot', { p_parking_lot_id: id });
   if (error) throw error;
+
+  if (data === 'deleted' && images && images.length > 0) {
+    // Mejor esfuerzo: si falla, queda un archivo huérfano pero la cochera ya está borrada.
+    await supabase.storage.from(STORAGE_BUCKET).remove(images.map((img) => img.storage_path));
+  }
+  return data === 'archived' ? 'archived' : 'deleted';
 }
 
 export async function getCoverImageUrls(parkingLotIds: string[]): Promise<Record<string, string>> {
@@ -344,6 +362,9 @@ export function getParkingErrorMessage(error: unknown): string {
     if (message.includes('max_parking_images_reached')) return `Ya llegaste al máximo de ${MAX_PARKING_IMAGES} fotos.`;
     if (message.includes('duplicate key') || message.includes('parking_availability_recurring_no_dupes')) {
       return 'Ese horario ya está cargado para ese día.';
+    }
+    if (message.includes('lot_has_active_bookings')) {
+      return 'Esta cochera tiene reservas vigentes. Cancelalas o esperá a que terminen para poder borrarla.';
     }
     return message;
   }

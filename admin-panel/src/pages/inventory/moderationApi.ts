@@ -48,6 +48,7 @@ type ParkingLotRow = {
   moderation_state: ModerationState;
   pause_reason: string | null;
   suspended_until: string | null;
+  archived_at: string | null;
 };
 
 type ProfileRow = {
@@ -84,6 +85,7 @@ function toAdminLot(row: ParkingLotRow): AdminParkingLot {
     moderationState: row.moderation_state,
     pauseReason: row.pause_reason,
     suspendedUntil: row.suspended_until,
+    archivedAt: row.archived_at,
   };
 }
 
@@ -108,7 +110,7 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
   const { data: lots, error } = await supabase
     .from('parking_lots')
     .select(
-      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until'
+      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at'
     )
     .order('created_at', { ascending: true })
     .returns<ParkingLotRow[]>();

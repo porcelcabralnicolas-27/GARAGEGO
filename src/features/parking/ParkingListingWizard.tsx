@@ -12,6 +12,7 @@ import { AvailabilityEditor } from '@/features/parking/AvailabilityEditor';
 import {
   createParkingLot,
   deleteParkingLot,
+  getParkingErrorMessage,
   resubmitParkingLot,
   setParkingLotActive,
   updateParkingLot,
@@ -199,8 +200,8 @@ export function ParkingListingWizard(props: WizardProps) {
       await deleteParkingLot(lotId);
       setConfirmDelete(false);
       router.replace('/(owner)/parkings');
-    } catch {
-      setErrorMessage('No se pudo eliminar la publicación.');
+    } catch (error) {
+      setErrorMessage(getParkingErrorMessage(error));
       setIsDeleting(false);
       setConfirmDelete(false);
     }
@@ -330,7 +331,7 @@ export function ParkingListingWizard(props: WizardProps) {
       <ConfirmDialog
         visible={confirmDelete}
         title="Eliminar publicación"
-        message="¿Seguro que querés eliminar este estacionamiento? Esta acción no se puede deshacer."
+        message="¿Seguro que querés eliminar este estacionamiento? Deja de publicarse y no se puede deshacer. Si ya tuvo reservas, su historial se conserva."
         confirmLabel="Eliminar"
         loading={isDeleting}
         onConfirm={handleConfirmDelete}

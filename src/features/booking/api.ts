@@ -72,7 +72,7 @@ export async function getBookedIntervals(parkingLotId: string, fromDate: string)
 
 // `confirmBooking` se eliminó en la Fase 8.6: desde la migración 0024 el pago deja la reserva
 // confirmada y el propietario ya no aprueba nada. La RPC `confirm_booking` sigue existiendo en
-// la base (no se dropeó), pero la app no la llama desde ninguna pantalla.
+// la base (no se dropeó), pero desde la 0046 no se puede invocar desde el cliente.
 
 export async function completeBooking(bookingId: string): Promise<{ overtimeMinutes: number; overtimeCharge: number }> {
   const { data, error } = await supabase.rpc('complete_booking', { p_booking_id: bookingId });
@@ -155,8 +155,9 @@ export async function listReceivedBookings(ownerId: string): Promise<OwnerBookin
   if (bookingRows.length === 0) return [];
 
   const clientIds = [...new Set(bookingRows.map((b) => b.user_id))];
+  // Vista con solo los datos públicos: `profiles` completo solo lo lee su dueño (0050/0051).
   const { data: clients, error: clientsError } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id, first_name, last_name')
     .in('id', clientIds);
   if (clientsError) throw clientsError;
@@ -230,7 +231,19 @@ export function getBookingErrorMessage(error: unknown): string {
     if (message.includes('start_window_over')) {
       return 'El horario de esta reserva ya terminó, así que no se puede iniciar.';
     }
-    if (message.includes('no está disponible')) return 'Este estacionamiento ya no está disponible.';
+    if (message.includes('no está disponible') || message.includes('lot_not_bookable')) {
+      return 'Este estacionamiento ya no está disponible.';
+    }
+    if (message.includes('outside_availability')) {
+      return 'Ese horario está fuera de la disponibilidad del estacionamiento. Elegí otro.';
+    }
+    if (message.includes('invalid_duration')) return 'La reserva tiene que durar al menos 30 minutos, en tramos de 30.';
+    if (message.includes('booking_not_started')) {
+      return 'Esta reserva todavía no se inició, así que no se puede finalizar.';
+    }
+    if (message.includes('booking_state_changed')) {
+      return 'Esta reserva cambió de estado mientras tanto. Actualizá la pantalla.';
+    }
     return message;
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';

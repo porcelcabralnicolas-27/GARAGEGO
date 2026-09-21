@@ -60,7 +60,7 @@ export async function listRatingsForParkingLot(parkingLotId: string): Promise<Ra
 
   const userIds = [...new Set(ratingRows.map((r) => r.user_id))];
   const { data: authors, error: authorsError } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id, first_name, last_name')
     .in('id', userIds);
   if (authorsError) throw authorsError;

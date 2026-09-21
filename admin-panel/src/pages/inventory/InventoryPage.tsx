@@ -415,20 +415,24 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
     {
       key: 'state',
       header: 'Estado',
-      render: (r) => (
-        <Badge
-          tone={
-            r.lot.moderationState === 'live'
-              ? 'ok'
-              : r.lot.moderationState === 'suspended'
-                ? 'danger'
-                : 'warn'
-          }
-        >
-          {MODERATION_STATE_LABELS[r.lot.moderationState]}
-        </Badge>
-      ),
-      sortValue: (r) => r.lot.moderationState,
+      render: (r) =>
+        r.lot.archivedAt ? (
+          // El propietario la borró pero tenía historial: se conserva, pero ya no se publica.
+          <Badge tone="neutral">Archivada</Badge>
+        ) : (
+          <Badge
+            tone={
+              r.lot.moderationState === 'live'
+                ? 'ok'
+                : r.lot.moderationState === 'suspended'
+                  ? 'danger'
+                  : 'warn'
+            }
+          >
+            {MODERATION_STATE_LABELS[r.lot.moderationState]}
+          </Badge>
+        ),
+      sortValue: (r) => (r.lot.archivedAt ? 'archived' : r.lot.moderationState),
     },
     {
       key: 'actions',
@@ -436,7 +440,8 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
       render: (r) => (
         <div className="gg-row" onClick={(e) => e.stopPropagation()}>
           <Toggle
-            checked={r.lot.moderationState === 'live'}
+            checked={r.lot.moderationState === 'live' && !r.lot.archivedAt}
+            disabled={r.lot.archivedAt !== null}
             label={`Publicar ${r.lot.name}`}
             onChange={(next) => (next ? reactivate(r) : setPauseTarget(r))}
           />

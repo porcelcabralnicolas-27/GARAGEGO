@@ -6,6 +6,11 @@ export type TimeWindow = { start: string; end: string };
 
 const STEP_MINUTES = 30;
 const MIN_DURATION_MINUTES = 30;
+/** Margen entre reservas de una misma cochera. Tiene que coincidir con `v_buffer` de
+ *  `_assert_slot_bookable` (migración 0048): si no, la app ofrece horarios que el servidor
+ *  rechaza con `buffer_conflict`. */
+const BUFFER_MINUTES = 15;
+const MINUTES_PER_DAY = 24 * 60;
 
 function toMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number);
@@ -104,7 +109,13 @@ export function getFreeWindowsForDate(
 ): TimeWindow[] {
   const configured = getConfiguredWindowsForDate(dateStr, recurring, exceptions);
   if (configured.length === 0) return [];
-  const bookedToday = booked.filter((b) => b.date === dateStr).map((b) => ({ start: normalizeTime(b.startTime), end: normalizeTime(b.endTime) }));
+  // Cada reserva ocupa también el margen de antes y de después.
+  const bookedToday = booked
+    .filter((b) => b.date === dateStr)
+    .map((b) => ({
+      start: toTimeString(Math.max(0, toMinutes(normalizeTime(b.startTime)) - BUFFER_MINUTES)),
+      end: toTimeString(Math.min(MINUTES_PER_DAY, toMinutes(normalizeTime(b.endTime)) + BUFFER_MINUTES)),
+    }));
   return clipPastWindows(dateStr, subtractAll(configured, bookedToday), now);
 }
 

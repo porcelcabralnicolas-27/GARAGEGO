@@ -58,9 +58,8 @@ export type Database = {
         Row: {
           id: string;
           wallet_id: string;
-          // El constraint se amplió en migraciones posteriores (0010, 0015): además de los
-          // originales, 'overtime_charge'. 'earning' se agregó en 0010 y se quitó en 0015.
-          type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge';
+          // Constraint vigente desde la 0024 (que devolvió 'earning', quitado por error en la 0015).
+          type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge' | 'earning';
           amount: number;
           related_booking_id: string | null;
           status: 'pending' | 'completed' | 'failed';
@@ -70,7 +69,7 @@ export type Database = {
         Insert: {
           id?: string;
           wallet_id: string;
-          type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge';
+          type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge' | 'earning';
           amount: number;
           related_booking_id?: string | null;
           status?: 'pending' | 'completed' | 'failed';
@@ -104,6 +103,8 @@ export type Database = {
           moderation_state: 'live' | 'paused_by_admin' | 'suspended';
           pause_reason: string | null;
           suspended_until: string | null;
+          /** Borrado lógico (0053). Solo lo pone la RPC `delete_parking_lot`. */
+          archived_at: string | null;
         };
         Insert: {
           id?: string;
@@ -385,7 +386,19 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      /** Datos públicos de un perfil (0050). Para leer a otras personas: `profiles` completo
+       *  solo lo ve su dueño y los admins (0051). */
+      public_profiles: {
+        Row: {
+          id: string;
+          first_name: string;
+          last_name: string;
+          avatar_url: string | null;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       ensure_profile: {
         Args: Record<string, never>;
@@ -413,9 +426,9 @@ export type Database = {
         Args: { p_parking_lot_id: string; p_from_date?: string };
         Returns: { date: string; start_time: string; end_time: string }[];
       };
-      confirm_booking: {
-        Args: { p_booking_id: string };
-        Returns: undefined;
+      delete_parking_lot: {
+        Args: { p_parking_lot_id: string };
+        Returns: 'deleted' | 'archived';
       };
       complete_booking: {
         Args: { p_booking_id: string };
