@@ -6,11 +6,12 @@
 -- "ERROR: RESULTADOS …" con una línea OK / FALLA por prueba. Que termine en error es lo esperado.
 --
 -- ── Antes de correr ──────────────────────────────────────────────────────────────────────
--- Completar los tres ids del principio del bloque con datos reales del proyecto:
+-- Completar los dos ids del principio del bloque con datos reales del proyecto:
 --   gg.driver  → un usuario conductor que tenga al menos un vehículo cargado
---   gg.owner   → otro usuario, dueño de la cochera de abajo
---   gg.lot     → una cochera de gg.owner (cualquier estado: el script la pone aprobada/live
---                dentro de la transacción)
+--   gg.owner   → otro usuario (dueño de la cochera de prueba que arma este script)
+-- La cochera NO es una real: el script crea una propia, con disponibilidad controlada
+-- (08:00-20:00 todos los días), para que ningún horario real cargado por un propietario
+-- interfiera con lo que se está probando. Se borra sola con el rollback final.
 -- La prueba 12 (perfiles ajenos) solo pasa si ya se corrió la 0051.
 --
 -- ── Qué NO cubre este script ─────────────────────────────────────────────────────────────
@@ -42,17 +43,21 @@ declare
 begin
   perform set_config('gg.driver', '00000000-0000-0000-0000-000000000000', true);  -- ← completar
   perform set_config('gg.owner',  '00000000-0000-0000-0000-000000000000', true);  -- ← completar
-  perform set_config('gg.lot',    '00000000-0000-0000-0000-000000000000', true);  -- ← completar
+  perform set_config('gg.lot',    'cccccccc-0000-0000-0000-00000000000c', true);
 
   -- Fixtures (como postgres, se revierten al final) ---------------------------------------
-  -- Cochera publicable, abierta todos los días de 08:00 a 20:00.
-  update public.parking_lots
-  set is_active = true, approval_status = 'approved', moderation_state = 'live', archived_at = null
-  where id = current_setting('gg.lot')::uuid;
+  -- Cochera de prueba propia, publicable, abierta todos los días de 08:00 a 20:00. No se
+  -- reusa ninguna cochera real: así ningún horario que un propietario haya cargado de verdad
+  -- puede interferir con lo que se está probando (ver nota al principio del archivo).
+  insert into public.parking_lots
+    (id, owner_id, name, address, latitude, longitude, price_per_hour, is_active, approval_status, moderation_state)
+  values (
+    current_setting('gg.lot')::uuid, current_setting('gg.owner')::uuid, 'Cochera de prueba (audit_checks)',
+    'Dirección de prueba', -34.6037, -58.3816, 100, true, 'approved', 'live'
+  );
 
   insert into public.parking_availability_recurring (parking_lot_id, day_of_week, start_time, end_time)
-  select current_setting('gg.lot')::uuid, d, '08:00', '20:00' from generate_series(0, 6) d
-  on conflict do nothing;
+  select current_setting('gg.lot')::uuid, d, '08:00', '20:00' from generate_series(0, 6) d;
 
   -- Saldo de sobra para el conductor.
   update public.wallets set balance = balance + 100000 where user_id = current_setting('gg.driver')::uuid;
@@ -250,7 +255,8 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.owner'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
     begin
-      -- Puede haber reservas vigentes reales en esta cochera; en ese caso la prueba no aplica.
+      -- Llega acá con la reserva A ya cancelada (prueba 9) y la B completada: ninguna
+      -- pending/confirmed, pero con historial → tiene que archivar, no borrar.
       v_out := public.delete_parking_lot(current_setting('gg.lot')::uuid);
       v_det := 'devolvió ' || v_out;
     exception when others then
@@ -259,7 +265,6 @@ begin
     execute 'reset role';
     v_res := case
       when v_out = 'archived' and exists (select 1 from public.parking_lots where id = current_setting('gg.lot')::uuid and archived_at is not null) then 'OK'
-      when v_det like '%lot_has_active_bookings%' then 'N/A (la cochera tiene reservas vigentes reales)'
       else 'FALLA' end;
     v_report := v_report || e'\n' || concat_ws(' | ', 10, 'Borrar cochera con historial → archivar', v_res, v_det);
   exception when others then
