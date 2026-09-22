@@ -1,3 +1,4 @@
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { supabase } from '@/lib/supabase/client';
 
 import type {
@@ -8,6 +9,11 @@ import type {
   TicketCategory,
   TicketTargetOption,
 } from './types';
+
+// Tope defensivo para listas y mensajes: sin esto, una cuenta con mucho historial trae todo en
+// cada carga. No hay paginación real (sin "cargar más" en la UI), pero corta el peor caso.
+const LIST_LIMIT = 200;
+const MESSAGES_LIMIT = 300;
 
 type TicketRow = {
   id: string;
@@ -65,7 +71,8 @@ export async function listMyTickets(userId: string): Promise<SupportTicketListIt
     .from('support_tickets')
     .select('*')
     .eq('reporter_id', userId)
-    .order('last_message_at', { ascending: false });
+    .order('last_message_at', { ascending: false })
+    .limit(LIST_LIMIT);
   if (error) throw error;
   if (tickets.length === 0) return [];
 
@@ -80,7 +87,11 @@ export async function listMyTickets(userId: string): Promise<SupportTicketListIt
       .from('support_ticket_messages')
       .select('ticket_id, body, created_at')
       .in('ticket_id', ticketIds)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      // Solo se necesita el más nuevo por ticket; el tope es generoso a propósito (evita el
+      // caso patológico de traer TODO el historial de mensajes de TODOS los tickets del
+      // usuario) sin arriesgarse a cortar antes de llegar al mensaje de algún ticket.
+      .limit(ticketIds.length * 20),
   ]);
   if (bookingsRes.error) throw bookingsRes.error;
   if (messagesRes.error) throw messagesRes.error;
@@ -125,13 +136,16 @@ export async function getTicket(ticketId: string): Promise<SupportTicket> {
 }
 
 export async function getTicketMessages(ticketId: string): Promise<SupportMessage[]> {
+  // Se pide en orden descendente con tope y se da vuelta: así, si el hilo es larguísimo, lo
+  // que se corta es lo más viejo y no lo más reciente.
   const { data, error } = await supabase
     .from('support_ticket_messages')
     .select('*')
     .eq('ticket_id', ticketId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false })
+    .limit(MESSAGES_LIMIT);
   if (error) throw error;
-  return data.map(mapMessageRow);
+  return data.map(mapMessageRow).reverse();
 }
 
 export type CreateTicketInput = {
@@ -144,30 +158,19 @@ export type CreateTicketInput = {
   relatedParkingLotId: string | null;
 };
 
-/** Crea el ticket y su primer mensaje (la descripción). */
+/** Crea el ticket y su primer mensaje (la descripción) en una sola operación atómica: la RPC
+ *  `create_support_ticket` (0054) hace las dos escrituras en la misma transacción, así nunca
+ *  queda un ticket sin su mensaje inicial si algo falla a mitad de camino. */
 export async function createTicket(input: CreateTicketInput): Promise<SupportTicket> {
-  const { data: ticket, error } = await supabase
-    .from('support_tickets')
-    .insert({
-      reporter_id: input.reporterId,
-      reporter_role: input.reporterRole,
-      subject: input.subject.trim(),
-      category: input.category,
-      related_booking_id: input.relatedBookingId,
-      related_parking_lot_id: input.relatedParkingLotId,
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
-
-  const { error: messageError } = await supabase.from('support_ticket_messages').insert({
-    ticket_id: ticket.id,
-    author_id: input.reporterId,
-    author_role: 'user',
-    body: input.body.trim(),
+  const { data: ticket, error } = await supabase.rpc('create_support_ticket', {
+    p_reporter_role: input.reporterRole,
+    p_subject: input.subject.trim(),
+    p_category: input.category,
+    p_body: input.body.trim(),
+    p_related_booking_id: input.relatedBookingId,
+    p_related_parking_lot_id: input.relatedParkingLotId,
   });
-  if (messageError) throw messageError;
-
+  if (error) throw error;
   return mapTicketRow(ticket);
 }
 
@@ -260,7 +263,8 @@ export function subscribeToTicketMessages(
 
 export function getSupportErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
-    return String((error as { message: unknown }).message);
+    const message = String((error as { message: unknown }).message);
+    return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';
 }

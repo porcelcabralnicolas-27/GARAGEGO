@@ -1,3 +1,5 @@
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
+import { guessImageContentType } from '@/lib/imageMime';
 import { supabase } from '@/lib/supabase/client';
 
 import {
@@ -80,7 +82,8 @@ export async function listMyParkingLots(ownerId: string): Promise<ParkingLot[]> 
     .eq('owner_id', ownerId)
     // Las archivadas (borradas con historial, ver deleteParkingLot) ya no se listan.
     .is('archived_at', null)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(100);
   if (error) throw error;
   return data.map(mapParkingLotRow);
 }
@@ -222,17 +225,15 @@ export async function uploadParkingImage(params: {
   localUri: string;
   position: number;
 }): Promise<ParkingImage> {
-  const extensionMatch = /\.(\w+)$/.exec(params.localUri);
-  const extension = extensionMatch ? extensionMatch[1] : 'jpg';
+  const { extension, contentType } = guessImageContentType(params.localUri);
   const path = `${params.ownerId}/${params.parkingLotId}/${Date.now()}.${extension}`;
 
   // fetch + arrayBuffer funciona igual en web y nativo (a diferencia de expo-file-system, que no puede
   // leer los blob: URIs que devuelve el selector de imágenes en web).
   const response = await fetch(params.localUri);
+  if (!response.ok) throw new Error(`No se pudo leer la imagen (${response.status}).`);
   const arrayBuffer = await response.arrayBuffer();
-  const { error: uploadError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(path, arrayBuffer, { contentType: `image/${extension}` });
+  const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKET).upload(path, arrayBuffer, { contentType });
   if (uploadError) throw uploadError;
 
   const { data, error } = await supabase
@@ -240,7 +241,12 @@ export async function uploadParkingImage(params: {
     .insert({ parking_lot_id: params.parkingLotId, storage_path: path, position: params.position })
     .select('*')
     .single();
-  if (error) throw error;
+  if (error) {
+    // El archivo ya subió a Storage pero el registro no se pudo crear (por ejemplo, se llegó
+    // al máximo de fotos): sin esto, quedaba un archivo huérfano que nadie referencia ni borra.
+    await supabase.storage.from(STORAGE_BUCKET).remove([path]).catch(() => {});
+    throw error;
+  }
 
   return {
     id: data.id,
@@ -254,7 +260,11 @@ export async function uploadParkingImage(params: {
 export async function deleteParkingImage(image: { id: string; storagePath: string }): Promise<void> {
   const { error: dbError } = await supabase.from('parking_images').delete().eq('id', image.id);
   if (dbError) throw dbError;
-  await supabase.storage.from(STORAGE_BUCKET).remove([image.storagePath]);
+  const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([image.storagePath]);
+  // El registro ya se borró (es lo que ve el usuario); si falla la limpieza del archivo, se
+  // registra pero no se revierte el borrado — deshacerlo sería más confuso que un archivo
+  // huérfano en el bucket.
+  if (storageError) console.error('No se pudo borrar el archivo de la imagen de la cochera:', storageError);
 }
 
 export async function getRecurringAvailability(parkingLotId: string): Promise<RecurringAvailability[]> {
@@ -366,7 +376,7 @@ export function getParkingErrorMessage(error: unknown): string {
     if (message.includes('lot_has_active_bookings')) {
       return 'Esta cochera tiene reservas vigentes. Cancelalas o esperá a que terminen para poder borrarla.';
     }
-    return message;
+    return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';
 }

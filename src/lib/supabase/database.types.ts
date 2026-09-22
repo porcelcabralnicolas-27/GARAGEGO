@@ -430,6 +430,34 @@ export type Database = {
         Args: { p_parking_lot_id: string };
         Returns: 'deleted' | 'archived';
       };
+      last_message_per_booking: {
+        Args: { p_booking_ids: string[] };
+        Returns: { booking_id: string; content: string; created_at: string }[];
+      };
+      create_support_ticket: {
+        Args: {
+          p_reporter_role: 'client' | 'owner';
+          p_subject: string;
+          p_category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          p_body: string;
+          p_related_booking_id: string | null;
+          p_related_parking_lot_id: string | null;
+        };
+        Returns: {
+          id: string;
+          code: string;
+          reporter_id: string;
+          reporter_role: 'client' | 'owner';
+          subject: string;
+          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          status: 'open' | 'resolved';
+          related_booking_id: string | null;
+          related_parking_lot_id: string | null;
+          created_at: string;
+          updated_at: string;
+          last_message_at: string;
+        };
+      };
       complete_booking: {
         Args: { p_booking_id: string };
         Returns: { overtime_minutes: number; overtime_charge: number }[];
