@@ -14,7 +14,25 @@ import { ensureProfile, getProfile, getWalletBalance } from '@/features/profile/
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/useAuthStore';
 
-const queryClient = new QueryClient();
+// Defaults del piloto de React Query (ver src/lib/queryKeys.ts).
+//
+// `staleTime` en 30 s: los datos que ya están en cache se muestran al instante al volver a una
+// pantalla y se refrescan en segundo plano, en vez de mostrar un spinner cada vez. Un valor
+// cortito porque casi todo (reservas, notificaciones) cambia seguido.
+//
+// `retry: 1` en vez de los 3 reintentos que trae por defecto: en un celular con mala señal,
+// tres reintentos con espera exponencial hacen que el error tarde muchísimo en aparecer.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+});
 
 function useAuthListener() {
   const setSession = useAuthStore((s) => s.setSession);

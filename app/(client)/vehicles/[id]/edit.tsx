@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,6 +12,7 @@ import { deleteVehicle, getVehicle, getVehicleErrorMessage, updateVehicle, type 
 import { VehicleForm } from '@/features/vehicle/VehicleForm';
 import { VehicleImageManager } from '@/features/vehicle/VehicleImageManager';
 import type { Vehicle } from '@/features/vehicle/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
@@ -19,6 +21,7 @@ export default function EditClientVehicleScreen() {
   const { colors, typography } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -32,12 +35,15 @@ export default function EditClientVehicleScreen() {
   const handleSubmit = async (input: VehicleInput) => {
     const updated = await updateVehicle(id, input);
     setVehicle(updated);
+    // Ver el comentario en create.tsx: la lista de vehículos vive en la cache de React Query.
+    queryClient.invalidateQueries({ queryKey: queryKeys.vehicles.all });
   };
 
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
     try {
       await deleteVehicle(id);
+      queryClient.invalidateQueries({ queryKey: queryKeys.vehicles.all });
       setIsConfirmingDelete(false);
       router.replace('/(client)/vehicles');
     } catch (error) {

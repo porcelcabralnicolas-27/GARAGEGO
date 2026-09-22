@@ -1,7 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 
 import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
+import { queryKeys } from '@/lib/queryKeys';
 
 import { deleteVehicleImage, getVehicleErrorMessage, listVehicleImages, uploadVehicleImage } from './api';
 import type { VehicleImage } from './types';
@@ -11,6 +13,12 @@ export function VehicleImageManager({ ownerId, vehicleId }: { ownerId: string; v
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // La foto de portada de "Mis vehículos" sale de una query aparte, cuya clave son los ids de
+  // los vehículos: agregar o borrar fotos no cambia esos ids, así que hay que invalidarla a
+  // mano para que la lista no quede mostrando la portada vieja.
+  const refreshCovers = () => queryClient.invalidateQueries({ queryKey: queryKeys.vehicles.all });
 
   useEffect(() => {
     listVehicleImages(vehicleId)
@@ -44,6 +52,7 @@ export function VehicleImageManager({ ownerId, vehicleId }: { ownerId: string; v
         position: images.length,
       });
       setImages((prev) => [...prev, image]);
+      refreshCovers();
     } catch (error) {
       setErrorMessage(`No se pudo subir la foto: ${getVehicleErrorMessage(error)}`);
     } finally {
@@ -59,6 +68,7 @@ export function VehicleImageManager({ ownerId, vehicleId }: { ownerId: string; v
     try {
       await deleteVehicleImage(image);
       setImages((prev) => prev.filter((i) => i.id !== image.id));
+      refreshCovers();
     } catch (error) {
       setErrorMessage(`No se pudo eliminar la foto: ${getVehicleErrorMessage(error)}`);
     }

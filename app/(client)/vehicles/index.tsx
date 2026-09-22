@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { FlatList, Pressable } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -11,54 +12,56 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { deleteVehicle, getVehicleCoverImageUrls, getVehicleErrorMessage, listMyVehicles } from '@/features/vehicle/api';
 import { MAX_VEHICLES, type Vehicle } from '@/features/vehicle/types';
 import { VehicleListItem } from '@/features/vehicle/VehicleListItem';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
 export default function ClientVehiclesScreen() {
   const router = useRouter();
-  const { colors, typography } = useTheme();
+  const { colors } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
+  const userId = profile?.id;
 
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [coverImages, setCoverImages] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    listMyVehicles(profile.id)
-      .then(async (data) => {
-        setVehicles(data);
-        setCoverImages(await getVehicleCoverImageUrls(data.map((v) => v.id)));
-      })
-      .catch(() => setErrorMessage('No se pudieron cargar tus vehículos.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
+  const {
+    data: vehicles = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.vehicles.list(userId ?? ''),
+    queryFn: () => listMyVehicles(userId as string),
+    enabled: Boolean(userId),
+  });
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  // Las fotos van en su propia query, con la lista de ids como parte de la clave: así no se
+  // vuelven a pedir mientras los vehículos sean los mismos, y se refrescan solas cuando cambian
+  // (por ejemplo, al borrar uno).
+  const vehicleIds = vehicles.map((v) => v.id);
+  const { data: coverImages = {} } = useQuery({
+    queryKey: queryKeys.vehicles.images(vehicleIds),
+    queryFn: () => getVehicleCoverImageUrls(vehicleIds),
+    enabled: vehicleIds.length > 0,
+  });
 
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await deleteVehicle(deleteTarget.id);
+  const remove = useMutation({
+    mutationFn: (vehicle: Vehicle) => deleteVehicle(vehicle.id),
+    onSuccess: () => {
       setDeleteTarget(null);
-      load();
-    } catch (error) {
+      // Invalidar el grupo entero (lista + fotos) en vez de cada clave: el borrado cambia las
+      // dos cosas, y la clave de las fotos depende de los ids que quedaron.
+      queryClient.invalidateQueries({ queryKey: queryKeys.vehicles.all });
+    },
+    onError: (error) => {
       setErrorMessage(getVehicleErrorMessage(error));
       setDeleteTarget(null);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+    },
+  });
+
+  const visibleError = errorMessage ?? (isError ? 'No se pudieron cargar tus vehículos.' : null);
 
   return (
     <Screen>
@@ -79,9 +82,9 @@ export default function ClientVehiclesScreen() {
         }
       />
 
-      {errorMessage ? <Banner message={errorMessage} /> : null}
+      {visibleError ? <Banner message={visibleError} /> : null}
 
-      {!isLoading && vehicles.length === 0 && !errorMessage ? (
+      {!isLoading && vehicles.length === 0 && !visibleError ? (
         <EmptyState
           icon="car-outline"
           title="Todavía no cargaste ningún vehículo"
@@ -95,7 +98,10 @@ export default function ClientVehiclesScreen() {
         data={vehicles}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={() => {
+          setErrorMessage(null);
+          refetch();
+        }}
         renderItem={({ item }) => (
           <VehicleListItem
             vehicle={item}
@@ -112,8 +118,12 @@ export default function ClientVehiclesScreen() {
         message={`¿Seguro que querés eliminar ${deleteTarget?.plate ?? 'este vehículo'}?`}
         confirmLabel="Eliminar"
         cancelLabel="Volver"
-        loading={isDeleting}
-        onConfirm={handleConfirmDelete}
+        loading={remove.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          setErrorMessage(null);
+          remove.mutate(deleteTarget);
+        }}
         onCancel={() => setDeleteTarget(null)}
       />
     </Screen>
