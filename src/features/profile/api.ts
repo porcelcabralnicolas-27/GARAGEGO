@@ -1,3 +1,4 @@
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { supabase } from '@/lib/supabase/client';
 
 import type { Profile, UserRole } from './types';
@@ -65,9 +66,22 @@ export async function getWalletBalance(userId: string): Promise<number> {
 }
 
 // Recarga manual de saldo — placeholder de desarrollo hasta integrar una pasarela de pago real.
+// La migración 0057 le pone un techo al saldo resultante (`topup_limit_reached`).
 export async function topupWallet(amount: number): Promise<void> {
   const { error } = await supabase.rpc('topup_wallet', { p_amount: amount });
   if (error) throw error;
+}
+
+export function getTopupErrorMessage(error: unknown): string {
+  const fallback = 'No se pudo recargar el saldo.';
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message: unknown }).message);
+    if (message.includes('topup_limit_reached')) {
+      return 'Llegaste al tope de saldo de prueba. Usá el que tenés antes de recargar de nuevo.';
+    }
+    return sanitizeErrorMessage(message, fallback);
+  }
+  return fallback;
 }
 
 export type WalletTransaction = {

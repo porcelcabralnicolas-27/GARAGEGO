@@ -12,7 +12,7 @@ import { createBooking, getBookingErrorMessage } from '@/features/booking/api';
 import { computeBookingPrice } from '@/features/booking/pricing';
 import { getParkingLot } from '@/features/parking/api';
 import type { ParkingLot } from '@/features/parking/types';
-import { topupWallet } from '@/features/profile/api';
+import { getTopupErrorMessage, topupWallet } from '@/features/profile/api';
 import { formatMoney } from '@/lib/money';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
@@ -79,8 +79,8 @@ export default function PaymentScreen() {
     try {
       await topupWallet(amount);
       reloadProfile();
-    } catch {
-      setErrorMessage('No se pudo recargar el saldo.');
+    } catch (error) {
+      setErrorMessage(getTopupErrorMessage(error));
     } finally {
       setToppingUpAmount(null);
     }

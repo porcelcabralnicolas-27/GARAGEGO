@@ -12,7 +12,7 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { signOut } from '@/features/auth/api';
-import { topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
+import { getTopupErrorMessage, topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
 import { editProfileSchema, type EditProfileFormValues } from '@/features/profile/schemas';
 import { formatMoney } from '@/lib/money';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -133,8 +133,8 @@ export function ProfileView() {
     try {
       await topupWallet(amount);
       reloadProfile();
-    } catch {
-      setErrorMessage('No se pudo recargar el saldo.');
+    } catch (error) {
+      setErrorMessage(getTopupErrorMessage(error));
     } finally {
       setToppingUpAmount(null);
     }
