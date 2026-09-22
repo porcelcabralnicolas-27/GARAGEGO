@@ -37,6 +37,10 @@ function mapNotificationRow(row: {
  */
 const audienceFilter = (audience: NotificationAudience) => `audience.is.null,audience.eq.${audience}`;
 
+// Tope defensivo: sin esto una cuenta vieja con muchas notificaciones trae todo el historial
+// en cada carga. No hay "cargar más" en la UI todavía, así que esto corta el peor caso.
+const LIST_LIMIT = 200;
+
 /** ¿Esta notificación corresponde al rol activo? Misma regla que `audienceFilter`, para los
  *  eventos de realtime, que llegan sin pasar por el filtro de la consulta. */
 export function matchesAudience(notification: AppNotification, audience: NotificationAudience): boolean {
@@ -52,7 +56,8 @@ export async function listNotifications(
     .select('*')
     .eq('user_id', userId)
     .or(audienceFilter(audience))
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(LIST_LIMIT);
   if (error) throw error;
   return data.map(mapNotificationRow);
 }
@@ -100,7 +105,8 @@ export async function listUnreadMessageNotifications(
     .eq('user_id', userId)
     .eq('type', 'new_message')
     .or(audienceFilter(audience))
-    .eq('read', false);
+    .eq('read', false)
+    .limit(LIST_LIMIT);
   if (error) throw error;
   return data.map(mapNotificationRow);
 }

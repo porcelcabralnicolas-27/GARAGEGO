@@ -1,3 +1,4 @@
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { supabase } from '@/lib/supabase/client';
 
 import type { Rating, RatingWithAuthor } from './types';
@@ -54,7 +55,9 @@ export async function listRatingsForParkingLot(parkingLotId: string): Promise<Ra
     // no las devolvería a un tercero, pero el autor sí ve la suya: se filtra acá para que
     // nadie las vea en el listado del lote.
     .eq('is_hidden', false)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    // Tope defensivo: una cochera muy calificada no trae la lista entera en cada carga.
+    .limit(200);
   if (error) throw error;
   if (ratingRows.length === 0) return [];
 
@@ -79,7 +82,7 @@ export function getRatingErrorMessage(error: unknown): string {
     if (message.includes('duplicate key') || message.includes('ratings_booking_id_key')) {
       return 'Ya calificaste esta reserva.';
     }
-    return message;
+    return sanitizeErrorMessage(message, 'No se pudo enviar tu calificación. Intenta nuevamente.');
   }
   return 'No se pudo enviar tu calificación. Intenta nuevamente.';
 }

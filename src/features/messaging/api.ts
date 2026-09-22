@@ -1,8 +1,11 @@
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { supabase } from '@/lib/supabase/client';
 
 import type { ConversationThread, Message, ResolvedThread, ThreadRef, ThreadRole } from './types';
 
 const ACTIVE_STATUSES = new Set(['pending', 'confirmed']);
+// Ver el comentario en listClientConversations/listOwnerConversations.
+const CONVERSATION_BOOKINGS_LIMIT = 300;
 
 type BookingRow = { id: string; status: string; date: string; start_time: string };
 
@@ -51,17 +54,25 @@ async function attachLastMessages(drafts: ThreadDraft[]): Promise<ConversationTh
     for (const bookingId of draft.bookingIds) keyByBooking.set(bookingId, draft.threadKey);
   }
 
-  const { data, error } = await supabase
-    .from('messages')
-    .select('booking_id, content, created_at')
-    .in('booking_id', [...keyByBooking.keys()])
-    .order('created_at', { ascending: false });
+  // RPC en vez de traer todos los mensajes y quedarse con el último en el cliente: con mucho
+  // historial, esa consulta traía la tabla entera (ver migración 0055).
+  const { data, error } = await supabase.rpc('last_message_per_booking', {
+    p_booking_ids: [...keyByBooking.keys()],
+  });
   if (error) throw error;
 
+  // El RPC devuelve un renglón por RESERVA (agrupado con distinct on), no por hilo, y sin
+  // ordenar por fecha entre reservas distintas. Un hilo puede juntar varias reservas con el
+  // mismo par (cochera, contraparte) — hay que quedarse con la más nueva de todas ellas, no
+  // con la primera que aparezca.
   const lastByThread = new Map<string, { content: string; created_at: string }>();
   for (const row of data) {
     const key = keyByBooking.get(row.booking_id);
-    if (key && !lastByThread.has(key)) lastByThread.set(key, row);
+    if (!key) continue;
+    const current = lastByThread.get(key);
+    if (!current || row.created_at > current.created_at) {
+      lastByThread.set(key, { content: row.content, created_at: row.created_at });
+    }
   }
 
   return drafts
@@ -80,7 +91,13 @@ export async function listClientConversations(userId: string): Promise<Conversat
   const { data: bookings, error } = await supabase
     .from('bookings')
     .select('id, parking_lot_id, status, date, start_time')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .order('start_time', { ascending: false })
+    // Tope defensivo: una cuenta con mucho historial no debería traer todas sus reservas para
+    // armar la lista de conversaciones. Las activas (pending/confirmed) son siempre recientes,
+    // así que quedan adentro del corte.
+    .limit(CONVERSATION_BOOKINGS_LIMIT);
   if (error) throw error;
   if (bookings.length === 0) return [];
 
@@ -138,7 +155,10 @@ export async function listOwnerConversations(ownerId: string): Promise<Conversat
   const { data: bookings, error } = await supabase
     .from('bookings')
     .select('id, parking_lot_id, user_id, status, date, start_time')
-    .in('parking_lot_id', lotIds);
+    .in('parking_lot_id', lotIds)
+    .order('date', { ascending: false })
+    .order('start_time', { ascending: false })
+    .limit(CONVERSATION_BOOKINGS_LIMIT);
   if (error) throw error;
   if (bookings.length === 0) return [];
 
@@ -227,13 +247,16 @@ export async function getThreadRefForBooking(
 
 export async function getThreadMessages(bookingIds: string[]): Promise<Message[]> {
   if (bookingIds.length === 0) return [];
+  // Se pide en orden descendente con tope y se da vuelta: así, si el hilo es larguísimo, lo
+  // que se corta es lo más viejo y no lo más reciente.
   const { data, error } = await supabase
     .from('messages')
     .select('*')
     .in('booking_id', bookingIds)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false })
+    .limit(300);
   if (error) throw error;
-  return data.map(mapMessageRow);
+  return data.map(mapMessageRow).reverse();
 }
 
 export async function sendThreadMessage(params: {
@@ -301,7 +324,7 @@ export function getMessagingErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
     if (message.includes('thread_empty')) return 'Esta conversación ya no tiene reservas asociadas.';
-    return message;
+    return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';
 }

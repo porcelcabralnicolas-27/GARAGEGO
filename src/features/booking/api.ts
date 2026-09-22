@@ -1,6 +1,13 @@
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { supabase } from '@/lib/supabase/client';
 
 import type { Booking, ClientBookingItem, OwnerBookingItem } from './types';
+
+// Tope defensivo para las listas de reservas: sin esto, una cuenta con años de historial
+// trae la tabla entera en cada carga. No es paginación real (no hay "cargar más" en la UI
+// todavía), pero corta el peor caso. Se queda con las más recientes por el ORDER BY que ya
+// tenía cada consulta.
+const LIST_LIMIT = 200;
 
 function mapBookingRow(row: {
   id: string;
@@ -92,7 +99,8 @@ export async function listMyBookings(userId: string): Promise<ClientBookingItem[
     .select('*')
     .eq('user_id', userId)
     .order('date', { ascending: false })
-    .order('start_time', { ascending: false });
+    .order('start_time', { ascending: false })
+    .limit(LIST_LIMIT);
   if (error) throw error;
   if (bookingRows.length === 0) return [];
 
@@ -150,7 +158,8 @@ export async function listReceivedBookings(ownerId: string): Promise<OwnerBookin
     .select('*')
     .in('parking_lot_id', lotIds)
     .order('date', { ascending: false })
-    .order('start_time', { ascending: false });
+    .order('start_time', { ascending: false })
+    .limit(LIST_LIMIT);
   if (error) throw error;
   if (bookingRows.length === 0) return [];
 
@@ -244,7 +253,7 @@ export function getBookingErrorMessage(error: unknown): string {
     if (message.includes('booking_state_changed')) {
       return 'Esta reserva cambió de estado mientras tanto. Actualizá la pantalla.';
     }
-    return message;
+    return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';
 }

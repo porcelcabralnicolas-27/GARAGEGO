@@ -2,6 +2,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
+import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { supabase } from '@/lib/supabase/client';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -94,7 +95,7 @@ export function getAuthErrorMessage(error: unknown): string {
     if (message.includes('Invalid login credentials')) return 'Correo o contraseña incorrectos.';
     if (message.includes('Email not confirmed')) return 'Debes confirmar tu correo antes de iniciar sesión.';
     if (message.includes('User already registered')) return 'Ya existe una cuenta con ese correo.';
-    return message;
+    return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';
 }

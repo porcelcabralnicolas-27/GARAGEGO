@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
+import { usePolling } from '../lib/usePolling';
 
 /**
  * Contadores de los badges de la sidebar. Dos `count` baratos, refrescados cada 20 s para que
@@ -26,9 +27,9 @@ export function usePendingCounts(): { pendingLots: number; openTickets: number }
 
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 20_000);
-    return () => clearInterval(timer);
   }, [load]);
+
+  usePolling(() => void load(), 20_000);
 
   return counts;
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { usePolling } from '../../lib/usePolling';
 import {
   fetchDashboard,
   fetchGrowth,
@@ -34,10 +35,11 @@ export function useDashboard(): DashboardState {
 
   useEffect(() => {
     void load();
-    // Las sesiones en curso y la ocupación cambian solas: refresco cada 30 s.
-    const timer = setInterval(() => void load(), 30_000);
-    return () => clearInterval(timer);
   }, [load]);
+
+  // Las sesiones en curso y la ocupación cambian solas: refresco cada 30 s (pausado si la
+  // pestaña no está visible).
+  usePolling(() => void load(), 30_000);
 
   return { data, loading, error, refetch: () => void load() };
 }
