@@ -21,10 +21,20 @@ function useAuthListener() {
   const setInitializing = useAuthStore((s) => s.setInitializing);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setInitializing(false);
-    });
+    // Sin .catch, un rechazo acá (AsyncStorage roto, refresh de token fallido) dejaba
+    // setInitializing(false) sin ejecutarse nunca: useNavigationGuard corta mientras
+    // isInitializing es true, así que la app quedaba colgada en el splash para siempre.
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) console.error('No se pudo recuperar la sesión:', error);
+        setSession(data.session);
+      })
+      .catch((error) => {
+        console.error('No se pudo recuperar la sesión:', error);
+        setSession(null);
+      })
+      .finally(() => setInitializing(false));
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -49,20 +59,32 @@ function useProfileLoader() {
       return;
     }
 
+    // Guarda de cancelación: sin esto, cambiar de usuario (logout+login, o pisar sesión)
+    // mientras la carga anterior seguía en vuelo podía hacer que la respuesta vieja
+    // sobrescribiera el perfil/saldo de la cuenta nueva, o repoblara el perfil después de que
+    // la rama `!userId` ya lo hubiera limpiado.
+    let cancelled = false;
+
     setProfileError(null);
     ensureProfile()
       .catch((error) => console.error('No se pudo verificar/crear el perfil:', error))
       .then(() => Promise.all([getProfile(userId), getWalletBalance(userId)]))
       .then(([profile, balance]) => {
+        if (cancelled) return;
         setProfile(profile);
         setWalletBalance(balance);
       })
       .catch((error) => {
+        if (cancelled) return;
         console.error('No se pudo cargar el perfil:', error);
         setProfile(null);
         setWalletBalance(null);
         setProfileError(error instanceof Error ? error.message : 'No se pudo cargar tu perfil.');
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [userId, profileRefreshKey, setProfile, setProfileError, setWalletBalance]);
 }
 
