@@ -20,6 +20,8 @@ export const queryKeys = {
     all: ['bookings'] as const,
     myList: (userId: string) => ['bookings', 'myList', userId] as const,
     receivedList: (ownerId: string) => ['bookings', 'receivedList', ownerId] as const,
+    myHistory: (userId: string) => ['bookings', 'myHistory', userId] as const,
+    receivedHistory: (ownerId: string) => ['bookings', 'receivedHistory', ownerId] as const,
   },
   notifications: {
     all: ['notifications'] as const,
@@ -40,6 +42,14 @@ export const queryKeys = {
   tickets: {
     all: ['tickets'] as const,
     list: (userId: string) => ['tickets', 'list', userId] as const,
+  },
+  stats: {
+    all: ['stats'] as const,
+    owner: (ownerId: string) => ['stats', 'owner', ownerId] as const,
+  },
+  wallet: {
+    all: ['wallet'] as const,
+    recentTransactions: (userId: string) => ['wallet', 'recentTransactions', userId] as const,
   },
   messaging: {
     all: ['messaging'] as const,

@@ -1,5 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -7,30 +8,32 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { formatMoney } from '@/lib/money';
 import { getOwnerStats } from '@/features/stats/api';
-import type { OwnerStats } from '@/features/stats/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
 export default function OwnerStatsScreen() {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const userId = profile?.id;
 
-  const [stats, setStats] = useState<OwnerStats | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (!profile) return;
-    setErrorMessage(null);
-    getOwnerStats(profile.id)
-      .then(setStats)
-      .catch(() => setErrorMessage('No se pudieron cargar las estadísticas.'));
-  }, [profile]);
+  const {
+    data: stats,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.stats.owner(userId ?? ''),
+    queryFn: () => getOwnerStats(userId as string),
+    enabled: Boolean(userId),
+  });
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
+
+  const errorMessage = isError ? 'No se pudieron cargar las estadísticas.' : null;
 
   return (
     <Screen>

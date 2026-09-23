@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -10,7 +11,7 @@ import { Screen } from '@/components/ui/Screen';
 import { formatMoney } from '@/lib/money';
 import { listRecentTransactions, type WalletTransaction } from '@/features/profile/api';
 import { getOwnerStats } from '@/features/stats/api';
-import type { OwnerStats } from '@/features/stats/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, shadows, spacing, useTheme } from '@/theme';
 
@@ -41,27 +42,39 @@ export default function OwnerDashboardScreen() {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const walletBalance = useAuthStore((s) => s.walletBalance);
+  const userId = profile?.id;
 
-  const [stats, setStats] = useState<OwnerStats | null>(null);
-  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Misma query key que app/(owner)/stats.tsx: las dos pantallas comparten la cache de
+  // getOwnerStats, así que entrar a una después de la otra no vuelve a pedir nada de más.
+  const {
+    data: stats,
+    isError: isStatsError,
+    refetch: refetchStats,
+  } = useQuery({
+    queryKey: queryKeys.stats.owner(userId ?? ''),
+    queryFn: () => getOwnerStats(userId as string),
+    enabled: Boolean(userId),
+  });
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setErrorMessage(null);
-    Promise.all([getOwnerStats(profile.id), listRecentTransactions(profile.id)])
-      .then(([statsResult, txResult]) => {
-        setStats(statsResult);
-        setTransactions(txResult);
-      })
-      .catch(() => setErrorMessage('No se pudo cargar tu panel.'));
-  }, [profile]);
+  const {
+    data: transactions = [],
+    isError: isTxError,
+    refetch: refetchTx,
+  } = useQuery({
+    queryKey: queryKeys.wallet.recentTransactions(userId ?? ''),
+    queryFn: () => listRecentTransactions(userId as string),
+    enabled: Boolean(userId),
+  });
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (!userId) return;
+      refetchStats();
+      refetchTx();
+    }, [userId, refetchStats, refetchTx])
   );
+
+  const errorMessage = isStatsError || isTxError ? 'No se pudo cargar tu panel.' : null;
 
   const tiles = [
     { icon: 'checkmark-circle-outline' as const, value: stats ? String(stats.confirmedCount) : '—', label: 'Reservas confirmadas' },

@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { SectionList, StyleSheet, Text } from 'react-native';
@@ -11,6 +12,7 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { hideBooking, listHiddenBookingIds, listReceivedBookings } from '@/features/booking/api';
 import type { OwnerBookingItem } from '@/features/booking/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
@@ -26,34 +28,41 @@ const SECTION_DEFS = [
   { key: 'cancelled', title: 'Canceladas', match: (b: OwnerBookingItem) => b.status === 'cancelled' },
 ] as const;
 
+type HistoryData = { bookings: OwnerBookingItem[]; hiddenIds: Set<string> };
+
+const EMPTY_DATA: HistoryData = { bookings: [], hiddenIds: new Set() };
+
 export default function OwnerBookingHistoryScreen() {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
+  const userId = profile?.id;
 
-  const [bookings, setBookings] = useState<OwnerBookingItem[]>([]);
-  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OwnerBookingItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    Promise.all([listReceivedBookings(profile.id), listHiddenBookingIds(profile.id)])
-      .then(([bookingsResult, hidden]) => {
-        setBookings(bookingsResult);
-        setHiddenIds(hidden);
-      })
-      .catch(() => setErrorMessage('No se pudo cargar el historial.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
+  const queryKey = queryKeys.bookings.receivedHistory(userId ?? '');
+  const {
+    data: { bookings, hiddenIds } = EMPTY_DATA,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey,
+    queryFn: async (): Promise<HistoryData> => {
+      const [bookingsResult, hidden] = await Promise.all([
+        listReceivedBookings(userId as string),
+        listHiddenBookingIds(userId as string),
+      ]);
+      return { bookings: bookingsResult, hiddenIds: hidden };
+    },
+    enabled: Boolean(userId),
+  });
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
 
   const sections = useMemo(
@@ -66,30 +75,30 @@ export default function OwnerBookingHistoryScreen() {
     [bookings, hiddenIds]
   );
 
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget || !profile) return;
-    setIsDeleting(true);
-    try {
-      await hideBooking(deleteTarget.id, profile.id);
-      // Se saca de la lista en el acto en vez de recargar: el resultado es el mismo y evita
-      // el parpadeo de toda la pantalla por borrar una fila.
-      setHiddenIds((current) => new Set(current).add(deleteTarget.id));
+  const hide = useMutation({
+    mutationFn: (booking: OwnerBookingItem) => hideBooking(booking.id, userId as string),
+    onSuccess: (_void, booking) => {
+      queryClient.setQueryData<HistoryData>(queryKey, (current = EMPTY_DATA) => ({
+        ...current,
+        hiddenIds: new Set(current.hiddenIds).add(booking.id),
+      }));
       setDeleteTarget(null);
-    } catch {
+    },
+    onError: () => {
       setErrorMessage('No se pudo borrar la reserva del historial.');
       setDeleteTarget(null);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+    },
+  });
+
+  const visibleError = errorMessage ?? (isError ? 'No se pudo cargar el historial.' : null);
 
   return (
     <Screen>
       <ScreenHeader title="Historial" backHref="/(owner)/bookings" />
 
-      {errorMessage ? <Banner message={errorMessage} /> : null}
+      {visibleError ? <Banner message={visibleError} /> : null}
 
-      {!isLoading && sections.length === 0 && !errorMessage ? (
+      {!isLoading && sections.length === 0 && !visibleError ? (
         <EmptyState
           icon="time-outline"
           title="Tu historial está vacío"
@@ -101,7 +110,10 @@ export default function OwnerBookingHistoryScreen() {
         sections={sections}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={() => {
+          setErrorMessage(null);
+          refetch();
+        }}
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => (
           <Text style={[typography.label, styles.sectionTitle, { color: colors.onSurfaceVariant }]}>
@@ -139,8 +151,12 @@ export default function OwnerBookingHistoryScreen() {
         message="Esta reserva se saca de tu historial y no la vas a ver más. No afecta al conductor, que la sigue viendo en el suyo."
         confirmLabel="Borrar"
         cancelLabel="Volver"
-        loading={isDeleting}
-        onConfirm={handleConfirmDelete}
+        loading={hide.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          setErrorMessage(null);
+          hide.mutate(deleteTarget);
+        }}
         onCancel={() => setDeleteTarget(null)}
       />
     </Screen>
