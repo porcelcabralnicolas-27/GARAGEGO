@@ -376,6 +376,12 @@ export function getParkingErrorMessage(error: unknown): string {
     if (message.includes('lot_has_active_bookings')) {
       return 'Esta cochera tiene reservas vigentes. Cancelalas o esperá a que terminen para poder borrarla.';
     }
+    // Red del bucket (migración 0058): la app ya valida esto antes de subir, pero puede llegar
+    // acá si el picker no informó el tamaño del archivo.
+    if (message.includes('exceeded the maximum allowed size')) return 'La foto pesa demasiado. El máximo es 5 MB.';
+    if (message.includes('mime type') && message.includes('not supported')) {
+      return 'Ese tipo de archivo no está permitido. Usá una foto JPG, PNG o WEBP.';
+    }
     return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';

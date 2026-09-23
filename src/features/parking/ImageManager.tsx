@@ -9,6 +9,7 @@ import {
   uploadParkingImage,
 } from '@/features/parking/api';
 import { MAX_PARKING_IMAGES, type ParkingImage } from '@/features/parking/types';
+import { assertImageUploadable } from '@/lib/imageMime';
 
 export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parkingLotId: string }) {
   const [images, setImages] = useState<ParkingImage[]>([]);
@@ -44,6 +45,8 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
         aspect: [4, 3],
       });
       if (result.canceled || !result.assets[0]) return;
+
+      assertImageUploadable(result.assets[0].uri, result.assets[0].fileSize);
 
       setIsUploading(true);
       const image = await uploadParkingImage({

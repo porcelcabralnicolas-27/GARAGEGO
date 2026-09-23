@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 
 import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
+import { assertImageUploadable } from '@/lib/imageMime';
 import { queryKeys } from '@/lib/queryKeys';
 
 import { deleteVehicleImage, getVehicleErrorMessage, listVehicleImages, uploadVehicleImage } from './api';
@@ -43,6 +44,8 @@ export function VehicleImageManager({ ownerId, vehicleId }: { ownerId: string; v
         aspect: [4, 3],
       });
       if (result.canceled || !result.assets[0]) return;
+
+      assertImageUploadable(result.assets[0].uri, result.assets[0].fileSize);
 
       setIsUploading(true);
       const image = await uploadVehicleImage({
