@@ -16,6 +16,11 @@ import type { NotificationAudience } from '@/features/notifications/types';
  * demás siguen con `useEffect` manual: se van a ir migrando de a poco, con este mismo patrón.
  */
 export const queryKeys = {
+  bookings: {
+    all: ['bookings'] as const,
+    myList: (userId: string) => ['bookings', 'myList', userId] as const,
+    receivedList: (ownerId: string) => ['bookings', 'receivedList', ownerId] as const,
+  },
   notifications: {
     all: ['notifications'] as const,
     list: (userId: string, audience: NotificationAudience) => ['notifications', 'list', userId, audience] as const,

@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
@@ -12,6 +13,7 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { cancelBooking, getBookingErrorMessage, listMyBookings } from '@/features/booking/api';
 import type { ClientBookingItem } from '@/features/booking/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
@@ -75,29 +77,31 @@ export default function MyBookingsScreen() {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
+  const queryClient = useQueryClient();
+  const userId = profile?.id;
 
-  const [bookings, setBookings] = useState<ClientBookingItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<ClientBookingItem | null>(null);
   const [lockedCancelTarget, setLockedCancelTarget] = useState<ClientBookingItem | null>(null);
-  const [isCancelling, setIsCancelling] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    listMyBookings(profile.id)
-      .then(setBookings)
-      .catch(() => setErrorMessage('No se pudieron cargar tus reservas.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
+  const {
+    data: bookings = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.bookings.myList(userId ?? ''),
+    queryFn: () => listMyBookings(userId as string),
+    enabled: Boolean(userId),
+  });
 
+  // Esta pantalla es el destino de "volver" desde el detalle de una reserva (iniciar, finalizar,
+  // cancelar) y desde el pago de una nueva: sin este refetch, seguiría mostrando lo que había en
+  // cache hasta que venza el staleTime, en vez de reflejar la acción que se acaba de hacer.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
 
   // Las secciones vacías no se muestran. "Ver todo" recorta a los primeros COLLAPSED_LIMIT en
@@ -129,21 +133,23 @@ export default function MyBookingsScreen() {
     });
   };
 
-  const handleConfirmCancel = async () => {
-    if (!cancelTarget) return;
-    setIsCancelling(true);
-    try {
-      await cancelBooking(cancelTarget.id);
+  // Un solo lugar para el mensaje de error, sea de la carga o de cancelar: como en el resto de
+  // las pantallas ya migradas, no hace falta duplicar el estado de React Query en uno propio.
+  const [mutationErrorMessage, setMutationError] = useState<string | null>(null);
+  const errorMessage = mutationErrorMessage ?? (isError ? 'No se pudieron cargar tus reservas.' : null);
+
+  const cancel = useMutation({
+    mutationFn: (booking: ClientBookingItem) => cancelBooking(booking.id),
+    onSuccess: () => {
       setCancelTarget(null);
       reloadProfile();
-      load();
-    } catch (error) {
-      setErrorMessage(getBookingErrorMessage(error));
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+    },
+    onError: (error) => {
       setCancelTarget(null);
-    } finally {
-      setIsCancelling(false);
-    }
-  };
+      setMutationError(getBookingErrorMessage(error));
+    },
+  });
 
   return (
     <Screen>
@@ -174,7 +180,10 @@ export default function MyBookingsScreen() {
         sections={sections}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={() => {
+          setMutationError(null);
+          refetch();
+        }}
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -254,8 +263,12 @@ export default function MyBookingsScreen() {
         }
         confirmLabel="Cancelar reserva"
         cancelLabel="Volver"
-        loading={isCancelling}
-        onConfirm={handleConfirmCancel}
+        loading={cancel.isPending}
+        onConfirm={() => {
+          if (!cancelTarget) return;
+          setMutationError(null);
+          cancel.mutate(cancelTarget);
+        }}
         onCancel={() => setCancelTarget(null)}
       />
 

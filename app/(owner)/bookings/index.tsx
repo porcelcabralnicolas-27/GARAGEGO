@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
@@ -18,6 +19,7 @@ import {
 } from '@/features/booking/api';
 import type { OwnerBookingItem } from '@/features/booking/types';
 import { formatMoney } from '@/lib/money';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
@@ -58,29 +60,31 @@ export default function OwnerBookingsScreen() {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
+  const queryClient = useQueryClient();
+  const userId = profile?.id;
 
-  const [bookings, setBookings] = useState<OwnerBookingItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<OwnerBookingItem | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    listReceivedBookings(profile.id)
-      .then(setBookings)
-      .catch(() => setErrorMessage('No se pudieron cargar las reservas.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
+  const {
+    data: bookings = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.bookings.receivedList(userId ?? ''),
+    queryFn: () => listReceivedBookings(userId as string),
+    enabled: Boolean(userId),
+  });
 
+  // Esta pantalla es el destino de "volver" desde cualquier pantalla que cambie una reserva: sin
+  // este refetch, seguiría mostrando lo que había en cache hasta que venza el staleTime.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
 
   const sections = useMemo(
@@ -109,38 +113,32 @@ export default function OwnerBookingsScreen() {
     });
   };
 
-  const handleComplete = async (booking: OwnerBookingItem) => {
-    setBusyId(booking.id);
-    setErrorMessage(null);
-    setInfoMessage(null);
-    try {
-      const { overtimeMinutes, overtimeCharge } = await completeBooking(booking.id);
+  const complete = useMutation({
+    mutationFn: (booking: OwnerBookingItem) => completeBooking(booking.id),
+    onSuccess: ({ overtimeMinutes, overtimeCharge }) => {
       if (overtimeCharge > 0) {
         setInfoMessage(`El cliente se quedó ${overtimeMinutes} min de más. Se le cobraron ${formatMoney(overtimeCharge)}.`);
       }
       reloadProfile();
-      load();
-    } catch (error) {
-      setErrorMessage(getBookingErrorMessage(error));
-    } finally {
-      setBusyId(null);
-    }
-  };
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+    },
+    onError: (error) => setErrorMessage(getBookingErrorMessage(error)),
+  });
 
-  const handleConfirmCancel = async () => {
-    if (!cancelTarget) return;
-    setBusyId(cancelTarget.id);
-    try {
-      await cancelBooking(cancelTarget.id);
+  const cancel = useMutation({
+    mutationFn: (booking: OwnerBookingItem) => cancelBooking(booking.id),
+    onSuccess: () => {
       setCancelTarget(null);
-      load();
-    } catch (error) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+    },
+    onError: (error) => {
+      setCancelTarget(null);
       setErrorMessage(getBookingErrorMessage(error));
-      setCancelTarget(null);
-    } finally {
-      setBusyId(null);
-    }
-  };
+    },
+  });
+
+  const busyId = complete.isPending ? complete.variables?.id : cancel.isPending ? cancel.variables?.id : null;
+  const visibleError = errorMessage ?? (isError ? 'No se pudieron cargar las reservas.' : null);
 
   return (
     <Screen>
@@ -155,10 +153,10 @@ export default function OwnerBookingsScreen() {
         }
       />
 
-      {errorMessage ? <Banner message={errorMessage} /> : null}
+      {visibleError ? <Banner message={visibleError} /> : null}
       {infoMessage ? <Banner message={infoMessage} variant="success" /> : null}
 
-      {!isLoading && sections.length === 0 && !errorMessage ? (
+      {!isLoading && sections.length === 0 && !visibleError ? (
         <EmptyState
           icon="calendar-outline"
           title="No tenés reservas activas"
@@ -170,7 +168,10 @@ export default function OwnerBookingsScreen() {
         sections={sections}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={() => {
+          setErrorMessage(null);
+          refetch();
+        }}
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -225,7 +226,11 @@ export default function OwnerBookingsScreen() {
                     <Button
                       label="Finalizar"
                       size="compact"
-                      onPress={() => handleComplete(item)}
+                      onPress={() => {
+                        setErrorMessage(null);
+                        setInfoMessage(null);
+                        complete.mutate(item);
+                      }}
                       loading={busyId === item.id}
                       disabled={busyId !== null}
                     />
@@ -250,8 +255,12 @@ export default function OwnerBookingsScreen() {
         message="¿Seguro que querés cancelar esta reserva? Se reintegrará el monto al cliente."
         confirmLabel="Cancelar reserva"
         cancelLabel="Volver"
-        loading={busyId === cancelTarget?.id}
-        onConfirm={handleConfirmCancel}
+        loading={cancel.isPending}
+        onConfirm={() => {
+          if (!cancelTarget) return;
+          setErrorMessage(null);
+          cancel.mutate(cancelTarget);
+        }}
         onCancel={() => setCancelTarget(null)}
       />
     </Screen>
