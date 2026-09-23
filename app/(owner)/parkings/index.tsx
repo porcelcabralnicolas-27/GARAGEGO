@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
@@ -11,6 +12,7 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getCoverImageUrls, listMyParkingLots } from '@/features/parking/api';
 import { getListingStatus, type ParkingLot } from '@/features/parking/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
@@ -37,30 +39,37 @@ export default function OwnerParkingsScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
-  const [lots, setLots] = useState<ParkingLot[]>([]);
-  const [coverImages, setCoverImages] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const userId = profile?.id;
   const [filter, setFilter] = useState<Filter>('all');
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    listMyParkingLots(profile.id)
-      .then(async (data) => {
-        setLots(data);
-        setCoverImages(await getCoverImageUrls(data.map((lot) => lot.id)));
-      })
-      .catch(() => setErrorMessage('No se pudieron cargar tus publicaciones.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
+  const {
+    data: lots = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.parkingLots.ownList(userId ?? ''),
+    queryFn: () => listMyParkingLots(userId as string),
+    enabled: Boolean(userId),
+  });
 
+  const lotIds = lots.map((lot) => lot.id);
+  const { data: coverImages = {} } = useQuery({
+    queryKey: queryKeys.parkingLots.coverImages(lotIds),
+    queryFn: () => getCoverImageUrls(lotIds),
+    enabled: lotIds.length > 0,
+  });
+
+  // "Publicar" y "editar" no vuelven acá con router.replace en todos los casos; el refetch al
+  // enfocar es lo que garantiza ver la publicación nueva o el estado editado sin depender de
+  // que cada pantalla de origen sepa invalidar esta query.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
+
+  const errorMessage = isError ? 'No se pudieron cargar tus publicaciones.' : null;
 
   const visibleLots = useMemo(() => {
     if (filter === 'all') return lots;
@@ -114,7 +123,7 @@ export default function OwnerParkingsScreen() {
         data={visibleLots}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={refetch}
         renderItem={({ item }) => {
           const status = getListingStatus(item);
           const note =

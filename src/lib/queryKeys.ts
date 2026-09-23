@@ -32,4 +32,18 @@ export const queryKeys = {
     list: (userId: string) => ['vehicles', 'list', userId] as const,
     images: (vehicleIds: string[]) => ['vehicles', 'images', [...vehicleIds].sort()] as const,
   },
+  parkingLots: {
+    all: ['parkingLots'] as const,
+    ownList: (ownerId: string) => ['parkingLots', 'ownList', ownerId] as const,
+    coverImages: (lotIds: string[]) => ['parkingLots', 'coverImages', [...lotIds].sort()] as const,
+  },
+  tickets: {
+    all: ['tickets'] as const,
+    list: (userId: string) => ['tickets', 'list', userId] as const,
+  },
+  messaging: {
+    all: ['messaging'] as const,
+    clientThreads: (userId: string) => ['messaging', 'clientThreads', userId] as const,
+    ownerThreads: (ownerId: string) => ['messaging', 'ownerThreads', ownerId] as const,
+  },
 } as const;

@@ -1,6 +1,7 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { FlatList, Text } from 'react-native';
+import { useCallback } from 'react';
+import { FlatList } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -8,37 +9,47 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { ConversationListItem } from '@/features/messaging/ConversationListItem';
 import { listClientConversations } from '@/features/messaging/api';
-import type { ConversationThread } from '@/features/messaging/types';
 import { listUnreadMessageNotifications } from '@/features/notifications/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export default function ClientMessagesScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
+  const userId = profile?.id;
 
-  const [threads, setThreads] = useState<ConversationThread[]>([]);
-  const [unreadBookingIds, setUnreadBookingIds] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const {
+    data = { threads: [], unreadBookingIds: new Set<string>() },
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.messaging.clientThreads(userId ?? ''),
+    queryFn: async () => {
+      const [threads, unreadNotifications] = await Promise.all([
+        listClientConversations(userId as string),
+        listUnreadMessageNotifications(userId as string, 'client'),
+      ]);
+      return {
+        threads,
+        unreadBookingIds: new Set(
+          unreadNotifications.map((n) => n.relatedBookingId).filter((id): id is string => id !== null)
+        ),
+      };
+    },
+    enabled: Boolean(userId),
+  });
+  const { threads, unreadBookingIds } = data;
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    Promise.all([listClientConversations(profile.id), listUnreadMessageNotifications(profile.id, 'client')])
-      .then(([threadsResult, unreadNotifications]) => {
-        setThreads(threadsResult);
-        setUnreadBookingIds(new Set(unreadNotifications.map((n) => n.relatedBookingId).filter((id): id is string => id !== null)));
-      })
-      .catch(() => setErrorMessage('No se pudieron cargar tus mensajes.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
-
+  // Un mensaje nuevo puede llegar mientras se estaba en otra pestaña: el refetch al enfocar
+  // trae el hilo actualizado sin depender de una suscripción realtime en esta lista.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
+
+  const errorMessage = isError ? 'No se pudieron cargar tus mensajes.' : null;
 
   return (
     <Screen>
@@ -58,7 +69,7 @@ export default function ClientMessagesScreen() {
         data={threads}
         keyExtractor={(item) => item.threadKey}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={refetch}
         renderItem={({ item }) => (
           <ConversationListItem
             thread={item}

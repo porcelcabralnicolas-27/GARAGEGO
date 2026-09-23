@@ -1,5 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -8,11 +9,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getSupportErrorMessage, listMyTickets } from '@/features/support/api';
-import {
-  TICKET_CATEGORY_LABELS,
-  type ReporterRole,
-  type SupportTicketListItem,
-} from '@/features/support/types';
+import { TICKET_CATEGORY_LABELS, type ReporterRole } from '@/features/support/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -28,26 +26,30 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const userId = profile?.id;
 
-  const [tickets, setTickets] = useState<SupportTicketListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const {
+    data: tickets = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.tickets.list(userId ?? ''),
+    queryFn: () => listMyTickets(userId as string),
+    enabled: Boolean(userId),
+  });
 
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    listMyTickets(profile.id)
-      .then(setTickets)
-      .catch((error) => setErrorMessage(getSupportErrorMessage(error)))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
-
+  // Un ticket nuevo se crea en otra pantalla, y "Nueva consulta" no vuelve acá (va directo al
+  // hilo). Este refetch al enfocar es lo que trae ese ticket a la lista cuando el usuario
+  // vuelve, sin depender de que la pantalla de creación sepa invalidar esta query.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
+
+  const errorMessage = isError ? getSupportErrorMessage(error) : null;
 
   return (
     <Screen>
@@ -81,7 +83,7 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
         data={tickets}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={refetch}
         renderItem={({ item }) => (
           <Pressable
             onPress={() =>
