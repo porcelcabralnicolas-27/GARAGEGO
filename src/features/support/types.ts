@@ -1,16 +1,12 @@
-export type TicketCategory = 'access' | 'payment' | 'listing' | 'behavior' | 'other';
-export type TicketStatus = 'open' | 'resolved';
+// TicketCategory, TicketStatus y TICKET_CATEGORY_LABELS viven en shared/domain.ts (lo comparte
+// con admin-panel/src/domain.ts): ver ese archivo para el porqué.
+export type { TicketCategory, TicketStatus } from '../../../shared/domain';
+export { TICKET_CATEGORY_LABELS } from '../../../shared/domain';
+
+import type { TicketCategory, TicketStatus } from '../../../shared/domain';
 
 /** Rol de quien abre el ticket. Define contra qué se vincula: reserva (conductor) o cochera. */
 export type ReporterRole = 'client' | 'owner';
-
-export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
-  access: 'Acceso a la cochera',
-  payment: 'Pagos y saldo',
-  listing: 'Publicación',
-  behavior: 'Conducta',
-  other: 'Otro',
-};
 
 /** Categorías que tienen sentido para cada rol. */
 export const TICKET_CATEGORIES_BY_ROLE: Record<ReporterRole, TicketCategory[]> = {

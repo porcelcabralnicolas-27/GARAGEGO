@@ -2,9 +2,22 @@
  * Tipos y helpers de dominio del panel. Espejan lo que devuelven los RPCs / queries de
  * Supabase: el `email` de `AdminProfile` viene de `auth.users` vía RPC, y las columnas de
  * moderación de `AdminParkingLot` son las de las migraciones 0034+.
+ *
+ * UserRole, ApprovalStatus, ModerationState, TicketStatus, TicketCategory y
+ * TICKET_CATEGORY_LABELS vienen de ../../shared/domain.ts, que también usa la app (src/). Antes
+ * estaban copiados a mano acá; ver ese archivo para el porqué del cambio.
  */
 
-export type UserRole = 'client' | 'owner';
+export type {
+  ApprovalStatus,
+  ModerationState,
+  TicketCategory,
+  TicketStatus,
+  UserRole,
+} from '../../shared/domain';
+export { TICKET_CATEGORY_LABELS } from '../../shared/domain';
+
+import type { ApprovalStatus, ModerationState, UserRole } from '../../shared/domain';
 
 /** Fila de `profiles` + el email resuelto por RPC. */
 export type AdminProfile = {
@@ -18,9 +31,6 @@ export type AdminProfile = {
   createdAt: string;
   email: string;
 };
-
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested';
-export type ModerationState = 'live' | 'paused_by_admin' | 'suspended';
 
 /** Fila de `parking_lots`, con las columnas de moderación (migración 0034). */
 export type AdminParkingLot = {
@@ -48,9 +58,6 @@ export type AdminParkingLot = {
   archivedAt: string | null;
 };
 
-export type TicketStatus = 'open' | 'resolved';
-export type TicketCategory = 'access' | 'payment' | 'listing' | 'behavior' | 'other';
-
 /** Valores del constraint `wallet_transactions_type_check` (migración 0024). */
 export type TransactionType =
   | 'topup'
@@ -61,14 +68,6 @@ export type TransactionType =
   | 'adjustment';
 
 export type TransactionStatus = 'pending' | 'completed' | 'failed';
-
-export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
-  access: 'Acceso a la cochera',
-  payment: 'Pagos y saldo',
-  listing: 'Publicación',
-  behavior: 'Conducta',
-  other: 'Otro',
-};
 
 export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
   topup: 'Recarga',

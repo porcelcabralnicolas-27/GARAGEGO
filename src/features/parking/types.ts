@@ -1,8 +1,8 @@
-/** Revisión de alta por el equipo (panel de admin). Migración 0034. */
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested';
+// ApprovalStatus y ModerationState viven en shared/domain.ts (lo comparte con
+// admin-panel/src/domain.ts): ver ese archivo para el porqué.
+export type { ApprovalStatus, ModerationState } from '../../../shared/domain';
 
-/** Palanca operativa del admin sobre una cochera ya aprobada. Migración 0034. */
-export type ModerationState = 'live' | 'paused_by_admin' | 'suspended';
+import type { ApprovalStatus, ModerationState } from '../../../shared/domain';
 
 export type ParkingLot = {
   id: string;
