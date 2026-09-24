@@ -28,6 +28,11 @@ jobs:
       - name: Tests
         run: npm test -- --ci
 
+      # Los mismos tests de fechas con el "dispositivo" en seis zonas horarias: la app tiene que
+      # dar lo mismo esté donde esté el teléfono (shared/time.ts).
+      - name: Tests de zona horaria
+        run: npm run test:tz
+
   admin-panel:
     name: Panel de administración (Vite)
     runs-on: ubuntu-latest

@@ -7,7 +7,6 @@ import {
   getConfiguredWindowsForDate,
   getFreeWindowsForDate,
   listAvailableDates,
-  toDateString,
 } from '../availability';
 
 // 2026-09-21 es un LUNES (dayOfWeek = 1). Las fechas de los tests se eligen a partir de ahí
@@ -32,8 +31,16 @@ function booked(date: string, startTime: string, endTime: string): BookedInterva
   return { date, startTime, endTime };
 }
 
+/**
+ * Un instante dado en hora de Argentina. Se escribe con el offset explícito para que el test
+ * signifique lo mismo en cualquier zona: `npm run test:tz` lo corre con el dispositivo en varias.
+ */
+function argentina(dateTime: string): Date {
+  return new Date(`${dateTime}-03:00`);
+}
+
 /** Un momento del día anterior a todas las fechas de prueba: no recorta ninguna ventana. */
-const BEFORE_ALL = new Date('2026-09-20T08:00:00');
+const BEFORE_ALL = argentina('2026-09-20T08:00:00');
 
 describe('getConfiguredWindowsForDate', () => {
   it('usa la franja recurrente del día de la semana', () => {
@@ -91,26 +98,36 @@ describe('getFreeWindowsForDate', () => {
   });
 
   it('descarta un día que ya pasó', () => {
-    const laterThanMonday = new Date('2026-09-23T10:00:00');
+    const laterThanMonday = argentina('2026-09-23T10:00:00');
     expect(getFreeWindowsForDate(MONDAY, openAllMonday, [], [], laterThanMonday)).toEqual([]);
   });
 
   it('recorta lo que ya pasó de hoy y redondea al próximo bloque de 30 min', () => {
-    const monday1010 = new Date('2026-09-21T10:10:00');
+    const monday1010 = argentina('2026-09-21T10:10:00');
     expect(getFreeWindowsForDate(MONDAY, openAllMonday, [], [], monday1010)).toEqual([
       { start: '10:30', end: '20:00' },
     ]);
   });
 
   it('descarta lo que queda de hoy si no entra la duración mínima', () => {
-    const monday1950 = new Date('2026-09-21T19:50:00');
+    const monday1950 = argentina('2026-09-21T19:50:00');
     expect(getFreeWindowsForDate(MONDAY, openAllMonday, [], [], monday1950)).toEqual([]);
+  });
+
+  it('"hoy" y "ahora" son los de la cochera aunque en UTC ya sea el día siguiente', () => {
+    // 22:30 del lunes en Argentina = 01:30 del martes en UTC (y 10:30 del martes en Tokio).
+    // Antes, un teléfono en otra zona recortaba con su propia hora y su propio día.
+    const lateMonday = argentina('2026-09-21T22:30:00');
+    const openLateMonday = [recurring(1, '08:00', '23:30')];
+    expect(getFreeWindowsForDate(MONDAY, openLateMonday, [], [], lateMonday)).toEqual([
+      { start: '22:30', end: '23:30' },
+    ]);
   });
 });
 
 describe('listAvailableDates', () => {
   it('devuelve solo los días con alguna ventana libre', () => {
-    const monday0700 = new Date('2026-09-21T07:00:00');
+    const monday0700 = argentina('2026-09-21T07:00:00');
     // Abre lunes y martes; el martes está reservado de punta a punta.
     const dates = listAvailableDates(
       [recurring(1, '08:00', '20:00'), recurring(2, '08:00', '20:00')],
@@ -120,6 +137,20 @@ describe('listAvailableDates', () => {
       monday0700
     );
     expect(dates).toEqual([MONDAY]);
+  });
+
+  it('arranca en el día de hoy de la cochera, no en el del dispositivo', () => {
+    // 23:00 del domingo en Argentina: en Tokio ya es lunes a la mañana. El domingo tiene que
+    // seguir listado (queda media hora) y el lunes también.
+    const lateSunday = argentina('2026-09-20T23:00:00');
+    const dates = listAvailableDates(
+      [recurring(0, '08:00', '23:30'), recurring(1, '08:00', '20:00')],
+      [],
+      [],
+      2,
+      lateSunday
+    );
+    expect(dates).toEqual(['2026-09-20', MONDAY]);
   });
 });
 
@@ -144,13 +175,5 @@ describe('generateEndTimeOptions', () => {
 
   it('devuelve vacío si el inicio no cae en ninguna ventana', () => {
     expect(generateEndTimeOptions([{ start: '10:00', end: '12:00' }], '14:00')).toEqual([]);
-  });
-});
-
-describe('toDateString', () => {
-  it('usa la fecha local y no el día UTC', () => {
-    // 21:00 en Argentina (UTC-3) ya es el día siguiente en UTC: toDateString tiene que
-    // devolver igual el día local, porque es el que ve el usuario en el calendario.
-    expect(toDateString(new Date(2026, 8, 21, 21, 0, 0))).toBe('2026-09-21');
   });
 });

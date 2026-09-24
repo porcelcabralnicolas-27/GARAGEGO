@@ -1,5 +1,7 @@
 /** Formateo, todo en es-AR / ARS, igual que la app mobile (`src/lib/money.ts`). */
 
+import { toBusinessWallClock } from './time';
+
 const ARS = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
@@ -24,26 +26,15 @@ export function formatSigned(amount: number): string {
   return base;
 }
 
-const DATE = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-const DATETIME = new Intl.DateTimeFormat('es-AR', {
-  day: '2-digit',
-  month: '2-digit',
-  year: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const TIME = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit' });
+// Fechas y horas en hora de Argentina, la de las cocheras, sin importar la zona del navegador
+// del admin (ver shared/time.ts).
+export { formatDate, formatTime } from './time';
 
-export function formatDate(iso: string): string {
-  return DATE.format(new Date(iso));
-}
-
+/** `21/09/26 14:05` */
 export function formatDateTime(iso: string): string {
-  return DATETIME.format(new Date(iso));
-}
-
-export function formatTime(iso: string): string {
-  return TIME.format(new Date(iso));
+  const wall = toBusinessWallClock(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(wall.day)}/${pad(wall.month)}/${pad(wall.year % 100)} ${pad(wall.hour)}:${pad(wall.minute)}`;
 }
 
 /** `hace 3 h`, `hace 2 d`. Se usa mucho en las colas, donde lo que importa es la antigüedad. */

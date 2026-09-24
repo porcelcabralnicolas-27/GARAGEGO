@@ -1,6 +1,10 @@
 import type { AvailabilityException, RecurringAvailability } from '@/features/parking/types';
 
+import { addDays, businessDate, businessMinutesOfDay, weekdayOf } from '../../../shared/time';
 import type { BookedInterval } from './api';
+
+// Fechas y horas de este archivo son hora de la cochera (Buenos Aires), igual que en el servidor:
+// "hoy" y "ahora" salen de shared/time.ts y nunca de la zona del dispositivo.
 
 export type TimeWindow = { start: string; end: string };
 
@@ -27,14 +31,6 @@ function toTimeString(minutes: number): string {
 
 function normalizeTime(time: string): string {
   return time.slice(0, 5);
-}
-
-/** Formatea una fecha YYYY-MM-DD a un string local sin desfases de zona horaria. */
-export function toDateString(date: Date): string {
-  const y = date.getFullYear();
-  const m = (date.getMonth() + 1).toString().padStart(2, '0');
-  const d = date.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function subtractInterval(window: TimeWindow, booked: TimeWindow): TimeWindow[] {
@@ -70,7 +66,7 @@ export function getConfiguredWindowsForDate(
     return [];
   }
 
-  const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
+  const dayOfWeek = weekdayOf(dateStr);
   return recurring
     .filter((r) => r.dayOfWeek === dayOfWeek)
     .map((r) => ({ start: normalizeTime(r.startTime), end: normalizeTime(r.endTime) }));
@@ -83,11 +79,11 @@ export function getConfiguredWindowsForDate(
  * Para fechas futuras devuelve las ventanas intactas; para fechas pasadas, ninguna.
  */
 function clipPastWindows(dateStr: string, windows: TimeWindow[], now: Date): TimeWindow[] {
-  const todayStr = toDateString(now);
+  const todayStr = businessDate(now);
   if (dateStr > todayStr) return windows;
   if (dateStr < todayStr) return [];
 
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowMinutes = businessMinutesOfDay(now);
   const earliest = Math.ceil(nowMinutes / STEP_MINUTES) * STEP_MINUTES;
 
   return windows.flatMap((w) => {
@@ -128,10 +124,9 @@ export function listAvailableDates(
   now: Date = new Date()
 ): string[] {
   const result: string[] = [];
+  const today = businessDate(now);
   for (let i = 0; i < days; i += 1) {
-    const date = new Date(now);
-    date.setDate(now.getDate() + i);
-    const dateStr = toDateString(date);
+    const dateStr = addDays(today, i);
     if (getFreeWindowsForDate(dateStr, recurring, exceptions, booked, now).length > 0) {
       result.push(dateStr);
     }
