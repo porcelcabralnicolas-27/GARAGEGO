@@ -20,7 +20,15 @@ export type Booking = {
 export type ClientBookingItem = Booking & {
   parkingLotName: string;
   parkingLotAddress: string;
+  /** Si el conductor ya la calificó. */
+  isRated: boolean;
 };
+
+/** Qué reservas trae un listado: las vigentes (pending / confirmed) o el historial. */
+export type BookingScope = 'active' | 'history';
+
+/** Cursor de los listados de reservas: el orden es (date, start_time, id) descendente. */
+export type BookingCursor = { date: string; startTime: string; id: string };
 
 export type BookingVehicleInfo = {
   plate: string;

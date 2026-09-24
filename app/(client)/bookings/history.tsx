@@ -1,46 +1,36 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { SectionList, StyleSheet, Text } from 'react-native';
+import { useCallback, useState } from 'react';
+import { FlatList } from 'react-native';
 
 import { BookingCard } from '@/components/booking/BookingCard';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { hideBooking, listHiddenBookingIds, listMyBookings } from '@/features/booking/api';
-import type { ClientBookingItem } from '@/features/booking/types';
+import { hideBooking, listClientBookingsPage } from '@/features/booking/api';
+import type { BookingCursor, ClientBookingItem } from '@/features/booking/types';
 import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
-import { listMyRatedBookingIds } from '@/features/rating/api';
+import { flattenPages, type Page } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
-import { spacing, useTheme } from '@/theme';
 
 /**
- * Historial del conductor: lo que ya terminó. La pantalla de "Mis reservas" queda solo con la
- * sesión activa y los lugares reservados, que es sobre lo que se puede actuar.
+ * Historial del conductor: lo que ya terminó (finalizadas y canceladas), de la más reciente a la
+ * más vieja, de a una página. La pantalla de "Mis reservas" queda solo con la sesión activa y
+ * los lugares reservados, que es sobre lo que se puede actuar.
  *
- * "Calificar" vive acá y no en la lista principal porque solo se puede calificar una reserva
- * finalizada, y las finalizadas ya no aparecen allá.
+ * Es una lista cronológica y no dos secciones porque se pagina (ver el historial del
+ * propietario). "Calificar" vive acá y no en la lista principal porque solo se puede calificar
+ * una reserva finalizada, y las finalizadas ya no aparecen allá.
  */
-const SECTION_DEFS = [
-  { key: 'completed', title: 'Finalizadas', match: (b: ClientBookingItem) => b.status === 'completed' },
-  { key: 'cancelled', title: 'Canceladas', match: (b: ClientBookingItem) => b.status === 'cancelled' },
-] as const;
-
-type HistoryData = {
-  bookings: ClientBookingItem[];
-  hiddenIds: Set<string>;
-  ratedBookingIds: Set<string>;
-};
-
-const EMPTY_DATA: HistoryData = { bookings: [], hiddenIds: new Set(), ratedBookingIds: new Set() };
+type HistoryPages = InfiniteData<Page<ClientBookingItem, BookingCursor>, BookingCursor | null>;
 
 export default function ClientBookingHistoryScreen() {
   const router = useRouter();
-  const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const userId = profile?.id;
@@ -50,23 +40,14 @@ export default function ClientBookingHistoryScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const queryKey = queryKeys.bookings.myHistory(userId ?? '');
-  const {
-    data: { bookings, hiddenIds, ratedBookingIds } = EMPTY_DATA,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey,
-    queryFn: async (): Promise<HistoryData> => {
-      const [bookingsResult, hidden, ratedIds] = await Promise.all([
-        listMyBookings(userId as string),
-        listHiddenBookingIds(userId as string),
-        listMyRatedBookingIds(userId as string),
-      ]);
-      return { bookings: bookingsResult, hiddenIds: hidden, ratedBookingIds: ratedIds };
-    },
+    queryFn: ({ pageParam }) => listClientBookingsPage('history', pageParam),
+    initialPageParam: null as BookingCursor | null,
+    getNextPageParam: (page) => page.nextCursor,
     enabled: Boolean(userId),
   });
+  const bookings = flattenPages(data);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,25 +55,17 @@ export default function ClientBookingHistoryScreen() {
     }, [userId, refetch])
   );
 
-  const sections = useMemo(
-    () =>
-      SECTION_DEFS.map((def) => ({
-        key: def.key,
-        title: def.title,
-        data: bookings.filter((b) => def.match(b) && !hiddenIds.has(b.id)),
-      })).filter((section) => section.data.length > 0),
-    [bookings, hiddenIds]
-  );
+  /** Aplica un cambio a las reservas ya cargadas, sin volver a pedir las páginas. */
+  const updateCachedItems = (update: (items: ClientBookingItem[]) => ClientBookingItem[]) => {
+    queryClient.setQueryData<HistoryPages>(queryKey, (current) =>
+      current ? { ...current, pages: current.pages.map((p) => ({ ...p, items: update(p.items) })) } : current
+    );
+  };
 
   const hide = useMutation({
     mutationFn: (booking: ClientBookingItem) => hideBooking(booking.id, userId as string),
     onSuccess: (_void, booking) => {
-      // Se agrega al set de ocultas en la cache en vez de recargar: el resultado es el mismo y
-      // evita el parpadeo de toda la pantalla por borrar una fila.
-      queryClient.setQueryData<HistoryData>(queryKey, (current = EMPTY_DATA) => ({
-        ...current,
-        hiddenIds: new Set(current.hiddenIds).add(booking.id),
-      }));
+      updateCachedItems((items) => items.filter((b) => b.id !== booking.id));
       setDeleteTarget(null);
     },
     onError: () => {
@@ -109,7 +82,7 @@ export default function ClientBookingHistoryScreen() {
 
       {visibleError ? <Banner message={visibleError} /> : null}
 
-      {!isLoading && sections.length === 0 && !visibleError ? (
+      {!isLoading && bookings.length === 0 && !visibleError ? (
         <EmptyState
           icon="time-outline"
           title="Tu historial está vacío"
@@ -117,22 +90,21 @@ export default function ClientBookingHistoryScreen() {
         />
       ) : null}
 
-      <SectionList
-        sections={sections}
+      <FlatList
+        data={bookings}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
         onRefresh={() => {
           setErrorMessage(null);
           refetch();
         }}
-        stickySectionHeadersEnabled={false}
-        renderSectionHeader={({ section }) => (
-          <Text style={[typography.label, styles.sectionTitle, { color: colors.onSurfaceVariant }]}>
-            {section.title.toUpperCase()}
-          </Text>
-        )}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter isFetching={isFetchingNextPage} />}
         renderItem={({ item }) => {
-          const canRate = item.status === 'completed' && !ratedBookingIds.has(item.id);
+          const canRate = item.status === 'completed' && !item.isRated;
           return (
             <BookingCard
               title={item.parkingLotName}
@@ -186,19 +158,14 @@ export default function ClientBookingHistoryScreen() {
           parkingLotName={rateTarget.parkingLotName}
           onClose={() => setRateTarget(null)}
           onSuccess={() => {
+            const ratedId = rateTarget.id;
             setRateTarget(null);
-            queryClient.invalidateQueries({ queryKey });
+            updateCachedItems((items) => items.map((b) => (b.id === ratedId ? { ...b, isRated: true } : b)));
+            // La ficha pública de la cochera muestra la reseña nueva.
+            queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
           }}
         />
       ) : null}
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionTitle: {
-    letterSpacing: 1,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-});

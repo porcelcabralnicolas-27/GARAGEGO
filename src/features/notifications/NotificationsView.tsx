@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, View } from 'react-native';
@@ -7,6 +7,7 @@ import { Banner } from '@/components/ui/Banner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LinkText } from '@/components/ui/LinkText';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getThreadRefForBooking } from '@/features/messaging/api';
@@ -14,14 +15,26 @@ import { NotificationListItem } from '@/features/notifications/NotificationListI
 import {
   deleteAllNotifications,
   deleteNotification,
-  listNotifications,
+  listNotificationsPage,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   subscribeToNotifications,
+  type NotificationCursor,
 } from '@/features/notifications/api';
 import type { AppNotification } from '@/features/notifications/types';
+import { flattenPages, type Page } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
+
+type NotificationPages = InfiniteData<Page<AppNotification, NotificationCursor>, NotificationCursor | null>;
+
+/** Aplica un cambio a las notificaciones de todas las páginas cargadas. */
+function mapPages(
+  data: NotificationPages | undefined,
+  update: (items: AppNotification[]) => AppNotification[]
+): NotificationPages | undefined {
+  return data ? { ...data, pages: data.pages.map((page) => ({ ...page, items: update(page.items) })) } : data;
+}
 
 export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
   const router = useRouter();
@@ -34,24 +47,32 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
 
   const listKey = queryKeys.notifications.list(userId ?? '', role);
 
-  const {
-    data: notifications = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: listKey,
-    queryFn: () => listNotifications(userId as string, role),
+    queryFn: ({ pageParam }) => listNotificationsPage(role, pageParam),
+    initialPageParam: null as NotificationCursor | null,
+    getNextPageParam: (page) => page.nextCursor,
     // Sin usuario no hay nada que pedir; React Query deja la query en pausa.
     enabled: Boolean(userId),
   });
+  const notifications = flattenPages(data);
 
-  // Realtime: en vez de recargar toda la lista con cada aviso, se mete la notificación nueva
-  // directo en la cache. Es el equivalente al `setNotifications([nueva, ...])` de antes.
+  // Realtime: en vez de recargar todas las páginas con cada aviso, la notificación nueva entra
+  // al principio de la primera. El cursor de las páginas siguientes no cambia: sigue apuntando
+  // a la última fila que ya se había cargado.
   useEffect(() => {
     if (!userId) return;
     return subscribeToNotifications(userId, role, (notification) => {
-      queryClient.setQueryData<AppNotification[]>(listKey, (current = []) => [notification, ...current]);
+      queryClient.setQueryData<NotificationPages>(listKey, (current) =>
+        current
+          ? {
+              ...current,
+              pages: current.pages.map((page, index) =>
+                index === 0 ? { ...page, items: [notification, ...page.items] } : page
+              ),
+            }
+          : current
+      );
     });
     // listKey se arma con userId y role, así que sus dos dependencias ya están acá.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,9 +83,9 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
    * y, si el servidor lo rechaza, la lista vuelve a como estaba.
    *
    * `onMutate` cancela los refetch en curso (si no, una respuesta vieja en vuelo pisaría el
-   * cambio recién aplicado), guarda la lista anterior y aplica el cambio sobre la cache.
-   * `onError` restaura lo guardado. `onSettled` invalida todo el grupo `notifications` para que
-   * el badge de la pestaña Mensajes, que es otra query, no quede desfasado.
+   * cambio recién aplicado), guarda las páginas anteriores y aplica el cambio sobre la cache.
+   * `onError` restaura lo guardado. `onSettled` refresca el badge de la pestaña Mensajes, que es
+   * otra query: no se invalida la lista para no volver a pedir todas las páginas cargadas.
    */
   function optimisticList<TVariables>(
     update: (current: AppNotification[], variables: TVariables) => AppNotification[],
@@ -73,16 +94,18 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
     return {
       onMutate: async (variables: TVariables) => {
         await queryClient.cancelQueries({ queryKey: listKey });
-        const previous = queryClient.getQueryData<AppNotification[]>(listKey);
-        queryClient.setQueryData<AppNotification[]>(listKey, (current = []) => update(current, variables));
+        const previous = queryClient.getQueryData<NotificationPages>(listKey);
+        queryClient.setQueryData<NotificationPages>(listKey, (current) =>
+          mapPages(current, (items) => update(items, variables))
+        );
         return { previous };
       },
-      onError: (_error: unknown, _variables: TVariables, context: { previous?: AppNotification[] } | undefined) => {
+      onError: (_error: unknown, _variables: TVariables, context: { previous?: NotificationPages } | undefined) => {
         if (context?.previous) queryClient.setQueryData(listKey, context.previous);
         setErrorMessage(errorText);
       },
       onSettled: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadMessages(userId ?? '', role) });
       },
     };
   }
@@ -114,14 +137,16 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
   const removeAll = useMutation({
     mutationFn: () => deleteAllNotifications(userId as string, role),
     onSuccess: () => {
-      queryClient.setQueryData<AppNotification[]>(listKey, []);
+      // Borra también las que no estaban cargadas, así que se vuelve a pedir desde cero.
+      queryClient.resetQueries({ queryKey: listKey });
       setIsConfirmingDeleteAll(false);
     },
     onError: () => {
       setErrorMessage('No se pudieron borrar las notificaciones.');
       setIsConfirmingDeleteAll(false);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all }),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadMessages(userId ?? '', role) }),
   });
 
   const hasUnread = notifications.some((n) => !n.read);
@@ -218,6 +243,11 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
           setErrorMessage(null);
           refetch();
         }}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter isFetching={isFetchingNextPage} />}
         renderItem={({ item }) => (
           <NotificationListItem
             notification={item}

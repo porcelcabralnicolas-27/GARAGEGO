@@ -1,67 +1,80 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { getParkingLot, getRecurringAvailability, listParkingImages } from '@/features/parking/api';
+import {
+  getParkingLot,
+  getParkingLotOwnerName,
+  getRecurringAvailability,
+  listParkingImages,
+} from '@/features/parking/api';
 import { formatPricePerHour } from '@/lib/money';
-import { getProfile } from '@/features/profile/api';
 import { DAY_LABELS, type ParkingImage, type ParkingLot, type RecurringAvailability } from '@/features/parking/types';
-import { listRatingsForParkingLot } from '@/features/rating/api';
-import type { RatingWithAuthor } from '@/features/rating/types';
+import { listRatingsPage, type RatingCursor } from '@/features/rating/api';
 import { StarRating } from '@/components/ui/StarRating';
+import { flattenPages } from '@/lib/pagination';
+import { queryKeys } from '@/lib/queryKeys';
 import { useTheme } from '@/theme';
+
+type ParkingDetailData = {
+  lot: ParkingLot;
+  images: ParkingImage[];
+  availability: RecurringAvailability[];
+  ownerName: string | null;
+};
 
 export default function ParkingDetailScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [lot, setLot] = useState<ParkingLot | null>(null);
-  const [images, setImages] = useState<ParkingImage[]>([]);
-  const [availability, setAvailability] = useState<RecurringAvailability[]>([]);
-  const [ratings, setRatings] = useState<RatingWithAuthor[]>([]);
-  const [ownerName, setOwnerName] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Todo en paralelo: el nombre del dueño se pide por id de cochera, así que ya no hace falta
+  // esperar al lote para saber a quién buscar.
+  const { data, isError } = useQuery({
+    queryKey: queryKeys.parkingLots.publicDetail(id),
+    queryFn: async (): Promise<ParkingDetailData> => {
+      const [lot, images, availability, ownerName] = await Promise.all([
+        getParkingLot(id),
+        listParkingImages(id),
+        getRecurringAvailability(id),
+        getParkingLotOwnerName(id).catch(() => null),
+      ]);
+      return { lot, images, availability, ownerName };
+    },
+  });
 
-  useEffect(() => {
-    getParkingLot(id)
-      .then(async (data) => {
-        setLot(data);
-        const [imgs, avail, owner, ratingList] = await Promise.all([
-          listParkingImages(id),
-          getRecurringAvailability(id),
-          getProfile(data.ownerId).catch(() => null),
-          listRatingsForParkingLot(id).catch(() => []),
-        ]);
-        setImages(imgs);
-        setAvailability(avail);
-        setRatings(ratingList);
-        if (owner) setOwnerName(`${owner.firstName} ${owner.lastName}`.trim());
-      })
-      .catch(() => setErrorMessage('No se pudo cargar el estacionamiento.'));
-  }, [id]);
+  // Las opiniones van aparte y de a una página: una cochera muy calificada no trae todas.
+  const ratingsQuery = useInfiniteQuery({
+    queryKey: queryKeys.parkingLots.ratings(id),
+    queryFn: ({ pageParam }) => listRatingsPage(id, pageParam),
+    initialPageParam: null as RatingCursor | null,
+    getNextPageParam: (page) => page.nextCursor,
+  });
+  const ratings = flattenPages(ratingsQuery.data);
 
-  if (errorMessage) {
+  if (isError) {
     return (
       <Screen>
         <ScreenHeader title="Estacionamiento" backHref="/(client)/search/list" />
-        <Banner message={errorMessage} />
+        <Banner message="No se pudo cargar el estacionamiento." />
       </Screen>
     );
   }
 
-  if (!lot) {
+  if (!data) {
     return (
       <Screen>
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
       </Screen>
     );
   }
+
+  const { lot, images, availability, ownerName } = data;
 
   return (
     <Screen>
@@ -119,9 +132,10 @@ export default function ParkingDetailScreen() {
         )}
 
         <Text style={[typography.titleMedium, { color: colors.onBackground, marginTop: 24, marginBottom: 8 }]}>
-          Opiniones {ratings.length > 0 ? `(${ratings.length})` : ''}
+          {/* El total solo se conoce cuando ya se cargaron todas las páginas. */}
+          Opiniones {ratings.length > 0 && !ratingsQuery.hasNextPage ? `(${ratings.length})` : ''}
         </Text>
-        {ratings.length === 0 ? (
+        {ratingsQuery.isLoading ? null : ratings.length === 0 ? (
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
             Todavía no hay opiniones sobre este estacionamiento.
           </Text>
@@ -140,6 +154,14 @@ export default function ParkingDetailScreen() {
             </View>
           ))
         )}
+        {ratingsQuery.hasNextPage ? (
+          <Button
+            label="Ver más opiniones"
+            variant="text"
+            onPress={() => ratingsQuery.fetchNextPage()}
+            loading={ratingsQuery.isFetchingNextPage}
+          />
+        ) : null}
 
         <View style={styles.spacerLarge} />
 

@@ -1,39 +1,37 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { SectionList, StyleSheet, Text } from 'react-native';
+import { useCallback, useState } from 'react';
+import { FlatList } from 'react-native';
 
 import { BookingCard } from '@/components/booking/BookingCard';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { hideBooking, listHiddenBookingIds, listReceivedBookings } from '@/features/booking/api';
-import type { OwnerBookingItem } from '@/features/booking/types';
+import { hideBooking, listOwnerBookingsPage } from '@/features/booking/api';
+import type { BookingCursor, OwnerBookingItem } from '@/features/booking/types';
+import { flattenPages, type Page } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
-import { spacing, useTheme } from '@/theme';
 
 /**
- * Historial del propietario: las reservas de sus cocheras que ya terminaron. La pantalla de
- * "Reservas recibidas" queda solo con las que están en curso o por venir.
+ * Historial del propietario: las reservas de sus cocheras que ya terminaron (finalizadas y
+ * canceladas), de la más reciente a la más vieja, de a una página. La pantalla de "Reservas
+ * recibidas" queda solo con las que están en curso o por venir.
+ *
+ * Es una lista cronológica y no dos secciones (finalizadas / canceladas) porque se pagina: con
+ * secciones, cada página nueva agregaría reservas en las dos, arriba de donde está mirando el
+ * usuario. El estado de cada una lo muestra la tarjeta.
  *
  * El "Borrar" oculta la reserva solo para él: el conductor la sigue viendo en su propio
  * historial y no se toca ningún registro de plata. Ver la migración 0031.
  */
-const SECTION_DEFS = [
-  { key: 'done', title: 'Finalizadas', match: (b: OwnerBookingItem) => b.status === 'completed' },
-  { key: 'cancelled', title: 'Canceladas', match: (b: OwnerBookingItem) => b.status === 'cancelled' },
-] as const;
-
-type HistoryData = { bookings: OwnerBookingItem[]; hiddenIds: Set<string> };
-
-const EMPTY_DATA: HistoryData = { bookings: [], hiddenIds: new Set() };
+type HistoryPages = InfiniteData<Page<OwnerBookingItem, BookingCursor>, BookingCursor | null>;
 
 export default function OwnerBookingHistoryScreen() {
-  const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const userId = profile?.id;
@@ -42,22 +40,14 @@ export default function OwnerBookingHistoryScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const queryKey = queryKeys.bookings.receivedHistory(userId ?? '');
-  const {
-    data: { bookings, hiddenIds } = EMPTY_DATA,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey,
-    queryFn: async (): Promise<HistoryData> => {
-      const [bookingsResult, hidden] = await Promise.all([
-        listReceivedBookings(userId as string),
-        listHiddenBookingIds(userId as string),
-      ]);
-      return { bookings: bookingsResult, hiddenIds: hidden };
-    },
+    queryFn: ({ pageParam }) => listOwnerBookingsPage('history', pageParam),
+    initialPageParam: null as BookingCursor | null,
+    getNextPageParam: (page) => page.nextCursor,
     enabled: Boolean(userId),
   });
+  const bookings = flattenPages(data);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,23 +55,15 @@ export default function OwnerBookingHistoryScreen() {
     }, [userId, refetch])
   );
 
-  const sections = useMemo(
-    () =>
-      SECTION_DEFS.map((def) => ({
-        key: def.key,
-        title: def.title,
-        data: bookings.filter((b) => def.match(b) && !hiddenIds.has(b.id)),
-      })).filter((section) => section.data.length > 0),
-    [bookings, hiddenIds]
-  );
-
   const hide = useMutation({
     mutationFn: (booking: OwnerBookingItem) => hideBooking(booking.id, userId as string),
     onSuccess: (_void, booking) => {
-      queryClient.setQueryData<HistoryData>(queryKey, (current = EMPTY_DATA) => ({
-        ...current,
-        hiddenIds: new Set(current.hiddenIds).add(booking.id),
-      }));
+      // Se saca de la página en cache en vez de recargar todas las páginas cargadas.
+      queryClient.setQueryData<HistoryPages>(queryKey, (current) =>
+        current
+          ? { ...current, pages: current.pages.map((p) => ({ ...p, items: p.items.filter((b) => b.id !== booking.id) })) }
+          : current
+      );
       setDeleteTarget(null);
     },
     onError: () => {
@@ -98,7 +80,7 @@ export default function OwnerBookingHistoryScreen() {
 
       {visibleError ? <Banner message={visibleError} /> : null}
 
-      {!isLoading && sections.length === 0 && !visibleError ? (
+      {!isLoading && bookings.length === 0 && !visibleError ? (
         <EmptyState
           icon="time-outline"
           title="Tu historial está vacío"
@@ -106,20 +88,19 @@ export default function OwnerBookingHistoryScreen() {
         />
       ) : null}
 
-      <SectionList
-        sections={sections}
+      <FlatList
+        data={bookings}
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
         onRefresh={() => {
           setErrorMessage(null);
           refetch();
         }}
-        stickySectionHeadersEnabled={false}
-        renderSectionHeader={({ section }) => (
-          <Text style={[typography.label, styles.sectionTitle, { color: colors.onSurfaceVariant }]}>
-            {section.title.toUpperCase()}
-          </Text>
-        )}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter isFetching={isFetchingNextPage} />}
         renderItem={({ item }) => (
           <BookingCard
             title={item.parkingLotName}
@@ -162,11 +143,3 @@ export default function OwnerBookingHistoryScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionTitle: {
-    letterSpacing: 1,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-});

@@ -1,6 +1,6 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -23,18 +23,18 @@ export default function EditClientVehicleScreen() {
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
 
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
-  useEffect(() => {
-    getVehicle(id).then(setVehicle).catch(() => setErrorMessage('No se pudo cargar el vehículo.'));
-  }, [id]);
+  const { data: vehicle, isError } = useQuery({
+    queryKey: queryKeys.vehicles.detail(id),
+    queryFn: () => getVehicle(id),
+  });
 
   const handleSubmit = async (input: VehicleInput) => {
     const updated = await updateVehicle(id, input);
-    setVehicle(updated);
+    queryClient.setQueryData<Vehicle>(queryKeys.vehicles.detail(id), updated);
     // Ver el comentario en create.tsx: la lista de vehículos vive en la cache de React Query.
     queryClient.invalidateQueries({ queryKey: queryKeys.vehicles.all });
   };
@@ -53,10 +53,10 @@ export default function EditClientVehicleScreen() {
     }
   };
 
-  if (errorMessage && !vehicle) {
+  if (isError && !vehicle) {
     return (
       <Screen>
-        <Banner message={errorMessage} />
+        <Banner message="No se pudo cargar el vehículo." />
       </Screen>
     );
   }

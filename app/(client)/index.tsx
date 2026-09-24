@@ -1,5 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
@@ -10,9 +11,9 @@ import { Banner } from '@/components/ui/Banner';
 import { Logo } from '@/components/ui/Logo';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { searchParkingLots } from '@/features/parking/api';
-import type { ParkingLotWithDistance } from '@/features/parking/types';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { formatPricePerHour } from '@/lib/money';
+import { queryKeys } from '@/lib/queryKeys';
 import { radius, spacing, useTheme } from '@/theme';
 
 type SearchParams = {
@@ -36,22 +37,21 @@ export default function ClientHomeScreen() {
   const latitude = Number.isFinite(paramLat) ? paramLat : currentLocation.latitude;
   const longitude = Number.isFinite(paramLng) ? paramLng : currentLocation.longitude;
 
-  const [results, setResults] = useState<ParkingLotWithDistance[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (latitude === null || longitude === null) return;
-    searchParkingLots({
-      latitude,
-      longitude,
-      radiusKm: Number(params.radiusKm) || 5,
-      maxPrice: params.maxPrice ? Number(params.maxPrice) : null,
-      minRating: params.minRating ? Number(params.minRating) : null,
-    })
-      .then(setResults)
-      .catch(() => setErrorMessage('No se pudieron cargar los estacionamientos.'));
-  }, [latitude, longitude, params.radiusKm, params.maxPrice, params.minRating]);
+  const filters = {
+    latitude: latitude ?? 0,
+    longitude: longitude ?? 0,
+    radiusKm: Number(params.radiusKm) || 5,
+    maxPrice: params.maxPrice ? Number(params.maxPrice) : null,
+    minRating: params.minRating ? Number(params.minRating) : null,
+  };
+  const { data: results = [], isError } = useQuery({
+    queryKey: queryKeys.parkingLots.nearby(filters),
+    queryFn: () => searchParkingLots(filters),
+    enabled: latitude !== null && longitude !== null,
+  });
+  const errorMessage = isError ? 'No se pudieron cargar los estacionamientos.' : null;
 
   const selected = results.find((r) => r.id === selectedId) ?? null;
 

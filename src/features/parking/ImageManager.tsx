@@ -1,5 +1,6 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
 import {
@@ -10,19 +11,27 @@ import {
 } from '@/features/parking/api';
 import { MAX_PARKING_IMAGES, type ParkingImage } from '@/features/parking/types';
 import { assertImageUploadable } from '@/lib/imageMime';
+import { queryKeys } from '@/lib/queryKeys';
+
+const NO_IMAGES: ParkingImage[] = [];
 
 export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parkingLotId: string }) {
-  const [images, setImages] = useState<ParkingImage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    listParkingImages(parkingLotId)
-      .then(setImages)
-      .catch(() => setErrorMessage('No se pudieron cargar las fotos.'))
-      .finally(() => setIsLoading(false));
-  }, [parkingLotId]);
+  const queryKey = queryKeys.parkingLots.images(parkingLotId);
+  const { data: images = NO_IMAGES, isLoading, isError } = useQuery({
+    queryKey,
+    queryFn: () => listParkingImages(parkingLotId),
+  });
+
+  // Las fotos también salen en la ficha pública y en la portada de la lista de cocheras: se
+  // invalida todo el grupo para que ninguna de esas pantallas siga mostrando las anteriores.
+  const applyChange = (update: (current: ParkingImage[]) => ParkingImage[]) => {
+    queryClient.setQueryData<ParkingImage[]>(queryKey, (current = []) => update(current));
+    queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
+  };
 
   const handleAddImage = async () => {
     setErrorMessage(null);
@@ -55,7 +64,7 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
         localUri: result.assets[0].uri,
         position: images.length,
       });
-      setImages((prev) => [...prev, image]);
+      applyChange((current) => [...current, image]);
     } catch (error) {
       setErrorMessage(`No se pudo subir la foto: ${getParkingErrorMessage(error)}`);
     } finally {
@@ -70,7 +79,7 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
     setErrorMessage(null);
     try {
       await deleteParkingImage(image);
-      setImages((prev) => prev.filter((i) => i.id !== image.id));
+      applyChange((current) => current.filter((i) => i.id !== image.id));
     } catch (error) {
       setErrorMessage(`No se pudo eliminar la foto: ${getParkingErrorMessage(error)}`);
     }
@@ -85,7 +94,7 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
       max={MAX_PARKING_IMAGES}
       isLoading={isLoading}
       isUploading={isUploading}
-      errorMessage={errorMessage}
+      errorMessage={errorMessage ?? (isError ? 'No se pudieron cargar las fotos.' : null)}
     />
   );
 }

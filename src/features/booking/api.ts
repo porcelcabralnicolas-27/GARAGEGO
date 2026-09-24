@@ -1,13 +1,27 @@
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
+import { toPage, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
-import type { Booking, ClientBookingItem, OwnerBookingItem } from './types';
+import type { Booking, BookingCursor, BookingScope, ClientBookingItem, OwnerBookingItem } from './types';
 
-// Tope defensivo para las listas de reservas: sin esto, una cuenta con años de historial
-// trae la tabla entera en cada carga. No es paginación real (no hay "cargar más" en la UI
-// todavía), pero corta el peor caso. Se queda con las más recientes por el ORDER BY que ya
-// tenía cada consulta.
-const LIST_LIMIT = 200;
+/** Reservas por página del historial. */
+export const HISTORY_PAGE_SIZE = 20;
+
+/**
+ * Las vigentes (pending / confirmed) se piden en una sola página grande y sin "cargar más": son
+ * reservas futuras ya pagadas, así que en la práctica son pocas. 100 es el máximo del servidor.
+ */
+const ACTIVE_PAGE_SIZE = 100;
+
+function cursorArgs(cursor: BookingCursor | null) {
+  return {
+    p_cursor_date: cursor?.date ?? null,
+    p_cursor_start: cursor?.startTime ?? null,
+    p_cursor_id: cursor?.id ?? null,
+  };
+}
+
+const bookingCursorOf = (b: Booking): BookingCursor => ({ date: b.date, startTime: b.startTime, id: b.id });
 
 function mapBookingRow(row: {
   id: string;
@@ -93,122 +107,83 @@ export async function cancelBooking(bookingId: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function listMyBookings(userId: string): Promise<ClientBookingItem[]> {
-  const { data: bookingRows, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('user_id', userId)
-    .order('date', { ascending: false })
-    .order('start_time', { ascending: false })
-    .limit(LIST_LIMIT);
-  if (error) throw error;
-  if (bookingRows.length === 0) return [];
-
-  const lotIds = [...new Set(bookingRows.map((b) => b.parking_lot_id))];
-  const { data: lots, error: lotsError } = await supabase
-    .from('parking_lots')
-    .select('id, name, address')
-    .in('id', lotIds);
-  if (lotsError) throw lotsError;
-  const lotsById = new Map(lots.map((l) => [l.id, l]));
-
-  return bookingRows.map((row) => {
-    const booking = mapBookingRow(row);
-    const lot = lotsById.get(row.parking_lot_id);
-    return { ...booking, parkingLotName: lot?.name ?? 'Estacionamiento', parkingLotAddress: lot?.address ?? '' };
+/**
+ * Una página de las reservas del conductor, ya con el nombre y la dirección de la cochera
+ * (list_client_bookings, 0059). El historial no incluye las que el conductor borró de su
+ * historial: eso lo filtra el servidor, así las páginas vienen completas.
+ */
+export async function listClientBookingsPage(
+  scope: BookingScope,
+  cursor: BookingCursor | null = null
+): Promise<Page<ClientBookingItem, BookingCursor>> {
+  const pageSize = scope === 'active' ? ACTIVE_PAGE_SIZE : HISTORY_PAGE_SIZE;
+  const { data, error } = await supabase.rpc('list_client_bookings', {
+    p_scope: scope,
+    p_limit: pageSize,
+    ...cursorArgs(cursor),
   });
+  if (error) throw error;
+
+  const items = data.map((row) => ({
+    ...mapBookingRow(row),
+    // Si el admin pausó la cochera, la policy deja de mostrarla y el nombre viene null.
+    parkingLotName: row.parking_lot_name ?? 'Estacionamiento',
+    parkingLotAddress: row.parking_lot_address ?? '',
+    isRated: row.is_rated,
+  }));
+  return toPage(items, pageSize, bookingCursorOf);
 }
 
 /** Una sola reserva del conductor, con los datos del estacionamiento. La usa la pantalla de
  *  sesión activa, que se abre por id y no puede depender de que la lista esté cargada. */
 export async function getClientBooking(bookingId: string): Promise<ClientBookingItem> {
-  const { data: row, error } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
+  const { data, error } = await supabase.rpc('get_client_booking', { p_booking_id: bookingId });
   if (error) throw error;
-
-  // `maybeSingle` y no `single`: si el admin pausó o suspendió la cochera, la policy de lectura
-  // deja de devolverla y `single` tiraría error, rompiendo la pantalla de sesión activa de un
-  // conductor que ya está adentro. Se degrada igual que `listMyBookings`.
-  const { data: lot, error: lotError } = await supabase
-    .from('parking_lots')
-    .select('name, address')
-    .eq('id', row.parking_lot_id)
-    .maybeSingle();
-  if (lotError) throw lotError;
+  const row = data[0];
+  if (!row) throw new Error('Reserva no encontrada');
 
   return {
     ...mapBookingRow(row),
-    parkingLotName: lot?.name ?? 'Estacionamiento',
-    parkingLotAddress: lot?.address ?? '',
+    // Si el admin pausó la cochera, la policy deja de mostrarla: se degrada en vez de romper la
+    // pantalla de un conductor que ya está adentro.
+    parkingLotName: row.parking_lot_name ?? 'Estacionamiento',
+    parkingLotAddress: row.parking_lot_address ?? '',
+    isRated: row.is_rated,
   };
 }
 
-export async function listReceivedBookings(ownerId: string): Promise<OwnerBookingItem[]> {
-  const { data: myLots, error: lotsError } = await supabase
-    .from('parking_lots')
-    .select('id, name')
-    .eq('owner_id', ownerId);
-  if (lotsError) throw lotsError;
-  if (myLots.length === 0) return [];
-
-  const lotIds = myLots.map((l) => l.id);
-  const lotsById = new Map(myLots.map((l) => [l.id, l]));
-
-  const { data: bookingRows, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .in('parking_lot_id', lotIds)
-    .order('date', { ascending: false })
-    .order('start_time', { ascending: false })
-    .limit(LIST_LIMIT);
-  if (error) throw error;
-  if (bookingRows.length === 0) return [];
-
-  const clientIds = [...new Set(bookingRows.map((b) => b.user_id))];
-  // Vista con solo los datos públicos: `profiles` completo solo lo lee su dueño (0050/0051).
-  const { data: clients, error: clientsError } = await supabase
-    .from('public_profiles')
-    .select('id, first_name, last_name')
-    .in('id', clientIds);
-  if (clientsError) throw clientsError;
-  const clientsById = new Map(clients.map((c) => [c.id, c]));
-
-  const vehicleIds = [...new Set(bookingRows.map((b) => b.vehicle_id).filter((id): id is string => id !== null))];
-  const vehiclesById = new Map<string, { plate: string; brand: string | null; model: string | null }>();
-  if (vehicleIds.length > 0) {
-    const { data: vehicles, error: vehiclesError } = await supabase
-      .from('vehicles')
-      .select('id, plate, brand, model')
-      .in('id', vehicleIds);
-    if (vehiclesError) throw vehiclesError;
-    for (const v of vehicles) vehiclesById.set(v.id, { plate: v.plate, brand: v.brand, model: v.model });
-  }
-
-  return bookingRows.map((row) => {
-    const booking = mapBookingRow(row);
-    const lot = lotsById.get(row.parking_lot_id);
-    const client = clientsById.get(row.user_id);
-    return {
-      ...booking,
-      parkingLotName: lot?.name ?? 'Estacionamiento',
-      clientName: client ? `${client.first_name} ${client.last_name}`.trim() : 'Cliente',
-      vehicle: row.vehicle_id ? (vehiclesById.get(row.vehicle_id) ?? null) : null,
-    };
+/**
+ * Una página de las reservas recibidas por el propietario, con cochera, cliente y vehículo
+ * (list_owner_bookings, 0059). Antes eran cuatro consultas encadenadas.
+ */
+export async function listOwnerBookingsPage(
+  scope: BookingScope,
+  cursor: BookingCursor | null = null
+): Promise<Page<OwnerBookingItem, BookingCursor>> {
+  const pageSize = scope === 'active' ? ACTIVE_PAGE_SIZE : HISTORY_PAGE_SIZE;
+  const { data, error } = await supabase.rpc('list_owner_bookings', {
+    p_scope: scope,
+    p_limit: pageSize,
+    ...cursorArgs(cursor),
   });
+  if (error) throw error;
+
+  const items = data.map((row) => ({
+    ...mapBookingRow(row),
+    parkingLotName: row.parking_lot_name ?? 'Estacionamiento',
+    clientName: row.client_name ?? 'Cliente',
+    vehicle: row.vehicle_plate ? { plate: row.vehicle_plate, brand: row.vehicle_brand, model: row.vehicle_model } : null,
+  }));
+  return toPage(items, pageSize, bookingCursorOf);
 }
 
 /**
- * Reservas que el usuario borró de SU historial.
+ * Oculta una reserva del historial de ESTE usuario.
  *
  * Es un ocultamiento por usuario, no un borrado: la reserva es compartida con la otra parte y
  * de ella cuelgan la calificación, el chat y los movimientos de billetera. Ver la migración
  * 0031 para el detalle.
  */
-export async function listHiddenBookingIds(userId: string): Promise<Set<string>> {
-  const { data, error } = await supabase.from('hidden_bookings').select('booking_id').eq('user_id', userId);
-  if (error) throw error;
-  return new Set(data.map((row) => row.booking_id));
-}
-
 export async function hideBooking(bookingId: string, userId: string): Promise<void> {
   const { error } = await supabase.from('hidden_bookings').insert({ booking_id: bookingId, user_id: userId });
   if (error) throw error;

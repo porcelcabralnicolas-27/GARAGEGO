@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/money';
 import { listRecentTransactions, type WalletTransaction } from '@/features/profile/api';
 import { getOwnerStats } from '@/features/stats/api';
 import { queryKeys } from '@/lib/queryKeys';
+import { formatDateMonthName } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, shadows, spacing, useTheme } from '@/theme';
 
@@ -33,9 +34,6 @@ const TX_ICONS: Record<WalletTransaction['type'], keyof typeof Ionicons.glyphMap
   earning: 'cash-outline',
 };
 
-function formatTxDate(iso: string) {
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 export default function OwnerDashboardScreen() {
   const router = useRouter();
@@ -165,7 +163,7 @@ export default function OwnerDashboardScreen() {
                 </View>
                 <View style={styles.txBody}>
                   <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{TX_LABELS[tx.type]}</Text>
-                  <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{formatTxDate(tx.createdAt)}</Text>
+                  <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{formatDateMonthName(tx.createdAt)}</Text>
                 </View>
                 <Text
                   style={[

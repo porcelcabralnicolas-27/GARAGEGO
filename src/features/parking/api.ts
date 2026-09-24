@@ -1,5 +1,6 @@
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { guessImageContentType } from '@/lib/imageMime';
+import { toPage, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
 import {
@@ -63,16 +64,48 @@ export type ParkingSearchFilters = {
   minRating?: number | null;
 };
 
-export async function searchParkingLots(filters: ParkingSearchFilters): Promise<ParkingLotWithDistance[]> {
+export const SEARCH_PAGE_SIZE = 20;
+
+/** Cursor de la búsqueda: el orden es (distancia, id) ascendente. */
+export type SearchCursor = { distanceKm: number; id: string };
+
+async function runSearch(filters: ParkingSearchFilters, limit: number, cursor: SearchCursor | null) {
   const { data, error } = await supabase.rpc('search_parking_lots', {
     p_lat: filters.latitude,
     p_lng: filters.longitude,
     p_radius_km: filters.radiusKm ?? 5,
     p_max_price: filters.maxPrice ?? null,
     p_min_rating: filters.minRating ?? null,
+    p_limit: limit,
+    p_cursor_distance: cursor?.distanceKm ?? null,
+    p_cursor_id: cursor?.id ?? null,
   });
   if (error) throw error;
-  return data.map((row) => ({ ...mapParkingLotRow(row), distanceKm: row.distance_km }));
+  return data.map((row): ParkingLotWithDistance => ({ ...mapParkingLotRow(row), distanceKm: row.distance_km }));
+}
+
+/**
+ * Todas las cocheras cercanas de una vez, para los pines del mapa: el servidor corta en 200 y en
+ * 25 km (0055/0059), que es lo que entra razonablemente en pantalla.
+ */
+export async function searchParkingLots(filters: ParkingSearchFilters): Promise<ParkingLotWithDistance[]> {
+  return runSearch(filters, 200, null);
+}
+
+/** Una página de resultados, de la más cercana a la más lejana, para la lista de resultados. */
+export async function searchParkingLotsPage(
+  filters: ParkingSearchFilters,
+  cursor: SearchCursor | null = null
+): Promise<Page<ParkingLotWithDistance, SearchCursor>> {
+  const items = await runSearch(filters, SEARCH_PAGE_SIZE, cursor);
+  return toPage(items, SEARCH_PAGE_SIZE, (last) => ({ distanceKm: last.distanceKm, id: last.id }));
+}
+
+/** Nombre del propietario, para la ficha pública. Va aparte para pedirlo en paralelo con el lote. */
+export async function getParkingLotOwnerName(parkingLotId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('parking_lot_owner_name', { p_parking_lot_id: parkingLotId });
+  if (error) throw error;
+  return data;
 }
 
 export async function listMyParkingLots(ownerId: string): Promise<ParkingLot[]> {

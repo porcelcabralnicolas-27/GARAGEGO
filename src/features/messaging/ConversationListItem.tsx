@@ -2,13 +2,8 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import type { ConversationThread } from '@/features/messaging/types';
+import { formatDayMonth } from '@/lib/time';
 import { radius, spacing, useTheme } from '@/theme';
-
-function formatTime(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-}
 
 export function ConversationListItem({
   thread,
@@ -29,7 +24,7 @@ export function ConversationListItem({
           {thread.otherPartyName}
         </Text>
         <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>
-          {formatTime(thread.lastMessageAt)}
+          {thread.lastMessageAt ? formatDayMonth(thread.lastMessageAt) : ''}
         </Text>
       </View>
 

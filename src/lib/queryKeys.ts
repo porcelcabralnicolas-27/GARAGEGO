@@ -11,9 +11,6 @@ import type { NotificationAudience } from '@/features/notifications/types';
  * Tenerlas acá y no escritas a mano en cada pantalla evita el error clásico de React Query:
  * invalidar con una clave que no coincide exactamente con la que usó el `useQuery`, y que la
  * pantalla se quede mostrando datos viejos sin que nadie se dé cuenta.
- *
- * Por ahora las usan las pantallas migradas en el piloto (notificaciones y vehículos). Las
- * demás siguen con `useEffect` manual: se van a ir migrando de a poco, con este mismo patrón.
  */
 export const queryKeys = {
   bookings: {
@@ -22,6 +19,7 @@ export const queryKeys = {
     receivedList: (ownerId: string) => ['bookings', 'receivedList', ownerId] as const,
     myHistory: (userId: string) => ['bookings', 'myHistory', userId] as const,
     receivedHistory: (ownerId: string) => ['bookings', 'receivedHistory', ownerId] as const,
+    detail: (bookingId: string) => ['bookings', 'detail', bookingId] as const,
   },
   notifications: {
     all: ['notifications'] as const,
@@ -33,19 +31,36 @@ export const queryKeys = {
     all: ['vehicles'] as const,
     list: (userId: string) => ['vehicles', 'list', userId] as const,
     images: (vehicleIds: string[]) => ['vehicles', 'images', [...vehicleIds].sort()] as const,
+    detail: (vehicleId: string) => ['vehicles', 'detail', vehicleId] as const,
   },
   parkingLots: {
     all: ['parkingLots'] as const,
     ownList: (ownerId: string) => ['parkingLots', 'ownList', ownerId] as const,
     coverImages: (lotIds: string[]) => ['parkingLots', 'coverImages', [...lotIds].sort()] as const,
+    detail: (lotId: string) => ['parkingLots', 'detail', lotId] as const,
+    publicDetail: (lotId: string) => ['parkingLots', 'publicDetail', lotId] as const,
+    ratings: (lotId: string) => ['parkingLots', 'ratings', lotId] as const,
+    search: (filters: { latitude: number; longitude: number; radiusKm: number; maxPrice: number | null; minRating: number | null }) =>
+      ['parkingLots', 'search', filters] as const,
+    nearby: (filters: { latitude: number; longitude: number; radiusKm: number; maxPrice: number | null; minRating: number | null }) =>
+      ['parkingLots', 'nearby', filters] as const,
+    bookingAvailability: (lotId: string) => ['parkingLots', 'bookingAvailability', lotId] as const,
+    images: (lotId: string) => ['parkingLots', 'images', lotId] as const,
+    availability: (lotId: string) => ['parkingLots', 'availability', lotId] as const,
   },
   tickets: {
     all: ['tickets'] as const,
     list: (userId: string) => ['tickets', 'list', userId] as const,
+    thread: (ticketId: string) => ['tickets', 'thread', ticketId] as const,
+    messages: (ticketId: string) => ['tickets', 'messages', ticketId] as const,
+    targets: (userId: string, role: string) => ['tickets', 'targets', userId, role] as const,
   },
   stats: {
     all: ['stats'] as const,
     owner: (ownerId: string) => ['stats', 'owner', ownerId] as const,
+  },
+  settings: {
+    demoTopup: ['settings', 'demoTopup'] as const,
   },
   wallet: {
     all: ['wallet'] as const,
@@ -55,5 +70,8 @@ export const queryKeys = {
     all: ['messaging'] as const,
     clientThreads: (userId: string) => ['messaging', 'clientThreads', userId] as const,
     ownerThreads: (ownerId: string) => ['messaging', 'ownerThreads', ownerId] as const,
+    thread: (userId: string, role: string, parkingLotId: string, peerId: string) =>
+      ['messaging', 'thread', userId, role, parkingLotId, peerId] as const,
+    threadMessages: (bookingIds: string[]) => ['messaging', 'threadMessages', [...bookingIds].sort()] as const,
   },
 } as const;

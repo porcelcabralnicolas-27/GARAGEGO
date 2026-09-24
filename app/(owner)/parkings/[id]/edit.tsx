@@ -1,5 +1,6 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -10,25 +11,22 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { deleteParkingLot, getParkingErrorMessage, getParkingLot } from '@/features/parking/api';
 import { ParkingListingWizard } from '@/features/parking/ParkingListingWizard';
 import type { ParkingLot } from '@/features/parking/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { spacing, useTheme } from '@/theme';
 
 export default function EditParkingScreen() {
   const { colors, typography } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [lot, setLot] = useState<ParkingLot | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { data: lot, isError } = useQuery({
+    queryKey: queryKeys.parkingLots.detail(id),
+    queryFn: () => getParkingLot(id),
+  });
 
-  useEffect(() => {
-    getParkingLot(id)
-      .then(setLot)
-      .catch(() => setErrorMessage('No se pudo cargar la publicación.'));
-  }, [id]);
-
-  if (errorMessage) {
+  if (isError) {
     return (
       <Screen>
-        <Banner message={errorMessage} />
+        <Banner message="No se pudo cargar la publicación." />
       </Screen>
     );
   }
@@ -54,6 +52,7 @@ export default function EditParkingScreen() {
 function RejectedListingNotice({ lot }: { lot: ParkingLot }) {
   const router = useRouter();
   const { colors, typography } = useTheme();
+  const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,6 +61,7 @@ function RejectedListingNotice({ lot }: { lot: ParkingLot }) {
     setIsDeleting(true);
     try {
       await deleteParkingLot(lot.id);
+      queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
       router.replace('/(owner)/parkings');
     } catch (error) {
       setErrorMessage(getParkingErrorMessage(error));

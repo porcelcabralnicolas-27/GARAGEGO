@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
@@ -19,7 +21,7 @@ import { markTicketNotificationsAsRead } from '@/features/notifications/api';
 import {
   getSupportErrorMessage,
   getTicket,
-  getTicketMessages,
+  getTicketMessagesPage,
   sendTicketMessage,
   subscribeToTicketMessages,
 } from '@/features/support/api';
@@ -29,6 +31,9 @@ import {
   type SupportMessage,
   type SupportTicket,
 } from '@/features/support/types';
+import { appendNewest, newestFirst, type MessageCursor, type Page } from '@/lib/pagination';
+import { queryKeys } from '@/lib/queryKeys';
+import { formatDayMonthTime } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -37,14 +42,7 @@ const LIST_HREF = {
   owner: '/(owner)/profile/support',
 } as const;
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+type MessagePages = InfiniteData<Page<SupportMessage, MessageCursor>, MessageCursor | null>;
 
 export function SupportTicketThreadScreen({
   role,
@@ -55,38 +53,44 @@ export function SupportTicketThreadScreen({
 }) {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
 
-  const [ticket, setTicket] = useState<SupportTicket | null>(null);
-  const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [draft, setDraft] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const listRef = useRef<FlatList<SupportMessage>>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [t, m] = await Promise.all([getTicket(ticketId), getTicketMessages(ticketId)]);
-      setTicket(t);
-      setMessages(m);
-    } catch (error) {
-      setErrorMessage(getSupportErrorMessage(error));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [ticketId]);
+  const ticketKey = useMemo(() => queryKeys.tickets.thread(ticketId), [ticketId]);
+  const messagesKey = useMemo(() => queryKeys.tickets.messages(ticketId), [ticketId]);
+
+  // Con la pantalla cerrada no hay suscripción, así que lo que haya en cache puede estar
+  // incompleto: al volver a entrar se muestra al instante y se completa con un refetch.
+  const { data: ticket = null, error: ticketError } = useQuery({
+    queryKey: ticketKey,
+    queryFn: () => getTicket(ticketId),
+    staleTime: 0,
+  });
+
+  // Los mensajes se paginan hacia atrás: primero los más recientes, y los anteriores al subir.
+  const messagesQuery = useInfiniteQuery({
+    queryKey: messagesKey,
+    queryFn: ({ pageParam }) => getTicketMessagesPage(ticketId, pageParam),
+    initialPageParam: null as MessageCursor | null,
+    getNextPageParam: (page) => page.nextCursor,
+    staleTime: 0,
+  });
+  const messages = newestFirst(messagesQuery.data);
 
   useEffect(() => {
-    void load();
-    const unsubscribe = subscribeToTicketMessages(ticketId, (message) => {
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+    return subscribeToTicketMessages(ticketId, (message) => {
+      queryClient.setQueryData<MessagePages>(messagesKey, (current) => appendNewest(current, message));
       if (message.authorRole === 'admin') {
         // Puede haber cambiado el estado (reabierto no aplica acá) o llegado una respuesta.
-        getTicket(ticketId).then(setTicket).catch(() => {});
+        getTicket(ticketId)
+          .then((fresh) => queryClient.setQueryData<SupportTicket>(ticketKey, fresh))
+          .catch(() => {});
       }
     });
-    return unsubscribe;
-  }, [ticketId, load]);
+  }, [ticketId, queryClient, ticketKey, messagesKey]);
 
   // Al abrir (y al volver a enfocar) se marcan como leídas las notificaciones de este ticket.
   useFocusEffect(
@@ -94,12 +98,6 @@ export function SupportTicketThreadScreen({
       if (profile) void markTicketNotificationsAsRead(profile.id, ticketId).catch(() => {});
     }, [profile, ticketId])
   );
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-    }
-  }, [messages.length]);
 
   const handleSend = async () => {
     const body = draft.trim();
@@ -109,8 +107,11 @@ export function SupportTicketThreadScreen({
     setDraft('');
     try {
       const message = await sendTicketMessage({ ticketId, authorId: profile.id, body });
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-      if (ticket?.status === 'resolved') setTicket({ ...ticket, status: 'open' });
+      queryClient.setQueryData<MessagePages>(messagesKey, (current) => appendNewest(current, message));
+      // Responder un ticket resuelto lo reabre del lado del servidor; se refleja igual acá.
+      queryClient.setQueryData<SupportTicket>(ticketKey, (current) =>
+        current?.status === 'resolved' ? { ...current, status: 'open' } : current
+      );
     } catch (error) {
       setErrorMessage(`No se pudo enviar: ${getSupportErrorMessage(error)}`);
       setDraft(body);
@@ -119,11 +120,15 @@ export function SupportTicketThreadScreen({
     }
   };
 
+  const loadError = ticketError ?? messagesQuery.error;
+  const visibleError = errorMessage ?? (loadError ? getSupportErrorMessage(loadError) : null);
+  const isLoading = messagesQuery.isLoading;
+
   return (
     <Screen>
       <ScreenHeader title={ticket ? ticket.code : 'Consulta'} backHref={LIST_HREF[role]} />
 
-      {errorMessage ? <Banner message={errorMessage} /> : null}
+      {visibleError ? <Banner message={visibleError} /> : null}
 
       {ticket ? (
         <View style={[styles.header, { borderColor: colors.outline }]}>
@@ -147,13 +152,19 @@ export function SupportTicketThreadScreen({
           </Text>
         ) : null}
 
+        {/* Invertida: el mensaje más nuevo queda abajo sin tener que scrollear a mano, y al
+            llegar arriba de todo se cargan los anteriores. */}
         <FlatList
-          ref={listRef}
+          inverted
           data={messages}
           keyExtractor={(item) => item.id}
           style={styles.flex}
           contentContainerStyle={{ paddingVertical: spacing.md }}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          onEndReached={() => {
+            if (messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage) messagesQuery.fetchNextPage();
+          }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={<LoadMoreFooter isFetching={messagesQuery.isFetchingNextPage} />}
           renderItem={({ item }) => {
             const mine = item.authorRole === 'user';
             return (
@@ -181,7 +192,7 @@ export function SupportTicketThreadScreen({
                       { color: mine ? colors.onPrimary : colors.onSurfaceVariant },
                     ]}
                   >
-                    {formatTime(item.createdAt)}
+                    {formatDayMonthTime(item.createdAt)}
                   </Text>
                 </View>
               </View>

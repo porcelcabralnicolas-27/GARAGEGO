@@ -1,4 +1,5 @@
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
+import { olderThanFilter, toPage, type MessageCursor, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
 import type {
@@ -10,10 +11,8 @@ import type {
   TicketTargetOption,
 } from './types';
 
-// Tope defensivo para listas y mensajes: sin esto, una cuenta con mucho historial trae todo en
-// cada carga. No hay paginación real (sin "cargar más" en la UI), pero corta el peor caso.
-const LIST_LIMIT = 200;
-const MESSAGES_LIMIT = 300;
+const TICKETS_PAGE_SIZE = 20;
+const MESSAGES_PAGE_SIZE = 50;
 
 type TicketRow = {
   id: string;
@@ -65,68 +64,28 @@ function mapMessageRow(row: {
   };
 }
 
-/** Tickets del usuario, con el nombre de la cochera relacionada y un preview del último mensaje. */
-export async function listMyTickets(userId: string): Promise<SupportTicketListItem[]> {
-  const { data: tickets, error } = await supabase
-    .from('support_tickets')
-    .select('*')
-    .eq('reporter_id', userId)
-    .order('last_message_at', { ascending: false })
-    .limit(LIST_LIMIT);
-  if (error) throw error;
-  if (tickets.length === 0) return [];
+export type TicketCursor = { lastMessageAt: string; id: string };
 
-  const ticketIds = tickets.map((t) => t.id);
-  const bookingIds = [...new Set(tickets.map((t) => t.related_booking_id).filter((v): v is string => !!v))];
-
-  const [bookingsRes, messagesRes] = await Promise.all([
-    bookingIds.length
-      ? supabase.from('bookings').select('id, parking_lot_id').in('id', bookingIds)
-      : Promise.resolve({ data: [] as { id: string; parking_lot_id: string }[], error: null }),
-    supabase
-      .from('support_ticket_messages')
-      .select('ticket_id, body, created_at')
-      .in('ticket_id', ticketIds)
-      .order('created_at', { ascending: false })
-      // Solo se necesita el más nuevo por ticket; el tope es generoso a propósito (evita el
-      // caso patológico de traer TODO el historial de mensajes de TODOS los tickets del
-      // usuario) sin arriesgarse a cortar antes de llegar al mensaje de algún ticket.
-      .limit(ticketIds.length * 20),
-  ]);
-  if (bookingsRes.error) throw bookingsRes.error;
-  if (messagesRes.error) throw messagesRes.error;
-
-  const lotIdByBooking = new Map((bookingsRes.data ?? []).map((b) => [b.id, b.parking_lot_id]));
-  const lotIds = [
-    ...new Set([
-      ...tickets.map((t) => t.related_parking_lot_id).filter((v): v is string => !!v),
-      ...lotIdByBooking.values(),
-    ]),
-  ];
-
-  const lotNameById = new Map<string, string>();
-  if (lotIds.length) {
-    const { data: lots, error: lotsError } = await supabase
-      .from('parking_lots')
-      .select('id, name')
-      .in('id', lotIds);
-    if (lotsError) throw lotsError;
-    for (const lot of lots) lotNameById.set(lot.id, lot.name);
-  }
-
-  const lastMessageByTicket = new Map<string, string>();
-  for (const m of messagesRes.data ?? []) {
-    if (!lastMessageByTicket.has(m.ticket_id)) lastMessageByTicket.set(m.ticket_id, m.body);
-  }
-
-  return tickets.map((row) => {
-    const lotId = row.related_parking_lot_id ?? (row.related_booking_id ? lotIdByBooking.get(row.related_booking_id) : null);
-    return {
-      ...mapTicketRow(row),
-      contextLabel: lotId ? lotNameById.get(lotId) ?? null : null,
-      lastMessagePreview: lastMessageByTicket.get(row.id) ?? null,
-    };
+/**
+ * Una página de los tickets del usuario, con el nombre de la cochera relacionada y el último
+ * mensaje (list_my_tickets, 0059). Antes eran tres consultas encadenadas.
+ */
+export async function listMyTicketsPage(
+  cursor: TicketCursor | null = null
+): Promise<Page<SupportTicketListItem, TicketCursor>> {
+  const { data, error } = await supabase.rpc('list_my_tickets', {
+    p_limit: TICKETS_PAGE_SIZE,
+    p_cursor_last_message_at: cursor?.lastMessageAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
   });
+  if (error) throw error;
+
+  const items = data.map((row) => ({
+    ...mapTicketRow(row),
+    contextLabel: row.context_label,
+    lastMessagePreview: row.last_message_preview,
+  }));
+  return toPage(items, TICKETS_PAGE_SIZE, (last) => ({ lastMessageAt: last.lastMessageAt, id: last.id }));
 }
 
 export async function getTicket(ticketId: string): Promise<SupportTicket> {
@@ -135,17 +94,28 @@ export async function getTicket(ticketId: string): Promise<SupportTicket> {
   return mapTicketRow(data);
 }
 
-export async function getTicketMessages(ticketId: string): Promise<SupportMessage[]> {
-  // Se pide en orden descendente con tope y se da vuelta: así, si el hilo es larguísimo, lo
-  // que se corta es lo más viejo y no lo más reciente.
-  const { data, error } = await supabase
+/**
+ * Una página de mensajes del ticket, hacia atrás: sin cursor, los más recientes; con cursor, los
+ * anteriores al mensaje más viejo ya cargado. Cada página viene en orden cronológico.
+ */
+export async function getTicketMessagesPage(
+  ticketId: string,
+  before: MessageCursor | null = null
+): Promise<Page<SupportMessage, MessageCursor>> {
+  let query = supabase
     .from('support_ticket_messages')
     .select('*')
     .eq('ticket_id', ticketId)
     .order('created_at', { ascending: false })
-    .limit(MESSAGES_LIMIT);
+    .order('id', { ascending: false })
+    .limit(MESSAGES_PAGE_SIZE);
+  if (before) query = query.or(olderThanFilter(before));
+  const { data, error } = await query;
   if (error) throw error;
-  return data.map(mapMessageRow).reverse();
+
+  const newestFirst = data.map(mapMessageRow);
+  const page = toPage(newestFirst, MESSAGES_PAGE_SIZE, (oldest) => ({ createdAt: oldest.createdAt, id: oldest.id }));
+  return { ...page, items: newestFirst.reverse() };
 }
 
 export type CreateTicketInput = {

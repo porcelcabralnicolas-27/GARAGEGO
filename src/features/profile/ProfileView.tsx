@@ -13,6 +13,7 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { signOut } from '@/features/auth/api';
 import { getTopupErrorMessage, topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
+import { DEMO_TOPUP_AMOUNTS, useDemoTopupEnabled } from '@/features/profile/useDemoTopup';
 import { editProfileSchema, type EditProfileFormValues } from '@/features/profile/schemas';
 import { formatMoney } from '@/lib/money';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -48,6 +49,7 @@ export function ProfileView() {
   const walletBalance = useAuthStore((s) => s.walletBalance);
   const setProfile = useAuthStore((s) => s.setProfile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
+  const demoTopupEnabled = useDemoTopupEnabled();
 
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -250,23 +252,28 @@ export function ProfileView() {
                   </Text>
                 </View>
 
-                <Text style={[typography.label, styles.topUpNote, { color: colors.onSurfaceVariant }]}>
-                  Recarga de prueba (todavía no hay pasarela de pago real)
-                </Text>
+                {demoTopupEnabled ? (
+                  <>
+                    <Text style={[typography.label, styles.topUpNote, { color: colors.onSurfaceVariant }]}>
+                      Recarga de prueba: saldo ficticio, sin valor en dinero (todavía no hay pasarela de
+                      pago real)
+                    </Text>
 
-                <View style={styles.topUpRow}>
-                  {[1000, 3000, 5000].map((amount) => (
-                    <Button
-                      key={amount}
-                      label={`+ ${formatMoney(amount)}`}
-                      size="compact"
-                      variant="outlined"
-                      onPress={() => handleTopUp(amount)}
-                      loading={toppingUpAmount === amount}
-                      disabled={toppingUpAmount !== null}
-                    />
-                  ))}
-                </View>
+                    <View style={styles.topUpRow}>
+                      {DEMO_TOPUP_AMOUNTS.map((amount) => (
+                        <Button
+                          key={amount}
+                          label={`+ ${formatMoney(amount)}`}
+                          size="compact"
+                          variant="outlined"
+                          onPress={() => handleTopUp(amount)}
+                          loading={toppingUpAmount === amount}
+                          disabled={toppingUpAmount !== null}
+                        />
+                      ))}
+                    </View>
+                  </>
+                ) : null}
               </>
             ) : null}
 

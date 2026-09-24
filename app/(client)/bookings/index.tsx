@@ -11,9 +11,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { cancelBooking, getBookingErrorMessage, listMyBookings } from '@/features/booking/api';
+import { cancelBooking, getBookingErrorMessage, listClientBookingsPage } from '@/features/booking/api';
 import type { ClientBookingItem } from '@/features/booking/types';
 import { queryKeys } from '@/lib/queryKeys';
+import { businessInstant } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
@@ -30,7 +31,7 @@ const COLLAPSED_LIMIT = 3;
  */
 function isCancelLocked(booking: ClientBookingItem, now: Date): boolean {
   if (booking.status !== 'confirmed') return false;
-  const startsAt = new Date(`${booking.date}T${booking.startTime}`);
+  const startsAt = businessInstant(booking.date, booking.startTime);
   return startsAt.getTime() - now.getTime() < CANCEL_LOCK_MS;
 }
 
@@ -91,7 +92,7 @@ export default function MyBookingsScreen() {
     refetch,
   } = useQuery({
     queryKey: queryKeys.bookings.myList(userId ?? ''),
-    queryFn: () => listMyBookings(userId as string),
+    queryFn: async () => (await listClientBookingsPage('active')).items,
     enabled: Boolean(userId),
   });
 

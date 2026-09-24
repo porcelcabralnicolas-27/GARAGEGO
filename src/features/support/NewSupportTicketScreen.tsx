@@ -1,5 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -16,6 +17,7 @@ import {
   type TicketCategory,
   type TicketTargetOption,
 } from '@/features/support/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -23,6 +25,8 @@ const LIST_HREF = {
   client: '/(client)/profile/support',
   owner: '/(owner)/profile/support',
 } as const;
+
+const NO_TARGETS: TicketTargetOption[] = [];
 
 export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
   const router = useRouter();
@@ -35,18 +39,19 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
   const [body, setBody] = useState('');
   const [targetKey, setTargetKey] = useState<string | null>(null);
 
-  const [targets, setTargets] = useState<TicketTargetOption[]>([]);
-  const [isLoadingTargets, setIsLoadingTargets] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!profile) return;
-    listTicketTargets(role, profile.id)
-      .then(setTargets)
-      .catch((error) => setErrorMessage(getSupportErrorMessage(error)))
-      .finally(() => setIsLoadingTargets(false));
-  }, [profile, role]);
+  const {
+    data: targets = NO_TARGETS,
+    isPending: isLoadingTargets,
+    error: targetsError,
+  } = useQuery({
+    queryKey: queryKeys.tickets.targets(profile?.id ?? '', role),
+    queryFn: () => listTicketTargets(role, profile?.id as string),
+    enabled: Boolean(profile),
+  });
+  const visibleError = errorMessage ?? (targetsError ? getSupportErrorMessage(targetsError) : null);
 
   const target = useMemo(() => targets.find((t) => t.key === targetKey) ?? null, [targets, targetKey]);
   const canSubmit = subject.trim().length > 0 && body.trim().length >= 10 && target !== null;
@@ -80,7 +85,7 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader title="Nueva consulta" backHref={LIST_HREF[role]} />
 
-        {errorMessage ? <Banner message={errorMessage} /> : null}
+        {visibleError ? <Banner message={visibleError} /> : null}
 
         <Text style={[typography.label, styles.fieldLabel, { color: colors.onSurfaceVariant }]}>
           CATEGORÍA

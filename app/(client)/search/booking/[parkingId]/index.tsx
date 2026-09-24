@@ -1,7 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { BusinessTimeNote } from '@/components/booking/BusinessTimeNote';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
@@ -13,26 +15,23 @@ import {
   generateStartTimeOptions,
   getFreeWindowsForDate,
   listAvailableDates,
-  toDateString,
 } from '@/features/booking/availability';
 import { computeBookingPrice } from '@/features/booking/pricing';
 import { getParkingLot, getAvailabilityExceptions, getRecurringAvailability } from '@/features/parking/api';
 import type { AvailabilityException, ParkingLot, RecurringAvailability } from '@/features/parking/types';
 import { listMyVehicles } from '@/features/vehicle/api';
-import type { Vehicle } from '@/features/vehicle/types';
 import { formatMoney, formatPricePerHour } from '@/lib/money';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
+import { businessDate, formatCalendarDayShort } from '@/lib/time';
 import { useTheme } from '@/theme';
 
-const DAY_SHORT_LABELS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-
-function formatDateLabel(dateStr: string): string {
-  const date = new Date(`${dateStr}T00:00:00`);
-  const day = DAY_SHORT_LABELS[date.getDay()];
-  const dd = date.getDate().toString().padStart(2, '0');
-  const mm = (date.getMonth() + 1).toString().padStart(2, '0');
-  return `${day} ${dd}/${mm}`;
-}
+type AvailabilityData = {
+  lot: ParkingLot;
+  recurring: RecurringAvailability[];
+  exceptions: AvailabilityException[];
+  booked: BookedInterval[];
+};
 
 export default function BookingScreen() {
   const router = useRouter();
@@ -41,12 +40,27 @@ export default function BookingScreen() {
   const profile = useAuthStore((s) => s.profile);
   const walletBalance = useAuthStore((s) => s.walletBalance);
 
-  const [lot, setLot] = useState<ParkingLot | null>(null);
-  const [recurring, setRecurring] = useState<RecurringAvailability[]>([]);
-  const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
-  const [booked, setBooked] = useState<BookedInterval[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: availability, isError: loadError } = useQuery({
+    queryKey: queryKeys.parkingLots.bookingAvailability(parkingId),
+    queryFn: async (): Promise<AvailabilityData> => {
+      const [lot, recurring, exceptions, booked] = await Promise.all([
+        getParkingLot(parkingId),
+        getRecurringAvailability(parkingId),
+        getAvailabilityExceptions(parkingId),
+        getBookedIntervals(parkingId, businessDate()),
+      ]);
+      return { lot, recurring, exceptions, booked };
+    },
+    // Los horarios ocupados cambian con cada reserva de cualquier conductor: siempre frescos.
+    staleTime: 0,
+  });
+  const { lot = null, recurring = [], exceptions = [], booked = [] } = availability ?? {};
+
+  const { data: vehicles = [] } = useQuery({
+    queryKey: queryKeys.vehicles.list(profile?.id ?? ''),
+    queryFn: () => listMyVehicles(profile?.id as string),
+    enabled: Boolean(profile),
+  });
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
@@ -55,24 +69,8 @@ export default function BookingScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
-    Promise.all([
-      getParkingLot(parkingId),
-      getRecurringAvailability(parkingId),
-      getAvailabilityExceptions(parkingId),
-      getBookedIntervals(parkingId, toDateString(new Date())),
-      listMyVehicles(profile.id),
-    ])
-      .then(([lotResult, recurringResult, exceptionsResult, bookedResult, vehiclesResult]) => {
-        setLot(lotResult);
-        setRecurring(recurringResult);
-        setExceptions(exceptionsResult);
-        setBooked(bookedResult);
-        setVehicles(vehiclesResult);
-        if (vehiclesResult.length === 1) setSelectedVehicleId(vehiclesResult[0].id);
-      })
-      .catch(() => setLoadError('No se pudo cargar la disponibilidad de este estacionamiento.'));
-  }, [parkingId, profile]);
+    if (vehicles.length === 1 && selectedVehicleId === null) setSelectedVehicleId(vehicles[0].id);
+  }, [vehicles, selectedVehicleId]);
 
   const availableDates = useMemo(
     () => listAvailableDates(recurring, exceptions, booked, 30),
@@ -139,7 +137,7 @@ export default function BookingScreen() {
           title="Reservar"
           backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
         />
-        <Banner message={loadError} />
+        <Banner message="No se pudo cargar la disponibilidad de este estacionamiento." />
       </Screen>
     );
   }
@@ -170,13 +168,15 @@ export default function BookingScreen() {
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
+        <BusinessTimeNote />
+
         {availableDates.length === 0 ? (
           <Banner message="Este estacionamiento no tiene horarios disponibles en los próximos 30 días." />
         ) : (
           <>
             <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Fecha</Text>
             <ChipSelect
-              options={availableDates.map((d) => ({ value: d, label: formatDateLabel(d) }))}
+              options={availableDates.map((d) => ({ value: d, label: formatCalendarDayShort(d) }))}
               value={selectedDate ?? ''}
               onChange={handleSelectDate}
             />

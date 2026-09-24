@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -21,6 +22,7 @@ import {
 import { ImageManager } from '@/features/parking/ImageManager';
 import { ParkingForm } from '@/features/parking/ParkingForm';
 import type { ParkingLot } from '@/features/parking/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -108,6 +110,11 @@ export function ParkingListingWizard(props: WizardProps) {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
+
+  // Sin esto, volver a abrir la edición dentro del staleTime mostraba el lote en cache de antes
+  // de guardar (nombre, precio, estado de moderación).
+  const invalidateLots = () => queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
 
   const isEdit = props.mode === 'edit';
   const [step, setStep] = useState(1);
@@ -145,6 +152,7 @@ export function ParkingListingWizard(props: WizardProps) {
       const lot = await createParkingLot(profile.id, input, { isActive: false });
       setLotId(lot.id);
     }
+    invalidateLots();
     setStep(2);
   };
 
@@ -153,6 +161,7 @@ export function ParkingListingWizard(props: WizardProps) {
     if (isEdit) {
       // Cubre el caso de editar solo fotos o disponibilidad, sin pasar por "Guardar y seguir".
       await maybeResubmit(lotId).catch(() => undefined);
+      invalidateLots();
       router.replace('/(owner)/parkings');
       return;
     }
@@ -160,6 +169,7 @@ export function ParkingListingWizard(props: WizardProps) {
     setErrorMessage(null);
     try {
       await setParkingLotActive(lotId, true);
+      invalidateLots();
       router.replace('/(owner)/parkings');
     } catch {
       setErrorMessage(
@@ -184,6 +194,7 @@ export function ParkingListingWizard(props: WizardProps) {
     try {
       await setParkingLotActive(lotId, !isActive);
       setIsActive(!isActive);
+      invalidateLots();
       setConfirmToggle(false);
     } catch {
       setErrorMessage('No se pudo cambiar el estado de la publicación.');
@@ -199,6 +210,7 @@ export function ParkingListingWizard(props: WizardProps) {
     try {
       await deleteParkingLot(lotId);
       setConfirmDelete(false);
+      invalidateLots();
       router.replace('/(owner)/parkings');
     } catch (error) {
       setErrorMessage(getParkingErrorMessage(error));

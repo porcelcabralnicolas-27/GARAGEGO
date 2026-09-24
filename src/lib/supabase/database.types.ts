@@ -466,6 +466,147 @@ export type Database = {
         Args: { p_booking_id: string };
         Returns: undefined;
       };
+      demo_topup_enabled: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      // Listados paginados por cursor (0059).
+      list_client_bookings: {
+        Args: {
+          p_scope: 'active' | 'history';
+          p_limit?: number;
+          p_cursor_date?: string | null;
+          p_cursor_start?: string | null;
+          p_cursor_id?: string | null;
+        };
+        Returns: {
+          id: string;
+          user_id: string;
+          parking_lot_id: string;
+          vehicle_id: string | null;
+          date: string;
+          start_time: string;
+          end_time: string;
+          status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+          total_price: number;
+          actual_start_at: string | null;
+          actual_end_at: string | null;
+          overtime_minutes: number;
+          overtime_charge: number;
+          created_at: string;
+          parking_lot_name: string | null;
+          parking_lot_address: string | null;
+          is_rated: boolean;
+        }[];
+      };
+      get_client_booking: {
+        Args: { p_booking_id: string };
+        Returns: Database['public']['Functions']['list_client_bookings']['Returns'];
+      };
+      list_owner_bookings: {
+        Args: {
+          p_scope: 'active' | 'history';
+          p_limit?: number;
+          p_cursor_date?: string | null;
+          p_cursor_start?: string | null;
+          p_cursor_id?: string | null;
+        };
+        Returns: {
+          id: string;
+          user_id: string;
+          parking_lot_id: string;
+          vehicle_id: string | null;
+          date: string;
+          start_time: string;
+          end_time: string;
+          status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+          total_price: number;
+          actual_start_at: string | null;
+          actual_end_at: string | null;
+          overtime_minutes: number;
+          overtime_charge: number;
+          created_at: string;
+          parking_lot_name: string | null;
+          client_name: string | null;
+          vehicle_plate: string | null;
+          vehicle_brand: string | null;
+          vehicle_model: string | null;
+        }[];
+      };
+      list_notifications: {
+        Args: {
+          p_audience: 'client' | 'owner';
+          p_limit?: number;
+          p_cursor_created?: string | null;
+          p_cursor_id?: string | null;
+        };
+        Returns: Database['public']['Tables']['notifications']['Row'][];
+      };
+      list_parking_lot_ratings: {
+        Args: {
+          p_parking_lot_id: string;
+          p_limit?: number;
+          p_cursor_created?: string | null;
+          p_cursor_id?: string | null;
+        };
+        Returns: {
+          id: string;
+          booking_id: string;
+          user_id: string;
+          parking_lot_id: string;
+          score: number;
+          comment: string | null;
+          created_at: string;
+          author_name: string | null;
+        }[];
+      };
+      parking_lot_owner_name: {
+        Args: { p_parking_lot_id: string };
+        Returns: string | null;
+      };
+      list_my_tickets: {
+        Args: {
+          p_limit?: number;
+          p_cursor_last_message_at?: string | null;
+          p_cursor_id?: string | null;
+        };
+        Returns: {
+          id: string;
+          code: string;
+          reporter_id: string;
+          reporter_role: 'client' | 'owner';
+          subject: string;
+          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          status: 'open' | 'resolved';
+          related_booking_id: string | null;
+          related_parking_lot_id: string | null;
+          created_at: string;
+          updated_at: string;
+          last_message_at: string;
+          context_label: string | null;
+          last_message_preview: string | null;
+        }[];
+      };
+      list_conversations: {
+        Args: {
+          p_role: 'client' | 'owner';
+          p_limit?: number;
+          p_cursor_sort_at?: string | null;
+          p_cursor_lot?: string | null;
+          p_cursor_peer?: string | null;
+        };
+        Returns: {
+          parking_lot_id: string;
+          peer_id: string;
+          parking_lot_name: string | null;
+          other_party_name: string | null;
+          booking_ids: string[];
+          has_active_booking: boolean;
+          last_message: string | null;
+          last_message_at: string | null;
+          sort_at: string;
+        }[];
+      };
       search_parking_lots: {
         Args: {
           p_lat: number;
@@ -473,6 +614,9 @@ export type Database = {
           p_radius_km?: number;
           p_max_price?: number | null;
           p_min_rating?: number | null;
+          p_limit?: number;
+          p_cursor_distance?: number | null;
+          p_cursor_id?: string | null;
         };
         Returns: {
           id: string;

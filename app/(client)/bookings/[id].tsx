@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { BusinessTimeNote } from '@/components/booking/BusinessTimeNote';
 import { ProgressRing } from '@/components/booking/ProgressRing';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
@@ -18,8 +20,9 @@ import {
 } from '@/features/booking/api';
 import type { ClientBookingItem } from '@/features/booking/types';
 import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
-import { listMyRatedBookingIds } from '@/features/rating/api';
 import { formatMoney } from '@/lib/money';
+import { queryKeys } from '@/lib/queryKeys';
+import { businessInstant, formatCalendarDate, formatDateTime } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -28,10 +31,6 @@ const EARLY_WINDOW_MS = 15 * 60 * 1000;
 
 /** Cada cuánto se refresca el contador y el anillo de progreso. */
 const TICK_MS = 1000;
-
-function toLocalDate(date: string, time: string): Date {
-  return new Date(`${date}T${time}`);
-}
 
 /**
  * `2d 20h 06m` / `5h 30m` / `12m 30s` / `45s`.
@@ -76,32 +75,25 @@ export default function BookingSessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const profile = useAuthStore((s) => s.profile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
+  const queryClient = useQueryClient();
 
-  const [booking, setBooking] = useState<ClientBookingItem | null>(null);
-  const [isRated, setIsRated] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const bookingQueryKey = queryKeys.bookings.detail(id);
+  const {
+    data: booking,
+    isError: loadError,
+    refetch: refetchBooking,
+  } = useQuery({
+    queryKey: bookingQueryKey,
+    queryFn: () => getClientBooking(id),
+  });
+
+  const isRated = booking?.isRated ?? false;
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const [showRateDialog, setShowRateDialog] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-
-  const load = useCallback(() => {
-    getClientBooking(id)
-      .then(setBooking)
-      .catch(() => setLoadError('No se pudo cargar esta reserva.'));
-  }, [id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!profile) return;
-    listMyRatedBookingIds(profile.id)
-      .then((ids) => setIsRated(ids.has(id)))
-      .catch(() => {});
-  }, [profile, id]);
 
   // El reloj solo corre mientras hay algo que contar: una reserva ya finalizada o cancelada no
   // necesita repintarse cada segundo.
@@ -117,7 +109,7 @@ export default function BookingSessionScreen() {
     setErrorMessage(null);
     try {
       await startBooking(id);
-      load();
+      await refetchBooking();
     } catch (error) {
       setErrorMessage(getBookingErrorMessage(error));
     } finally {
@@ -137,7 +129,7 @@ export default function BookingSessionScreen() {
         );
       }
       reloadProfile();
-      load();
+      await refetchBooking();
     } catch (error) {
       setErrorMessage(getBookingErrorMessage(error));
     } finally {
@@ -149,7 +141,7 @@ export default function BookingSessionScreen() {
     return (
       <Screen>
         <ScreenHeader title="Reserva" backHref="/(client)/bookings" />
-        <Banner message={loadError} />
+        <Banner message="No se pudo cargar esta reserva." />
       </Screen>
     );
   }
@@ -163,8 +155,10 @@ export default function BookingSessionScreen() {
     );
   }
 
-  const startsAt = toLocalDate(booking.date, booking.startTime);
-  const endsAt = toLocalDate(booking.date, booking.endTime);
+  // La reserva está en hora de la cochera, igual que la valida `start_booking`: con la hora local
+  // del teléfono, alguien en otra zona veía mal el contador y el botón se habilitaba a destiempo.
+  const startsAt = businessInstant(booking.date, booking.startTime);
+  const endsAt = businessInstant(booking.date, booking.endTime);
   const isStarted = booking.actualStartAt !== null;
   const isActive = booking.status === 'confirmed' && isStarted;
   const isPending = booking.status === 'confirmed' && !isStarted;
@@ -186,7 +180,7 @@ export default function BookingSessionScreen() {
     <Card>
       <DetailRow label="Lugar" value={booking.parkingLotName} />
       <DetailRow label="Dirección" value={booking.parkingLotAddress} />
-      <DetailRow label="Fecha" value={booking.date} />
+      <DetailRow label="Fecha" value={formatCalendarDate(booking.date)} />
       <DetailRow label="Horario" value={`${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`} />
       <View style={[styles.divider, { backgroundColor: colors.outline }]} />
       <View style={styles.detailRow}>
@@ -202,6 +196,8 @@ export default function BookingSessionScreen() {
         <ScreenHeader title="Reserva" backHref="/(client)/bookings" />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
+
+        <BusinessTimeNote />
 
         {/* ── Por iniciar ────────────────────────────────────────────────── */}
         {isPending ? (
@@ -304,11 +300,11 @@ export default function BookingSessionScreen() {
               </Text>
               <DetailRow
                 label="Entrada"
-                value={booking.actualStartAt ? new Date(booking.actualStartAt).toLocaleString('es-AR') : '—'}
+                value={booking.actualStartAt ? formatDateTime(booking.actualStartAt) : '—'}
               />
               <DetailRow
                 label="Salida"
-                value={booking.actualEndAt ? new Date(booking.actualEndAt).toLocaleString('es-AR') : '—'}
+                value={booking.actualEndAt ? formatDateTime(booking.actualEndAt) : '—'}
               />
               {booking.overtimeCharge > 0 ? (
                 <DetailRow
@@ -368,7 +364,12 @@ export default function BookingSessionScreen() {
           onClose={() => setShowRateDialog(false)}
           onSuccess={() => {
             setShowRateDialog(false);
-            setIsRated(true);
+            queryClient.setQueryData<ClientBookingItem>(bookingQueryKey, (current) =>
+              current ? { ...current, isRated: true } : current
+            );
+            // El historial y la ficha pública de la cochera también muestran la calificación.
+            queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+            queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
           }}
         />
       ) : null}

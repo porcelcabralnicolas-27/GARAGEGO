@@ -1,15 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import { FlatList, Text } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { ConversationListItem } from '@/features/messaging/ConversationListItem';
-import { listOwnerConversations } from '@/features/messaging/api';
-import { listUnreadMessageNotifications } from '@/features/notifications/api';
-import { queryKeys } from '@/lib/queryKeys';
+import { useConversations } from '@/features/messaging/useConversations';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
@@ -17,37 +14,9 @@ export default function OwnerMessagesScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
-  const userId = profile?.id;
-
-  const {
-    data = { threads: [], unreadBookingIds: new Set<string>() },
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: queryKeys.messaging.ownerThreads(userId ?? ''),
-    queryFn: async () => {
-      const [threads, unreadNotifications] = await Promise.all([
-        listOwnerConversations(userId as string),
-        listUnreadMessageNotifications(userId as string, 'owner'),
-      ]);
-      return {
-        threads,
-        unreadBookingIds: new Set(
-          unreadNotifications.map((n) => n.relatedBookingId).filter((id): id is string => id !== null)
-        ),
-      };
-    },
-    enabled: Boolean(userId),
-  });
-  const { threads, unreadBookingIds } = data;
-
-  // Un mensaje nuevo puede llegar mientras se estaba en otra pestaña: el refetch al enfocar
-  // trae el hilo actualizado sin depender de una suscripción realtime en esta lista.
-  useFocusEffect(
-    useCallback(() => {
-      if (userId) refetch();
-    }, [userId, refetch])
+  const { threads, unreadBookingIds, isLoading, isError, refetch, loadMore, isFetchingMore } = useConversations(
+    profile?.id,
+    'owner'
   );
 
   const errorMessage = isError ? 'No se pudieron cargar tus mensajes.' : null;
@@ -69,6 +38,9 @@ export default function OwnerMessagesScreen() {
         keyExtractor={(item) => item.threadKey}
         refreshing={isLoading}
         onRefresh={refetch}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter isFetching={isFetchingMore} />}
         renderItem={({ item }) => (
           <ConversationListItem
             thread={item}

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,11 +6,14 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { getSupportErrorMessage, listMyTickets } from '@/features/support/api';
+import { getSupportErrorMessage, listMyTicketsPage, type TicketCursor } from '@/features/support/api';
 import { TICKET_CATEGORY_LABELS, type ReporterRole } from '@/features/support/types';
+import { flattenPages } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
+import { formatDayMonthTime } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -18,27 +21,21 @@ import { radius, spacing, useTheme } from '@/theme';
 const SETTINGS_HREF = { client: '/(client)/profile/settings', owner: '/(owner)/profile/settings' } as const;
 const NEW_HREF = { client: '/(client)/profile/support/new', owner: '/(owner)/profile/support/new' } as const;
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
 export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const userId = profile?.id;
 
-  const {
-    data: tickets = [],
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useQuery({
-    queryKey: queryKeys.tickets.list(userId ?? ''),
-    queryFn: () => listMyTickets(userId as string),
-    enabled: Boolean(userId),
-  });
+  const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: queryKeys.tickets.list(userId ?? ''),
+      queryFn: ({ pageParam }) => listMyTicketsPage(pageParam),
+      initialPageParam: null as TicketCursor | null,
+      getNextPageParam: (page) => page.nextCursor,
+      enabled: Boolean(userId),
+    });
+  const tickets = flattenPages(data);
 
   // Un ticket nuevo se crea en otra pantalla, y "Nueva consulta" no vuelve acá (va directo al
   // hilo). Este refetch al enfocar es lo que trae ese ticket a la lista cuando el usuario
@@ -84,6 +81,11 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
         keyExtractor={(item) => item.id}
         refreshing={isLoading}
         onRefresh={refetch}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter isFetching={isFetchingNextPage} />}
         renderItem={({ item }) => (
           <Pressable
             onPress={() =>
@@ -137,7 +139,7 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
             ) : null}
 
             <Text style={[typography.label, { color: colors.onSurfaceVariant, marginTop: 6 }]}>
-              {formatWhen(item.lastMessageAt)}
+              {formatDayMonthTime(item.lastMessageAt)}
             </Text>
           </Pressable>
         )}

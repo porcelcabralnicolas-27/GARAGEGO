@@ -1,11 +1,12 @@
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
+import { olderThanFilter, toPage, type MessageCursor, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
 import type { ConversationThread, Message, ResolvedThread, ThreadRef, ThreadRole } from './types';
 
 const ACTIVE_STATUSES = new Set(['pending', 'confirmed']);
-// Ver el comentario en listClientConversations/listOwnerConversations.
-const CONVERSATION_BOOKINGS_LIMIT = 300;
+const CONVERSATIONS_PAGE_SIZE = 20;
+const MESSAGES_PAGE_SIZE = 50;
 
 type BookingRow = { id: string; status: string; date: string; start_time: string };
 
@@ -44,156 +45,45 @@ function pickAnchorBooking(rows: BookingRow[]): BookingRow | null {
   )[0];
 }
 
-type ThreadDraft = Omit<ConversationThread, 'lastMessage' | 'lastMessageAt'>;
+export type ConversationCursor = { sortAt: string; parkingLotId: string; peerId: string };
 
-async function attachLastMessages(drafts: ThreadDraft[]): Promise<ConversationThread[]> {
-  if (drafts.length === 0) return [];
-
-  const keyByBooking = new Map<string, string>();
-  for (const draft of drafts) {
-    for (const bookingId of draft.bookingIds) keyByBooking.set(bookingId, draft.threadKey);
-  }
-
-  // RPC en vez de traer todos los mensajes y quedarse con el último en el cliente: con mucho
-  // historial, esa consulta traía la tabla entera (ver migración 0055).
-  const { data, error } = await supabase.rpc('last_message_per_booking', {
-    p_booking_ids: [...keyByBooking.keys()],
+/**
+ * Una página de conversaciones (list_conversations, 0059). Un hilo es un par (cochera,
+ * contraparte) que junta todas sus reservas: para el conductor, la contraparte es el dueño; para
+ * el propietario, cada cliente de cada cochera es un hilo aparte. Se ocultan los hilos de
+ * reservas viejas donde nunca se escribió nada, pero no los que tienen una reserva activa: la
+ * lista es la única entrada al chat. Orden: último mensaje más nuevo primero.
+ */
+export async function listConversationsPage(
+  role: ThreadRole,
+  cursor: ConversationCursor | null = null
+): Promise<Page<ConversationThread & { sortAt: string }, ConversationCursor>> {
+  const { data, error } = await supabase.rpc('list_conversations', {
+    p_role: role,
+    p_limit: CONVERSATIONS_PAGE_SIZE,
+    p_cursor_sort_at: cursor?.sortAt ?? null,
+    p_cursor_lot: cursor?.parkingLotId ?? null,
+    p_cursor_peer: cursor?.peerId ?? null,
   });
   if (error) throw error;
 
-  // El RPC devuelve un renglón por RESERVA (agrupado con distinct on), no por hilo, y sin
-  // ordenar por fecha entre reservas distintas. Un hilo puede juntar varias reservas con el
-  // mismo par (cochera, contraparte) — hay que quedarse con la más nueva de todas ellas, no
-  // con la primera que aparezca.
-  const lastByThread = new Map<string, { content: string; created_at: string }>();
-  for (const row of data) {
-    const key = keyByBooking.get(row.booking_id);
-    if (!key) continue;
-    const current = lastByThread.get(key);
-    if (!current || row.created_at > current.created_at) {
-      lastByThread.set(key, { content: row.content, created_at: row.created_at });
-    }
-  }
-
-  return drafts
-    .map((draft) => {
-      const last = lastByThread.get(draft.threadKey);
-      return { ...draft, lastMessage: last?.content ?? null, lastMessageAt: last?.created_at ?? null };
-    })
-    // Se ocultan los hilos de reservas viejas donde nunca se escribió nada. Los que tienen una
-    // reserva activa se dejan aunque estén vacíos: la lista es el único punto de entrada al chat,
-    // así que si se ocultaran todos no habría forma de iniciar una conversación.
-    .filter((thread) => thread.lastMessageAt !== null || thread.hasActiveBooking)
-    .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''));
-}
-
-export async function listClientConversations(userId: string): Promise<ConversationThread[]> {
-  const { data: bookings, error } = await supabase
-    .from('bookings')
-    .select('id, parking_lot_id, status, date, start_time')
-    .eq('user_id', userId)
-    .order('date', { ascending: false })
-    .order('start_time', { ascending: false })
-    // Tope defensivo: una cuenta con mucho historial no debería traer todas sus reservas para
-    // armar la lista de conversaciones. Las activas (pending/confirmed) son siempre recientes,
-    // así que quedan adentro del corte.
-    .limit(CONVERSATION_BOOKINGS_LIMIT);
-  if (error) throw error;
-  if (bookings.length === 0) return [];
-
-  const lotIds = [...new Set(bookings.map((b) => b.parking_lot_id))];
-  const { data: lots, error: lotsError } = await supabase
-    .from('parking_lots')
-    .select('id, name, owner_id')
-    .in('id', lotIds);
-  if (lotsError) throw lotsError;
-  const lotsById = new Map(lots.map((l) => [l.id, l]));
-
-  const ownerIds = [...new Set(lots.map((l) => l.owner_id))];
-  const { data: owners, error: ownersError } = await supabase
-    .from('public_profiles')
-    .select('id, first_name, last_name')
-    .in('id', ownerIds);
-  if (ownersError) throw ownersError;
-  const ownersById = new Map(owners.map((o) => [o.id, o]));
-
-  const byLot = new Map<string, typeof bookings>();
-  for (const booking of bookings) {
-    const rows = byLot.get(booking.parking_lot_id) ?? [];
-    rows.push(booking);
-    byLot.set(booking.parking_lot_id, rows);
-  }
-
-  const drafts: ThreadDraft[] = [...byLot.entries()].flatMap(([lotId, rows]) => {
-    const lot = lotsById.get(lotId);
-    if (!lot) return [];
-    const owner = ownersById.get(lot.owner_id);
-    return [
-      {
-        threadKey: threadKeyOf(lotId, lot.owner_id),
-        parkingLotId: lotId,
-        peerId: lot.owner_id,
-        parkingLotName: lot.name,
-        otherPartyName: owner ? `${owner.first_name} ${owner.last_name}`.trim() : 'Propietario',
-        bookingIds: rows.map((r) => r.id),
-        hasActiveBooking: rows.some((r) => ACTIVE_STATUSES.has(r.status)),
-      },
-    ];
-  });
-
-  return attachLastMessages(drafts);
-}
-
-export async function listOwnerConversations(ownerId: string): Promise<ConversationThread[]> {
-  const { data: myLots, error: lotsError } = await supabase.from('parking_lots').select('id, name').eq('owner_id', ownerId);
-  if (lotsError) throw lotsError;
-  if (myLots.length === 0) return [];
-
-  const lotIds = myLots.map((l) => l.id);
-  const lotsById = new Map(myLots.map((l) => [l.id, l]));
-
-  const { data: bookings, error } = await supabase
-    .from('bookings')
-    .select('id, parking_lot_id, user_id, status, date, start_time')
-    .in('parking_lot_id', lotIds)
-    .order('date', { ascending: false })
-    .order('start_time', { ascending: false })
-    .limit(CONVERSATION_BOOKINGS_LIMIT);
-  if (error) throw error;
-  if (bookings.length === 0) return [];
-
-  const clientIds = [...new Set(bookings.map((b) => b.user_id))];
-  const { data: clients, error: clientsError } = await supabase
-    .from('public_profiles')
-    .select('id, first_name, last_name')
-    .in('id', clientIds);
-  if (clientsError) throw clientsError;
-  const clientsById = new Map(clients.map((c) => [c.id, c]));
-
-  // Para el propietario el hilo es por (estacionamiento, cliente): si el mismo cliente reservó
-  // en dos de sus estacionamientos, son dos conversaciones distintas.
-  const byThread = new Map<string, typeof bookings>();
-  for (const booking of bookings) {
-    const key = threadKeyOf(booking.parking_lot_id, booking.user_id);
-    const rows = byThread.get(key) ?? [];
-    rows.push(booking);
-    byThread.set(key, rows);
-  }
-
-  const drafts: ThreadDraft[] = [...byThread.entries()].map(([threadKey, rows]) => {
-    const client = clientsById.get(rows[0].user_id);
-    return {
-      threadKey,
-      parkingLotId: rows[0].parking_lot_id,
-      peerId: rows[0].user_id,
-      parkingLotName: lotsById.get(rows[0].parking_lot_id)?.name ?? 'Estacionamiento',
-      otherPartyName: client ? `${client.first_name} ${client.last_name}`.trim() : 'Cliente',
-      bookingIds: rows.map((r) => r.id),
-      hasActiveBooking: rows.some((r) => ACTIVE_STATUSES.has(r.status)),
-    };
-  });
-
-  return attachLastMessages(drafts);
+  const items = data.map((row) => ({
+    threadKey: threadKeyOf(row.parking_lot_id, row.peer_id),
+    parkingLotId: row.parking_lot_id,
+    peerId: row.peer_id,
+    parkingLotName: row.parking_lot_name ?? 'Estacionamiento',
+    otherPartyName: row.other_party_name ?? (role === 'client' ? 'Propietario' : 'Cliente'),
+    bookingIds: row.booking_ids,
+    hasActiveBooking: row.has_active_booking,
+    lastMessage: row.last_message,
+    lastMessageAt: row.last_message_at,
+    sortAt: row.sort_at,
+  }));
+  return toPage(items, CONVERSATIONS_PAGE_SIZE, (last) => ({
+    sortAt: last.sortAt,
+    parkingLotId: last.parkingLotId,
+    peerId: last.peerId,
+  }));
 }
 
 /** Todas las reservas que componen un hilo, más la reserva contra la que se escribe. */
@@ -245,18 +135,29 @@ export async function getThreadRefForBooking(
   };
 }
 
-export async function getThreadMessages(bookingIds: string[]): Promise<Message[]> {
-  if (bookingIds.length === 0) return [];
-  // Se pide en orden descendente con tope y se da vuelta: así, si el hilo es larguísimo, lo
-  // que se corta es lo más viejo y no lo más reciente.
-  const { data, error } = await supabase
+/**
+ * Una página de mensajes del hilo, hacia atrás: sin cursor, los más recientes; con cursor, los
+ * anteriores al mensaje más viejo ya cargado. Cada página viene en orden cronológico.
+ */
+export async function getThreadMessagesPage(
+  bookingIds: string[],
+  before: MessageCursor | null = null
+): Promise<Page<Message, MessageCursor>> {
+  if (bookingIds.length === 0) return { items: [], nextCursor: null };
+  let query = supabase
     .from('messages')
     .select('*')
     .in('booking_id', bookingIds)
     .order('created_at', { ascending: false })
-    .limit(300);
+    .order('id', { ascending: false })
+    .limit(MESSAGES_PAGE_SIZE);
+  if (before) query = query.or(olderThanFilter(before));
+  const { data, error } = await query;
   if (error) throw error;
-  return data.map(mapMessageRow).reverse();
+
+  const newestFirst = data.map(mapMessageRow);
+  const page = toPage(newestFirst, MESSAGES_PAGE_SIZE, (oldest) => ({ createdAt: oldest.createdAt, id: oldest.id }));
+  return { ...page, items: newestFirst.reverse() };
 }
 
 export async function sendThreadMessage(params: {

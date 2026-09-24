@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -11,8 +12,8 @@ import { RouteMap } from '@/features/directions/RouteMap';
 import { getDirections } from '@/features/directions/api';
 import type { DirectionsResult } from '@/features/directions/types';
 import { getParkingLot } from '@/features/parking/api';
-import type { ParkingLot } from '@/features/parking/types';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
+import { queryKeys } from '@/lib/queryKeys';
 import { useTheme } from '@/theme';
 
 function formatDistance(meters: number): string {
@@ -32,16 +33,13 @@ export default function ParkingRouteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const location = useCurrentLocation();
 
-  const [lot, setLot] = useState<ParkingLot | null>(null);
+  const { data: lot, isError: isLotError } = useQuery({
+    queryKey: queryKeys.parkingLots.detail(id),
+    queryFn: () => getParkingLot(id),
+  });
   const [directions, setDirections] = useState<DirectionsResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
-
-  useEffect(() => {
-    getParkingLot(id)
-      .then(setLot)
-      .catch(() => setErrorMessage('No se pudo cargar el estacionamiento.'));
-  }, [id]);
 
   useEffect(() => {
     if (!lot || location.latitude === null || location.longitude === null) return;
@@ -81,6 +79,7 @@ export default function ParkingRouteScreen() {
       />
 
       {location.errorMessage ? <Banner message={location.errorMessage} /> : null}
+      {isLotError ? <Banner message="No se pudo cargar el estacionamiento." /> : null}
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
       {isBusy ? (

@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { BusinessTimeNote } from '@/components/booking/BusinessTimeNote';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -11,23 +13,14 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { createBooking, getBookingErrorMessage } from '@/features/booking/api';
 import { computeBookingPrice } from '@/features/booking/pricing';
 import { getParkingLot } from '@/features/parking/api';
-import type { ParkingLot } from '@/features/parking/types';
 import { getTopupErrorMessage, topupWallet } from '@/features/profile/api';
+import { DEMO_TOPUP_AMOUNTS, useDemoTopupEnabled } from '@/features/profile/useDemoTopup';
 import { formatMoney } from '@/lib/money';
+import { queryKeys } from '@/lib/queryKeys';
+import { formatCalendarDayLong } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
-/** Montos de la recarga de prueba, los mismos que ofrece el perfil. */
-const TOPUP_PRESETS = [1000, 3000, 5000];
-
-const DAY_LABELS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-
-function formatLongDate(dateStr: string): string {
-  const date = new Date(`${dateStr}T00:00:00`);
-  const dd = date.getDate().toString().padStart(2, '0');
-  const mm = (date.getMonth() + 1).toString().padStart(2, '0');
-  return `${DAY_LABELS[date.getDay()]} ${dd}/${mm}`;
-}
 
 /** Una fila del resumen de la reserva: etiqueta a la izquierda, valor a la derecha. */
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -54,18 +47,17 @@ export default function PaymentScreen() {
   const walletBalance = useAuthStore((s) => s.walletBalance);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
 
-  const [lot, setLot] = useState<ParkingLot | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: lot, isError: loadError } = useQuery({
+    queryKey: queryKeys.parkingLots.detail(parkingId),
+    queryFn: () => getParkingLot(parkingId),
+    // El total mostrado sale de este precio: siempre el vigente, no uno en cache.
+    staleTime: 0,
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPaying, setIsPaying] = useState(false);
   const [toppingUpAmount, setToppingUpAmount] = useState<number | null>(null);
   const isPayingRef = useRef(false);
-
-  useEffect(() => {
-    getParkingLot(parkingId)
-      .then(setLot)
-      .catch(() => setLoadError('No se pudo cargar este estacionamiento.'));
-  }, [parkingId]);
+  const demoTopupEnabled = useDemoTopupEnabled();
 
   // El precio se recalcula acá en vez de viajar por parámetros: así lo que se muestra sale
   // siempre del precio vigente del estacionamiento. El monto que se cobra de verdad lo calcula
@@ -133,7 +125,7 @@ export default function PaymentScreen() {
     return (
       <Screen>
         <ScreenHeader title="Pago" backHref={backHref} />
-        <Banner message={loadError} />
+        <Banner message="No se pudo cargar este estacionamiento." />
       </Screen>
     );
   }
@@ -161,7 +153,7 @@ export default function PaymentScreen() {
         {/* Resumen de lo que se está por pagar */}
         <Card>
           <SummaryRow label="Lugar" value={lot.name} />
-          <SummaryRow label="Fecha" value={formatLongDate(date)} />
+          <SummaryRow label="Fecha" value={formatCalendarDayLong(date)} />
           <SummaryRow label="Horario" value={`${startTime} – ${endTime}`} />
           <View style={[styles.divider, { backgroundColor: colors.outline }]} />
           <View style={styles.totalRow}>
@@ -169,6 +161,8 @@ export default function PaymentScreen() {
             <Text style={[typography.titleLarge, { color: colors.accent }]}>{formatMoney(total)}</Text>
           </View>
         </Card>
+
+        <BusinessTimeNote />
 
         {/* Billetera — único método real hoy (Fase 8, Q2·A) */}
         <Card>
@@ -188,24 +182,31 @@ export default function PaymentScreen() {
           {!hasEnoughBalance ? (
             <>
               <Text style={[typography.bodyMedium, styles.topUpNote, { color: colors.error }]}>
-                Te falta saldo para esta reserva. Recargá para continuar.
+                {demoTopupEnabled
+                  ? 'Te falta saldo para esta reserva. Recargá para continuar.'
+                  : 'Te falta saldo para esta reserva.'}
               </Text>
-              <Text style={[typography.label, styles.topUpHint, { color: colors.onSurfaceVariant }]}>
-                Recarga de prueba (todavía no hay pasarela de pago real)
-              </Text>
-              <View style={styles.topUpRow}>
-                {TOPUP_PRESETS.map((amount) => (
-                  <Button
-                    key={amount}
-                    label={`+ ${formatMoney(amount)}`}
-                    size="compact"
-                    variant="outlined"
-                    onPress={() => handleTopUp(amount)}
-                    loading={toppingUpAmount === amount}
-                    disabled={toppingUpAmount !== null || isPaying}
-                  />
-                ))}
-              </View>
+              {demoTopupEnabled ? (
+                <>
+                  <Text style={[typography.label, styles.topUpHint, { color: colors.onSurfaceVariant }]}>
+                    Recarga de prueba: saldo ficticio, sin valor en dinero (todavía no hay pasarela de
+                    pago real)
+                  </Text>
+                  <View style={styles.topUpRow}>
+                    {DEMO_TOPUP_AMOUNTS.map((amount) => (
+                      <Button
+                        key={amount}
+                        label={`+ ${formatMoney(amount)}`}
+                        size="compact"
+                        variant="outlined"
+                        onPress={() => handleTopUp(amount)}
+                        loading={toppingUpAmount === amount}
+                        disabled={toppingUpAmount !== null || isPaying}
+                      />
+                    ))}
+                  </View>
+                </>
+              ) : null}
             </>
           ) : null}
         </Card>

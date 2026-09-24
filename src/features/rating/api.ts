@@ -1,4 +1,5 @@
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
+import { toPage, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
 import type { Rating, RatingWithAuthor } from './types';
@@ -40,40 +41,28 @@ export async function createRating(params: {
   if (error) throw error;
 }
 
-export async function listMyRatedBookingIds(userId: string): Promise<Set<string>> {
-  const { data, error } = await supabase.from('ratings').select('booking_id').eq('user_id', userId);
-  if (error) throw error;
-  return new Set(data.map((row) => row.booking_id));
-}
+export const RATINGS_PAGE_SIZE = 10;
 
-export async function listRatingsForParkingLot(parkingLotId: string): Promise<RatingWithAuthor[]> {
-  const { data: ratingRows, error } = await supabase
-    .from('ratings')
-    .select('*')
-    .eq('parking_lot_id', parkingLotId)
-    // Las reseñas que el equipo ocultó (migración 0044) no van en la ficha pública. La RLS ya
-    // no las devolvería a un tercero, pero el autor sí ve la suya: se filtra acá para que
-    // nadie las vea en el listado del lote.
-    .eq('is_hidden', false)
-    .order('created_at', { ascending: false })
-    // Tope defensivo: una cochera muy calificada no trae la lista entera en cada carga.
-    .limit(200);
-  if (error) throw error;
-  if (ratingRows.length === 0) return [];
+export type RatingCursor = { createdAt: string; id: string };
 
-  const userIds = [...new Set(ratingRows.map((r) => r.user_id))];
-  const { data: authors, error: authorsError } = await supabase
-    .from('public_profiles')
-    .select('id, first_name, last_name')
-    .in('id', userIds);
-  if (authorsError) throw authorsError;
-  const authorsById = new Map(authors.map((a) => [a.id, a]));
-
-  return ratingRows.map((row) => {
-    const rating = mapRatingRow(row);
-    const author = authorsById.get(row.user_id);
-    return { ...rating, authorName: author ? `${author.first_name} ${author.last_name}`.trim() : 'Usuario' };
+/**
+ * Una página de las reseñas públicas de una cochera, con el nombre del autor
+ * (list_parking_lot_ratings, 0059). Las que el equipo ocultó (0044) no vienen.
+ */
+export async function listRatingsPage(
+  parkingLotId: string,
+  cursor: RatingCursor | null = null
+): Promise<Page<RatingWithAuthor, RatingCursor>> {
+  const { data, error } = await supabase.rpc('list_parking_lot_ratings', {
+    p_parking_lot_id: parkingLotId,
+    p_limit: RATINGS_PAGE_SIZE,
+    p_cursor_created: cursor?.createdAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
   });
+  if (error) throw error;
+
+  const items = data.map((row) => ({ ...mapRatingRow(row), authorName: row.author_name ?? 'Usuario' }));
+  return toPage(items, RATINGS_PAGE_SIZE, (last) => ({ createdAt: last.createdAt, id: last.id }));
 }
 
 export function getRatingErrorMessage(error: unknown): string {

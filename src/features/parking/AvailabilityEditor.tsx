@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
@@ -18,7 +19,15 @@ import {
   removeRecurringAvailability,
 } from '@/features/parking/api';
 import { DAY_LABELS, type AvailabilityException, type RecurringAvailability } from '@/features/parking/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useTheme } from '@/theme';
+
+type AvailabilityData = {
+  recurring: RecurringAvailability[];
+  exceptions: AvailabilityException[];
+};
+
+const EMPTY_DATA: AvailabilityData = { recurring: [], exceptions: [] };
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_OPTIONS = DAY_LABELS.map((label, index) => ({ value: String(index), label: label.slice(0, 2) }));
@@ -30,9 +39,26 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): b
 
 export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
   const { colors, typography } = useTheme();
-  const [recurring, setRecurring] = useState<RecurringAvailability[]>([]);
-  const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const queryKey = queryKeys.parkingLots.availability(parkingLotId);
+  const { data: { recurring, exceptions } = EMPTY_DATA, isError } = useQuery({
+    queryKey,
+    queryFn: async (): Promise<AvailabilityData> => {
+      const [r, e] = await Promise.all([
+        getRecurringAvailability(parkingLotId),
+        getAvailabilityExceptions(parkingLotId),
+      ]);
+      return { recurring: r, exceptions: e };
+    },
+  });
+
+  // La disponibilidad también la usan la ficha pública y la pantalla de reservar: se invalida
+  // todo el grupo para que un conductor no vea horarios que el propietario ya cambió.
+  const applyChange = (update: (current: AvailabilityData) => AvailabilityData) => {
+    queryClient.setQueryData<AvailabilityData>(queryKey, (current = EMPTY_DATA) => update(current));
+    queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
+  };
 
   const [selectedDays, setSelectedDays] = useState<string[]>(['1']);
   const [startTime, setStartTime] = useState('');
@@ -45,15 +71,6 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
   const [exceptionStart, setExceptionStart] = useState('');
   const [exceptionEnd, setExceptionEnd] = useState('');
   const [exceptionError, setExceptionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    Promise.all([getRecurringAvailability(parkingLotId), getAvailabilityExceptions(parkingLotId)])
-      .then(([r, e]) => {
-        setRecurring(r);
-        setExceptions(e);
-      })
-      .catch(() => setErrorMessage('No se pudo cargar la disponibilidad.'));
-  }, [parkingLotId]);
 
   const handleAddRecurring = async () => {
     setRecurringError(null);
@@ -87,7 +104,10 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         parkingLotId,
         days.map((dayOfWeek) => ({ dayOfWeek, startTime, endTime }))
       );
-      setRecurring((prev) => [...prev, ...entries].sort((a, b) => a.dayOfWeek - b.dayOfWeek));
+      applyChange((current) => ({
+        ...current,
+        recurring: [...current.recurring, ...entries].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
+      }));
       setStartTime('');
       setEndTime('');
     } catch (error) {
@@ -100,7 +120,7 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
   const handleRemoveRecurring = async (id: string) => {
     try {
       await removeRecurringAvailability(id);
-      setRecurring((prev) => prev.filter((r) => r.id !== id));
+      applyChange((current) => ({ ...current, recurring: current.recurring.filter((r) => r.id !== id) }));
     } catch {
       setRecurringError('No se pudo eliminar el horario.');
     }
@@ -125,7 +145,10 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         endTime: exceptionMode === 'special' ? exceptionEnd : null,
         isAvailable: exceptionMode === 'special',
       });
-      setExceptions((prev) => [...prev, entry].sort((a, b) => a.date.localeCompare(b.date)));
+      applyChange((current) => ({
+        ...current,
+        exceptions: [...current.exceptions, entry].sort((a, b) => a.date.localeCompare(b.date)),
+      }));
       setExceptionDate('');
       setExceptionStart('');
       setExceptionEnd('');
@@ -137,7 +160,7 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
   const handleRemoveException = async (id: string) => {
     try {
       await removeAvailabilityException(id);
-      setExceptions((prev) => prev.filter((e) => e.id !== id));
+      applyChange((current) => ({ ...current, exceptions: current.exceptions.filter((e) => e.id !== id) }));
     } catch {
       setExceptionError('No se pudo eliminar la excepción.');
     }
@@ -145,7 +168,7 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
 
   return (
     <View>
-      {errorMessage ? <Banner message={errorMessage} /> : null}
+      {isError ? <Banner message="No se pudo cargar la disponibilidad." /> : null}
 
       <Text style={[typography.titleMedium, { color: colors.onBackground, marginBottom: 8 }]}>
         Horario recurrente

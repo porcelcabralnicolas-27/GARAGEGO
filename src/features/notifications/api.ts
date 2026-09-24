@@ -1,3 +1,4 @@
+import { toPage, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
 import type { AppNotification, NotificationAudience } from './types';
@@ -37,9 +38,12 @@ function mapNotificationRow(row: {
  */
 const audienceFilter = (audience: NotificationAudience) => `audience.is.null,audience.eq.${audience}`;
 
-// Tope defensivo: sin esto una cuenta vieja con muchas notificaciones trae todo el historial
-// en cada carga. No hay "cargar más" en la UI todavía, así que esto corta el peor caso.
-const LIST_LIMIT = 200;
+const NOTIFICATIONS_PAGE_SIZE = 30;
+
+/** Tope de la consulta de no leídas de mensajes: se usan para marcarlas, no se muestran. */
+const UNREAD_LIMIT = 200;
+
+export type NotificationCursor = { createdAt: string; id: string };
 
 /** ¿Esta notificación corresponde al rol activo? Misma regla que `audienceFilter`, para los
  *  eventos de realtime, que llegan sin pasar por el filtro de la consulta. */
@@ -47,19 +51,22 @@ export function matchesAudience(notification: AppNotification, audience: Notific
   return notification.audience === null || notification.audience === audience;
 }
 
-export async function listNotifications(
-  userId: string,
-  audience: NotificationAudience
-): Promise<AppNotification[]> {
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .eq('user_id', userId)
-    .or(audienceFilter(audience))
-    .order('created_at', { ascending: false })
-    .limit(LIST_LIMIT);
+/** Una página de notificaciones del rol activo, de la más nueva a la más vieja (0059). */
+export async function listNotificationsPage(
+  audience: NotificationAudience,
+  cursor: NotificationCursor | null = null
+): Promise<Page<AppNotification, NotificationCursor>> {
+  const { data, error } = await supabase.rpc('list_notifications', {
+    p_audience: audience,
+    p_limit: NOTIFICATIONS_PAGE_SIZE,
+    p_cursor_created: cursor?.createdAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
+  });
   if (error) throw error;
-  return data.map(mapNotificationRow);
+  return toPage(data.map(mapNotificationRow), NOTIFICATIONS_PAGE_SIZE, (last) => ({
+    createdAt: last.createdAt,
+    id: last.id,
+  }));
 }
 
 export async function markNotificationAsRead(notificationId: string): Promise<void> {
@@ -106,7 +113,7 @@ export async function listUnreadMessageNotifications(
     .eq('type', 'new_message')
     .or(audienceFilter(audience))
     .eq('read', false)
-    .limit(LIST_LIMIT);
+    .limit(UNREAD_LIMIT);
   if (error) throw error;
   return data.map(mapNotificationRow);
 }

@@ -65,11 +65,22 @@ export async function getWalletBalance(userId: string): Promise<number> {
   return data.balance;
 }
 
-// Recarga manual de saldo — placeholder de desarrollo hasta integrar una pasarela de pago real.
-// La migración 0057 le pone un techo al saldo resultante (`topup_limit_reached`).
+// Recarga manual de saldo — simulación de pagos del MVP hasta integrar una pasarela real. El
+// saldo que genera es ficticio. La 0057 le pone un techo al saldo resultante
+// (`topup_limit_reached`) y la 0061 permite apagarla por entorno (`topup_disabled`).
 export async function topupWallet(amount: number): Promise<void> {
   const { error } = await supabase.rpc('topup_wallet', { p_amount: amount });
   if (error) throw error;
+}
+
+/**
+ * ¿Está habilitada la recarga de prueba en este entorno? (app_settings, 0061). Si la consulta
+ * falla se asume que sí: el servidor igual rechaza la recarga cuando está apagada.
+ */
+export async function isDemoTopupEnabled(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('demo_topup_enabled');
+  if (error) throw error;
+  return data;
 }
 
 export function getTopupErrorMessage(error: unknown): string {
@@ -78,6 +89,9 @@ export function getTopupErrorMessage(error: unknown): string {
     const message = String((error as { message: unknown }).message);
     if (message.includes('topup_limit_reached')) {
       return 'Llegaste al tope de saldo de prueba. Usá el que tenés antes de recargar de nuevo.';
+    }
+    if (message.includes('topup_disabled')) {
+      return 'La recarga de prueba no está disponible.';
     }
     return sanitizeErrorMessage(message, fallback);
   }

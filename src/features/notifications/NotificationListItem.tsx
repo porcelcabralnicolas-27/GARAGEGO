@@ -3,12 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { IconButton } from '@/components/ui/IconButton';
 import type { AppNotification } from '@/features/notifications/types';
+import { formatDayMonthTime } from '@/lib/time';
 import { radius, spacing, useTheme } from '@/theme';
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
 
 export function NotificationListItem({
   notification,
@@ -31,7 +27,7 @@ export function NotificationListItem({
         </Text>
 
         <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>
-          {formatTime(notification.createdAt)}
+          {formatDayMonthTime(notification.createdAt)}
         </Text>
 
         <IconButton

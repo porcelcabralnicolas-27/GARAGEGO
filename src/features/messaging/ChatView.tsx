@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Href } from 'expo-router';
 
 import { BackButton } from '@/components/ui/BackButton';
 import { Banner } from '@/components/ui/Banner';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import {
   getMessagingErrorMessage,
-  getThreadMessages,
+  getThreadMessagesPage,
   resolveThread,
   sendThreadMessage,
   subscribeToThreadMessages,
@@ -16,6 +18,9 @@ import {
 } from '@/features/messaging/api';
 import { markMessageNotificationsAsRead } from '@/features/notifications/api';
 import type { Message, ThreadRole } from '@/features/messaging/types';
+import { appendNewest, newestFirst, type MessageCursor, type Page } from '@/lib/pagination';
+import { queryKeys } from '@/lib/queryKeys';
+import { addDays, businessDate, formatDate, formatTime } from '@/lib/time';
 import { radius, spacing, useTheme } from '@/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -31,20 +36,12 @@ type ChatViewProps = {
 /** Cada mensaje, precedido por la fecha cuando arranca un día distinto al del mensaje anterior. */
 type ChatRow = { kind: 'day'; key: string; label: string } | { kind: 'message'; key: string; message: Message };
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
 function formatDayLabel(iso: string): string {
-  const date = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-  if (sameDay(date, today)) return 'Hoy';
-  if (sameDay(date, yesterday)) return 'Ayer';
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const day = businessDate(iso);
+  const today = businessDate();
+  if (day === today) return 'Hoy';
+  if (day === addDays(today, -1)) return 'Ayer';
+  return formatDate(iso);
 }
 
 function buildRows(messages: Message[]): ChatRow[] {
@@ -52,7 +49,7 @@ function buildRows(messages: Message[]): ChatRow[] {
   let lastDay: string | null = null;
 
   for (const message of messages) {
-    const day = new Date(message.createdAt).toDateString();
+    const day = businessDate(message.createdAt);
     if (day !== lastDay) {
       rows.push({ kind: 'day', key: `day-${day}`, label: formatDayLabel(message.createdAt) });
       lastDay = day;
@@ -63,83 +60,78 @@ function buildRows(messages: Message[]): ChatRow[] {
   return rows;
 }
 
+type MessagePages = InfiniteData<Page<Message, MessageCursor>, MessageCursor | null>;
+
 export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }: ChatViewProps) {
   const { colors, typography } = useTheme();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [anchorBookingId, setAnchorBookingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const listRef = useRef<FlatList<ChatRow>>(null);
-  // El callback de realtime se registra una sola vez: necesita leer la lista de reservas
-  // actualizada, no la que existía al montar.
-  const bookingIdsRef = useRef<string[]>([]);
 
   const thread = useMemo(() => ({ parkingLotId, peerId, role }), [parkingLotId, peerId, role]);
-
-  const applyResolved = useCallback(
-    async (bookingIds: string[], anchor: string | null) => {
-      bookingIdsRef.current = bookingIds;
-      setAnchorBookingId(anchor);
-      setMessages(await getThreadMessages(bookingIds));
-    },
-    []
+  const threadKey = useMemo(
+    () => queryKeys.messaging.thread(userId, role, parkingLotId, peerId),
+    [userId, role, parkingLotId, peerId]
   );
 
+  // Con el chat cerrado no hay suscripción, así que lo que haya en cache puede estar incompleto:
+  // al volver a entrar se muestra al instante y se completa con un refetch (staleTime 0).
+  const threadQuery = useQuery({
+    queryKey: threadKey,
+    queryFn: () => resolveThread(thread, userId),
+    staleTime: 0,
+  });
+  const bookingIds = threadQuery.data?.bookingIds;
+  const anchorBookingId = threadQuery.data?.anchorBookingId ?? null;
+  // Como string para que la suscripción se rehaga solo si cambian las reservas del hilo, no
+  // con cada mensaje nuevo que entra a la cache.
+  const bookingIdsKey = bookingIds?.join(',');
+
+  // Los mensajes se paginan hacia atrás: primero los más recientes, y los anteriores al subir.
+  // La clave depende de las reservas del hilo: si se suma una reserva nueva, es otro listado.
+  const messagesKey = useMemo(() => queryKeys.messaging.threadMessages(bookingIds ?? []), [bookingIds]);
+  const messagesQuery = useInfiniteQuery({
+    queryKey: messagesKey,
+    queryFn: ({ pageParam }) => getThreadMessagesPage(bookingIds ?? [], pageParam),
+    initialPageParam: null as MessageCursor | null,
+    getNextPageParam: (page) => page.nextCursor,
+    enabled: bookingIds !== undefined,
+    staleTime: 0,
+  });
+
   useEffect(() => {
-    let cancelled = false;
-    let unsubscribe: (() => void) | undefined;
+    if (bookingIdsKey === undefined) return;
+    const ids = bookingIdsKey ? bookingIdsKey.split(',') : [];
+    const key = queryKeys.messaging.threadMessages(ids);
 
-    (async () => {
-      try {
-        const resolved = await resolveThread(thread, userId);
-        if (cancelled) return;
+    markMessageNotificationsAsRead(userId, ids).catch(() => {});
 
-        bookingIdsRef.current = resolved.bookingIds;
-        setAnchorBookingId(resolved.anchorBookingId);
-
-        const loaded = await getThreadMessages(resolved.bookingIds);
-        if (cancelled) return;
-        setMessages(loaded);
-
-        markMessageNotificationsAsRead(userId, resolved.bookingIds).catch(() => {});
-
-        unsubscribe = subscribeToThreadMessages(
-          threadKeyOf(parkingLotId, peerId),
-          resolved.bookingIds,
-          (message) => {
-            setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-            // Estando dentro del chat, un mensaje entrante no debería dejar el badge encendido.
-            if (message.senderId !== userId) {
-              markMessageNotificationsAsRead(userId, bookingIdsRef.current).catch(() => {});
-            }
-          },
-          async (unknownBookingId) => {
-            // Puede ser una reserva nueva de este mismo hilo (el usuario volvió a reservar acá).
-            const next = await resolveThread(thread, userId).catch(() => null);
-            if (!next || !next.bookingIds.includes(unknownBookingId)) return;
-            await applyResolved(next.bookingIds, next.anchorBookingId);
-          }
-        );
-      } catch (error) {
-        if (!cancelled) setErrorMessage(getMessagingErrorMessage(error));
-      } finally {
-        if (!cancelled) setIsLoading(false);
+    return subscribeToThreadMessages(
+      threadKeyOf(parkingLotId, peerId),
+      ids,
+      (message) => {
+        queryClient.setQueryData<MessagePages>(key, (current) => appendNewest(current, message));
+        // Estando dentro del chat, un mensaje entrante no debería dejar el badge encendido.
+        if (message.senderId !== userId) {
+          markMessageNotificationsAsRead(userId, ids).catch(() => {});
+        }
+      },
+      async (unknownBookingId) => {
+        // Puede ser una reserva nueva de este mismo hilo (el usuario volvió a reservar acá). Al
+        // refrescar cambian las reservas y este efecto se vuelve a suscribir con la lista nueva.
+        const next = await resolveThread(thread, userId).catch(() => null);
+        if (next?.bookingIds.includes(unknownBookingId)) {
+          queryClient.invalidateQueries({ queryKey: threadKey });
+        }
       }
-    })();
+    );
+  }, [bookingIdsKey, thread, parkingLotId, peerId, userId, queryClient, threadKey]);
 
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
-  }, [thread, parkingLotId, peerId, userId, applyResolved]);
-
-  const rows = useMemo(() => buildRows(messages), [messages]);
-
-  useEffect(() => {
-    if (rows.length > 0) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-  }, [rows.length]);
+  // Filas en orden cronológico (con separador de día) y después invertidas: la lista es
+  // `inverted`, así el mensaje más nuevo queda abajo sin scrollear a mano.
+  const messages = useMemo(() => [...newestFirst(messagesQuery.data)].reverse(), [messagesQuery.data]);
+  const rows = useMemo(() => buildRows(messages).reverse(), [messages]);
 
   const handleSend = async () => {
     const content = draft.trim();
@@ -149,7 +141,7 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
     setDraft('');
     try {
       const message = await sendThreadMessage({ thread, userId, content, anchorBookingId });
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+      queryClient.setQueryData<MessagePages>(messagesKey, (current) => appendNewest(current, message));
     } catch (error) {
       setErrorMessage(`No se pudo enviar el mensaje: ${getMessagingErrorMessage(error)}`);
       setDraft(content);
@@ -158,7 +150,11 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
     }
   };
 
+  const data = threadQuery.data;
+  const isLoading = threadQuery.isLoading || messagesQuery.isLoading;
+  const loadError = threadQuery.error ?? messagesQuery.error;
   const canWrite = anchorBookingId !== null;
+  const visibleError = errorMessage ?? (loadError ? getMessagingErrorMessage(loadError) : null);
 
   return (
     <Screen>
@@ -167,8 +163,8 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
         {title}
       </Text>
 
-      {errorMessage ? <Banner message={errorMessage} /> : null}
-      {!isLoading && !canWrite ? <Banner message="Esta conversación ya no tiene reservas asociadas." /> : null}
+      {visibleError ? <Banner message={visibleError} /> : null}
+      {data && !canWrite ? <Banner message="Esta conversación ya no tiene reservas asociadas." /> : null}
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {!isLoading && messages.length === 0 ? (
@@ -178,11 +174,15 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
         ) : null}
 
         <FlatList
-          ref={listRef}
+          inverted
           data={rows}
           keyExtractor={(item) => item.key}
           style={styles.flex}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          onEndReached={() => {
+            if (messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage) messagesQuery.fetchNextPage();
+          }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={<LoadMoreFooter isFetching={messagesQuery.isFetchingNextPage} />}
           renderItem={({ item }) => {
             if (item.kind === 'day') {
               return (

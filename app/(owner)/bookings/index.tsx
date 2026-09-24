@@ -15,7 +15,7 @@ import {
   cancelBooking,
   completeBooking,
   getBookingErrorMessage,
-  listReceivedBookings,
+  listOwnerBookingsPage,
 } from '@/features/booking/api';
 import type { OwnerBookingItem } from '@/features/booking/types';
 import { formatMoney } from '@/lib/money';
@@ -75,7 +75,7 @@ export default function OwnerBookingsScreen() {
     refetch,
   } = useQuery({
     queryKey: queryKeys.bookings.receivedList(userId ?? ''),
-    queryFn: () => listReceivedBookings(userId as string),
+    queryFn: async () => (await listOwnerBookingsPage('active')).items,
     enabled: Boolean(userId),
   });
 
