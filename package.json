@@ -47,6 +47,7 @@
     "babel-preset-expo": "^57.0.6",
     "jest": "~29.7.0",
     "jest-expo": "~57.0.5",
+    "pg": "^8.23.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -55,7 +56,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest",
-    "test:watch": "jest --watchAll"
+    "test:watch": "jest --watchAll",
+    "test:tz": "node scripts/test-timezones.mjs",
+    "test:concurrency": "node scripts/concurrency-checks.mjs"
   },
   "private": true,
   "jest": {

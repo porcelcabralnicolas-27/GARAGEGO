@@ -15,18 +15,10 @@
 -- La prueba 12 (perfiles ajenos) solo pasa si ya se corrió la 0051.
 --
 -- ── Qué NO cubre este script ─────────────────────────────────────────────────────────────
--- Las carreras reales necesitan dos conexiones simultáneas. Para probarlas a mano:
---   1. Crear una reserva confirmada de prueba (o usar una real de testing).
---   2. Abrir dos pestañas del SQL Editor. En cada una:
---        begin;
---        select set_config('request.jwt.claims', '{"sub":"<id del conductor>","role":"authenticated"}', true);
---        set local role authenticated;
---        select public.cancel_booking('<id de la reserva>');
---   3. Ejecutar la primera SIN hacer commit, después la segunda: la segunda queda esperando.
---   4. Hacer `commit;` en la primera. La segunda tiene que fallar con "ya no se puede cancelar".
---   5. Verificar: select type, count(*) from wallet_transactions
---                 where related_booking_id = '<id>' group by type;   → un solo 'refund'.
---   Lo mismo con complete_booking (propietario en una pestaña, conductor en la otra).
+-- Las carreras reales necesitan conexiones simultáneas, que el SQL Editor no puede abrir. Las
+-- prueba scripts/concurrency-checks.mjs (`npm run test:concurrency`, ver su encabezado): dobles
+-- reservas, margen de 15 min, doble cancelación, doble finalización, cancelar contra finalizar,
+-- doble gasto de saldo y recargas contra el tope.
 
 do $$
 declare
