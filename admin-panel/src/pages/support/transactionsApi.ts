@@ -42,6 +42,8 @@ export type PanelTransaction = {
   userName: string;
   side: TransactionSide;
   lotName: string | null;
+  /** Saldo ficticio de la recarga de prueba (0061): no tiene valor monetario. */
+  isDemo: boolean;
 };
 
 export type TransactionSummary = {
@@ -63,13 +65,38 @@ type TxRow = {
   related_booking_id: string | null;
   user_name: string;
   lot_name: string | null;
+  is_demo: boolean;
 };
 
-export async function fetchTransactions(): Promise<PanelTransaction[]> {
-  const { data, error } = await guard().rpc('admin_transactions', { p_limit: 300 });
+export const TRANSACTIONS_PAGE_SIZE = 50;
+
+export type TransactionFilters = {
+  type: TransactionType | null;
+  status: TransactionStatus | null;
+  search: string;
+};
+
+export type TransactionCursor = { createdAt: string; id: string };
+
+/**
+ * Una página de movimientos, del más nuevo al más viejo (admin_transactions, 0061). Los filtros
+ * los aplica el servidor: así se encuentra cualquier movimiento, no solo los ya cargados.
+ */
+export async function fetchTransactionsPage(
+  filters: TransactionFilters,
+  cursor: TransactionCursor | null
+): Promise<{ rows: PanelTransaction[]; nextCursor: TransactionCursor | null }> {
+  const { data, error } = await guard().rpc('admin_transactions', {
+    p_limit: TRANSACTIONS_PAGE_SIZE,
+    p_type: filters.type,
+    p_status: filters.status,
+    p_search: filters.search.trim() || null,
+    p_cursor_created: cursor?.createdAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
+  });
   if (error) throw error;
 
-  return ((data ?? []) as TxRow[]).map((r) => ({
+  const rows = ((data ?? []) as TxRow[]).map((r) => ({
     id: r.id,
     createdAt: r.created_at,
     type: r.type,
@@ -80,7 +107,13 @@ export async function fetchTransactions(): Promise<PanelTransaction[]> {
     userName: r.user_name,
     side: TRANSACTION_SIDE[r.type] ?? 'sistema',
     lotName: r.lot_name,
+    isDemo: r.is_demo,
   }));
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    nextCursor: rows.length === TRANSACTIONS_PAGE_SIZE && last ? { createdAt: last.createdAt, id: last.id } : null,
+  };
 }
 
 export async function fetchTransactionSummary(): Promise<TransactionSummary> {

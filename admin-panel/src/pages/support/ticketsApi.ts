@@ -1,9 +1,10 @@
 /**
- * Datos REALES de los tickets de soporte para el panel (migración 0041).
+ * Datos REALES de los tickets de soporte para el panel (migraciones 0041 y 0059).
  *
- * El admin lee `support_tickets` y `support_ticket_messages` por policy (`is_admin()`), pero no
- * tiene RLS sobre `bookings`: el nombre de la cochera de un ticket de conductor lo resuelve la
- * RPC `admin_ticket_context()`.
+ * La lista viene de `admin_tickets_page()`, paginada y con los filtros aplicados en el servidor
+ * (el admin no tiene RLS sobre `bookings`, así que el nombre de la cochera también lo resuelve
+ * la RPC). Los mensajes se piden solo del ticket que se abre: antes se traían todos los
+ * mensajes de todos los tickets en cada carga.
  */
 
 import { supabase } from '../../lib/supabase';
@@ -28,8 +29,21 @@ export type PanelTicket = {
   contextLabel: string | null;
   createdAt: string;
   updatedAt: string;
-  messages: PanelTicketMessage[];
+  lastMessageAt: string;
+  lastMessagePreview: string | null;
 };
+
+export const TICKETS_PAGE_SIZE = 30;
+
+export type TicketFilters = {
+  status: TicketStatus | null;
+  category: TicketCategory | null;
+  search: string;
+};
+
+export type TicketCursor = { lastMessageAt: string; id: string };
+
+export type TicketCounts = { open: number; resolved: number; all: number };
 
 type TicketRow = {
   id: string;
@@ -41,81 +55,91 @@ type TicketRow = {
   created_at: string;
   updated_at: string;
   last_message_at: string;
+  reporter_name: string;
+  context_label: string | null;
+  last_message_preview: string | null;
 };
 
 type MessageRow = {
   id: string;
-  ticket_id: string;
   author_role: 'user' | 'admin';
   body: string;
   created_at: string;
 };
-
-type ContextRow = { ticket_id: string; reporter_name: string; related_lot_name: string | null };
 
 function guard(): NonNullable<typeof supabase> {
   if (!supabase) throw new Error('Supabase no está configurado (falta el .env del panel).');
   return supabase;
 }
 
-export async function fetchTickets(): Promise<PanelTicket[]> {
-  const db = guard();
-
-  const { data: tickets, error } = await db
-    .from('support_tickets')
-    .select('id, code, subject, category, status, reporter_role, created_at, updated_at, last_message_at')
-    .order('last_message_at', { ascending: false })
-    .returns<TicketRow[]>();
-  if (error) throw error;
-  if (!tickets || tickets.length === 0) return [];
-
-  const ids = tickets.map((t) => t.id);
-  const [messagesRes, contextRes] = await Promise.all([
-    db
-      .from('support_ticket_messages')
-      .select('id, ticket_id, author_role, body, created_at')
-      .in('ticket_id', ids)
-      .order('created_at', { ascending: true })
-      .returns<MessageRow[]>(),
-    db.rpc('admin_ticket_context'),
-  ]);
-  if (messagesRes.error) throw messagesRes.error;
-  if (contextRes.error) throw contextRes.error;
-
-  const ctxByTicket = new Map(
-    ((contextRes.data ?? []) as ContextRow[]).map((c) => [c.ticket_id, c])
-  );
-
-  const messagesByTicket = new Map<string, MessageRow[]>();
-  for (const m of messagesRes.data ?? []) {
-    const list = messagesByTicket.get(m.ticket_id) ?? [];
-    list.push(m);
-    messagesByTicket.set(m.ticket_id, list);
-  }
-
-  return tickets.map((t) => {
-    const ctx = ctxByTicket.get(t.id);
-    const reporterName = ctx?.reporter_name ?? 'Usuario';
-    return {
-      id: t.id,
-      code: t.code,
-      subject: t.subject,
-      category: t.category,
-      status: t.status,
-      reporterName,
-      reporterRole: t.reporter_role,
-      contextLabel: ctx?.related_lot_name ?? null,
-      createdAt: t.created_at,
-      updatedAt: t.updated_at,
-      messages: (messagesByTicket.get(t.id) ?? []).map((m) => ({
-        id: m.id,
-        authorSide: m.author_role,
-        authorName: m.author_role === 'admin' ? 'Soporte GarageGo' : reporterName,
-        body: m.body,
-        createdAt: m.created_at,
-      })),
-    };
+/**
+ * Una página de tickets, del último mensaje más nuevo al más viejo. `limit` permite recargar de
+ * una vez las filas ya cargadas cuando llega un evento de Realtime (hasta 100).
+ */
+export async function fetchTicketsPage(
+  filters: TicketFilters,
+  cursor: TicketCursor | null,
+  limit = TICKETS_PAGE_SIZE
+): Promise<{ rows: PanelTicket[]; nextCursor: TicketCursor | null }> {
+  const { data, error } = await guard().rpc('admin_tickets_page', {
+    p_limit: limit,
+    p_status: filters.status,
+    p_category: filters.category,
+    p_search: filters.search.trim() || null,
+    p_cursor_last_message_at: cursor?.lastMessageAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
   });
+  if (error) throw error;
+
+  const rows = ((data ?? []) as TicketRow[]).map((t) => ({
+    id: t.id,
+    code: t.code,
+    subject: t.subject,
+    category: t.category,
+    status: t.status,
+    reporterName: t.reporter_name,
+    reporterRole: t.reporter_role,
+    contextLabel: t.context_label,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+    lastMessageAt: t.last_message_at,
+    lastMessagePreview: t.last_message_preview,
+  }));
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    nextCursor: rows.length === limit && last ? { lastMessageAt: last.lastMessageAt, id: last.id } : null,
+  };
+}
+
+/** Cuántos tickets hay en cada estado, para las pestañas. Tres `count` sin traer filas. */
+export async function fetchTicketCounts(): Promise<TicketCounts> {
+  const db = guard();
+  const count = (status: TicketStatus | null) => {
+    const query = db.from('support_tickets').select('id', { count: 'exact', head: true });
+    return status ? query.eq('status', status) : query;
+  };
+  const [open, resolved, all] = await Promise.all([count('open'), count('resolved'), count(null)]);
+  for (const result of [open, resolved, all]) if (result.error) throw result.error;
+  return { open: open.count ?? 0, resolved: resolved.count ?? 0, all: all.count ?? 0 };
+}
+
+/** Todos los mensajes de UN ticket, en orden cronológico. */
+export async function fetchTicketMessages(ticketId: string, reporterName: string): Promise<PanelTicketMessage[]> {
+  const { data, error } = await guard()
+    .from('support_ticket_messages')
+    .select('id, author_role, body, created_at')
+    .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: true })
+    .returns<MessageRow[]>();
+  if (error) throw error;
+  return (data ?? []).map((m) => ({
+    id: m.id,
+    authorSide: m.author_role,
+    authorName: m.author_role === 'admin' ? 'Soporte GarageGo' : reporterName,
+    body: m.body,
+    createdAt: m.created_at,
+  }));
 }
 
 export async function replyToTicket(ticketId: string, adminId: string, body: string): Promise<void> {

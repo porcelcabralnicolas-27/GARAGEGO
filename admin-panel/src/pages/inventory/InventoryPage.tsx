@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { formatMoney, formatRelative, fullName } from '../../lib/format';
+import { businessInstant } from '../../lib/time';
 import {
   MODERATION_STATE_LABELS,
   slaLevel,
@@ -556,7 +557,9 @@ function ForcePauseDialog({
               onConfirm(
                 until ? 'suspended' : 'paused_by_admin',
                 fullReason,
-                until ? new Date(until).toISOString() : null
+                // Medianoche de ese día en Argentina. `new Date('YYYY-MM-DD')` es medianoche UTC,
+                // que en Argentina todavía es las 21:00 del día anterior.
+                until ? businessInstant(until, '00:00').toISOString() : null
               )
             }
           >

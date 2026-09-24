@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import {
   formatDate,
@@ -22,15 +22,15 @@ import { FilterSelect, SearchInput, SubTabs, Tabs, Toolbar } from '../../ui/cont
 import { MetricCard } from '../../ui/MetricCard';
 import { Badge, Button, Callout, EmptyState, KeyValue, SchemaNote } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
-import { TRANSACTION_SIDE_LABEL, type PanelTransaction } from './transactionsApi';
-import { useTickets, type TicketsState } from './useTickets';
+import { TRANSACTION_SIDE_LABEL, TRANSACTIONS_PAGE_SIZE, type PanelTransaction } from './transactionsApi';
+import type { TicketCounts } from './ticketsApi';
+import { useTicketCounts, useTicketMessages, useTickets } from './useTickets';
 import { useTransactions } from './useTransactions';
 
 type MainTab = 'transactions' | 'tickets';
 
 export function SupportPage() {
-  const tickets = useTickets();
-  const openTickets = tickets.tickets.filter((t) => t.status === 'open').length;
+  const { counts } = useTicketCounts();
   const [tab, setTab] = useState<MainTab>('transactions');
 
   return (
@@ -45,11 +45,11 @@ export function SupportPage() {
         onChange={setTab}
         items={[
           { value: 'transactions', label: 'Transacciones' },
-          { value: 'tickets', label: 'Tickets', count: openTickets },
+          { value: 'tickets', label: 'Tickets', count: counts.open },
         ]}
       />
 
-      {tab === 'transactions' ? <TransactionsView /> : <TicketsView q={tickets} />}
+      {tab === 'transactions' ? <TransactionsView /> : <TicketsView counts={counts} />}
     </>
   );
 }
@@ -60,26 +60,18 @@ type TypeFilter = TransactionType | 'all';
 type StatusFilter = TransactionStatus | 'all';
 
 function TransactionsView() {
-  const { transactions, summary, loading, error, refetch } = useTransactions();
-
   const [search, setSearch] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [detail, setDetail] = useState<PanelTransaction | null>(null);
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return transactions.filter((r) => {
-      if (type !== 'all' && r.type !== type) return false;
-      if (status !== 'all' && r.status !== status) return false;
-      if (!term) return true;
-      return (
-        r.id.toLowerCase().includes(term) ||
-        (r.paymentGatewayRef ?? '').toLowerCase().includes(term) ||
-        r.userName.toLowerCase().includes(term)
-      );
-    });
-  }, [transactions, search, type, status]);
+  // Los filtros los aplica el servidor (0059): así se encuentra cualquier movimiento, no solo
+  // los que ya están cargados en la tabla.
+  const { transactions, summary, loading, loadingMore, hasMore, error, refetch, loadMore } = useTransactions({
+    type: type === 'all' ? null : type,
+    status: status === 'all' ? null : status,
+    search,
+  });
 
   const columns: Column<PanelTransaction>[] = [
     {
@@ -115,6 +107,7 @@ function TransactionsView() {
           }
         >
           {TRANSACTION_TYPE_LABELS[r.type] ?? r.type}
+          {r.isDemo ? ' · Demo' : ''}
         </Badge>
       ),
       sortValue: (r) => r.type,
@@ -181,7 +174,7 @@ function TransactionsView() {
         <MetricCard label="Acreditado a propietarios" value={formatMoney(summary?.earnings ?? 0)} />
       </div>
 
-      <Toolbar count={`${filtered.length} de ${transactions.length}`}>
+      <Toolbar count={hasMore ? `${transactions.length} cargados` : `${transactions.length}`}>
         <SearchInput value={search} onChange={setSearch} placeholder="ID, titular o referencia" />
         <FilterSelect
           label="Tipo"
@@ -210,17 +203,25 @@ function TransactionsView() {
 
       <DataTable
         columns={columns}
-        rows={filtered}
+        rows={transactions}
         rowKey={(r) => r.id}
         onRowClick={setDetail}
         defaultSort={{ key: 'date', dir: 'desc' }}
       />
 
+      {hasMore ? (
+        <div style={{ marginTop: 'var(--gg-s3)', textAlign: 'center' }}>
+          <Button onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Cargando…' : 'Cargar más movimientos'}
+          </Button>
+        </div>
+      ) : null}
+
       <div style={{ marginTop: 'var(--gg-s3)' }}>
         <SchemaNote>
-          Solo lectura (los 300 movimientos más recientes). Un ajuste manual de saldo
-          (`wallet_transactions.type = 'adjustment'`) sería otra RPC `security definer`: `wallets`
-          no tiene policy de UPDATE.
+          Solo lectura, de a {TRANSACTIONS_PAGE_SIZE} movimientos. Ordenar por una columna ordena los
+          ya cargados. Un ajuste manual de saldo (`wallet_transactions.type = 'adjustment'`) sería
+          otra RPC `security definer`: `wallets` no tiene policy de UPDATE.
         </SchemaNote>
       </div>
 
@@ -241,6 +242,7 @@ function TransactionsView() {
                 ['Estado', detail.status],
                 ['Cochera', detail.lotName ?? '—'],
                 ['Referencia', detail.paymentGatewayRef ?? '—'],
+                ['Origen', detail.isDemo ? 'Recarga de prueba (saldo ficticio)' : '—'],
               ]}
             />
           </DrawerSection>
@@ -268,9 +270,8 @@ function TransactionsView() {
 
 type TicketTab = TicketStatus | 'all';
 
-function TicketsView({ q }: { q: TicketsState }) {
+function TicketsView({ counts }: { counts: TicketCounts }) {
   const { show } = useToast();
-  const { tickets, loading, error, refetch, reply: sendReplyRpc, setStatus } = q;
 
   const [tab, setTab] = useState<TicketTab>('open');
   const [category, setCategory] = useState<TicketCategory | 'all'>('all');
@@ -280,30 +281,34 @@ function TicketsView({ q }: { q: TicketsState }) {
   const [resolveOnSend, setResolveOnSend] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Los filtros los aplica el servidor (0059); la búsqueda también mira el texto de los mensajes.
+  const {
+    tickets: visible,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    refetch,
+    loadMore,
+    reply: sendReplyRpc,
+    setStatus,
+  } = useTickets({
+    status: tab === 'all' ? null : tab,
+    category: category === 'all' ? null : category,
+    search,
+  });
+
   const now = Date.now();
 
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return tickets.filter((t) => {
-      if (tab !== 'all' && t.status !== tab) return false;
-      if (category !== 'all' && t.category !== category) return false;
-      if (!term) return true;
-      return (
-        t.subject.toLowerCase().includes(term) ||
-        t.code.toLowerCase().includes(term) ||
-        t.reporterName.toLowerCase().includes(term) ||
-        t.messages.some((m) => m.body.toLowerCase().includes(term))
-      );
-    });
-  }, [tickets, tab, category, search]);
-
   const selected = visible.find((t) => t.id === selectedId) ?? visible[0] ?? null;
+  const { messages: selectedMessages, reload: reloadMessages } = useTicketMessages(selected);
 
   const sendReply = async () => {
     if (!selected || reply.trim().length === 0 || busy) return;
     setBusy(true);
     try {
       await sendReplyRpc(selected.id, reply.trim());
+      reloadMessages();
       if (resolveOnSend) await setStatus(selected.id, 'resolved');
       setReply('');
       setResolveOnSend(false);
@@ -328,7 +333,7 @@ function TicketsView({ q }: { q: TicketsState }) {
     }
   };
 
-  if (loading && tickets.length === 0) {
+  if (loading && visible.length === 0 && !search && category === 'all') {
     return <EmptyState icon="⏳" title="Cargando tickets" description="Un momento." />;
   }
 
@@ -355,9 +360,9 @@ function TicketsView({ q }: { q: TicketsState }) {
           value={tab}
           onChange={setTab}
           items={[
-            { value: 'open', label: 'Abiertos', count: tickets.filter((t) => t.status === 'open').length },
-            { value: 'resolved', label: 'Resueltos', count: tickets.filter((t) => t.status === 'resolved').length },
-            { value: 'all', label: 'Todos', count: tickets.length },
+            { value: 'open', label: 'Abiertos', count: counts.open },
+            { value: 'resolved', label: 'Resueltos', count: counts.resolved },
+            { value: 'all', label: 'Todos', count: counts.all },
           ]}
         />
 
@@ -429,6 +434,14 @@ function TicketsView({ q }: { q: TicketsState }) {
             ))}
           </ul>
         )}
+
+        {hasMore ? (
+          <div style={{ padding: 'var(--gg-s3)', textAlign: 'center' }}>
+            <Button onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Cargando…' : 'Cargar más tickets'}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="gg-split__detail">
@@ -467,7 +480,7 @@ function TicketsView({ q }: { q: TicketsState }) {
             </header>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--gg-s4)' }}>
-              {selected.messages.map((m) => (
+              {selectedMessages.map((m) => (
                 <div
                   key={m.id}
                   style={{

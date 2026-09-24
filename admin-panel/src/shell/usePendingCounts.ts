@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
 import { usePolling } from '../lib/usePolling';
+import { useRealtimeRefresh } from '../lib/useRealtimeRefresh';
+
+/** Solo una red de seguridad por si se corta Realtime; lo normal es enterarse por los eventos. */
+const FALLBACK_POLL_MS = 5 * 60_000;
 
 /**
- * Contadores de los badges de la sidebar. Dos `count` baratos, refrescados cada 20 s para que
- * sigan al día mientras el equipo trabaja.
+ * Contadores de los badges de la sidebar. Dos `count` baratos que se refrescan cuando cambia
+ * una cochera o un ticket (Realtime, 0060), en vez de pedirlos cada 20 s.
  */
 export function usePendingCounts(): { pendingLots: number; openTickets: number } {
   const [counts, setCounts] = useState({ pendingLots: 0, openTickets: 0 });
@@ -29,7 +33,8 @@ export function usePendingCounts(): { pendingLots: number; openTickets: number }
     void load();
   }, [load]);
 
-  usePolling(() => void load(), 20_000);
+  useRealtimeRefresh('admin-pending-counts', ['parking_lots', 'support_tickets'], () => void load());
+  usePolling(() => void load(), FALLBACK_POLL_MS);
 
   return counts;
 }

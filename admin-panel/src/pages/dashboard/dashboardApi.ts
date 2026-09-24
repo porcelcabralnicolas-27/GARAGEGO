@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { formatDayMonth, formatMonthName } from '../../lib/time';
 
 function guard(): NonNullable<typeof supabase> {
   if (!supabase) throw new Error('Supabase no está configurado (falta el .env del panel).');
@@ -144,9 +145,8 @@ type GrowthRow = {
 };
 
 function bucketLabel(iso: string, range: GrowthRange): string {
-  const date = new Date(iso);
-  if (range === '12m') return date.toLocaleDateString('es-AR', { month: 'short' });
-  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+  if (range === '12m') return formatMonthName(iso);
+  return formatDayMonth(iso);
 }
 
 export async function fetchGrowth(range: GrowthRange): Promise<GrowthPoint[]> {

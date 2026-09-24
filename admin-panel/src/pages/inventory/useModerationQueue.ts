@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { LotRow, ModerationState } from '../../domain';
+import { useRealtimeRefresh } from '../../lib/useRealtimeRefresh';
 import {
   fetchModerationLots,
   reviewLot,
@@ -50,6 +51,9 @@ export function useModerationQueue(): ModerationQueue {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Una cochera nueva enviada a revisión (o cambiada por otro admin) aparece sola (0060).
+  useRealtimeRefresh('admin-moderation-queue', ['parking_lots'], () => void load());
 
   const review = useCallback<ModerationQueue['review']>(
     async (lotId, decision, reason) => {
