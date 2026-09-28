@@ -2,15 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { Banner } from '@/components/ui/Banner';
 import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
@@ -142,10 +135,8 @@ export function SupportTicketThreadScreen({
         </View>
       ) : null}
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* Igual que ChatView: automaticOffset sube el input justo hasta el teclado. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         {!isLoading && messages.length === 0 ? (
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
             Todavía no hay mensajes.
@@ -159,6 +150,8 @@ export function SupportTicketThreadScreen({
           data={messages}
           keyExtractor={(item) => item.id}
           style={styles.flex}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           contentContainerStyle={{ paddingVertical: spacing.md }}
           onEndReached={() => {
             if (messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage) messagesQuery.fetchNextPage();

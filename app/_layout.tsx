@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ensureProfile, getProfile, getWalletBalance } from '@/features/profile/api';
@@ -163,8 +164,12 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <StatusBar style="auto" />
-        <Stack screenOptions={{ headerShown: false }} />
+        {/* Con edge-to-edge (obligatorio en Android desde el SDK 54) la ventana ya no se achica
+            al abrir el teclado: sin esto, el input de los chats quedaba tapado. */}
+        <KeyboardProvider>
+          <StatusBar style="auto" />
+          <Stack screenOptions={{ headerShown: false }} />
+        </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   );

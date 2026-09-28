@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import type { Href } from 'expo-router';
 
 import { BackButton } from '@/components/ui/BackButton';
@@ -166,7 +167,9 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
       {visibleError ? <Banner message={visibleError} /> : null}
       {data && !canWrite ? <Banner message="Esta conversación ya no tiene reservas asociadas." /> : null}
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* automaticOffset mide dónde está la vista en pantalla (título arriba, tab bar abajo) y
+          sube el input justo hasta el borde del teclado, en Android y en iOS. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         {!isLoading && messages.length === 0 ? (
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 12 }]}>
             Todavía no hay mensajes. Escribí el primero.
@@ -178,6 +181,8 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
           data={rows}
           keyExtractor={(item) => item.key}
           style={styles.flex}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           onEndReached={() => {
             if (messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage) messagesQuery.fetchNextPage();
           }}
