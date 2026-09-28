@@ -42,6 +42,10 @@ export type OwnerBookingItem = Booking & {
   vehicle: BookingVehicleInfo | null;
 };
 
+export type OwnerBookingDetail = OwnerBookingItem & {
+  parkingLotAddress: string;
+};
+
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   pending: 'Pendiente',
   confirmed: 'Confirmada',

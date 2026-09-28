@@ -2,7 +2,14 @@ import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { toPage, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
-import type { Booking, BookingCursor, BookingScope, ClientBookingItem, OwnerBookingItem } from './types';
+import type {
+  Booking,
+  BookingCursor,
+  BookingScope,
+  ClientBookingItem,
+  OwnerBookingDetail,
+  OwnerBookingItem,
+} from './types';
 
 /** Reservas por página del historial. */
 export const HISTORY_PAGE_SIZE = 20;
@@ -175,6 +182,22 @@ export async function listOwnerBookingsPage(
     vehicle: row.vehicle_plate ? { plate: row.vehicle_plate, brand: row.vehicle_brand, model: row.vehicle_model } : null,
   }));
   return toPage(items, pageSize, bookingCursorOf);
+}
+
+/** Una sola reserva recibida por el propietario (get_owner_booking, 0062), para su detalle. */
+export async function getOwnerBooking(bookingId: string): Promise<OwnerBookingDetail> {
+  const { data, error } = await supabase.rpc('get_owner_booking', { p_booking_id: bookingId });
+  if (error) throw error;
+  const row = data[0];
+  if (!row) throw new Error('Reserva no encontrada');
+
+  return {
+    ...mapBookingRow(row),
+    parkingLotName: row.parking_lot_name ?? 'Estacionamiento',
+    parkingLotAddress: row.parking_lot_address ?? '',
+    clientName: row.client_name ?? 'Cliente',
+    vehicle: row.vehicle_plate ? { plate: row.vehicle_plate, brand: row.vehicle_brand, model: row.vehicle_model } : null,
+  };
 }
 
 /**

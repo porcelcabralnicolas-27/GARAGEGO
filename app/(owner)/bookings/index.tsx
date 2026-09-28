@@ -216,6 +216,7 @@ export default function OwnerBookingsScreen() {
             vehicleLabel={item.vehicle ? [item.vehicle.plate, item.vehicle.brand].filter(Boolean).join(' · ') : null}
             overtimeMinutes={item.overtimeMinutes}
             overtimeCharge={item.overtimeCharge}
+            onPress={() => router.push({ pathname: '/(owner)/bookings/[id]', params: { id: item.id } })}
             actions={
               item.status === 'confirmed' ? (
                 <>

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList } from 'react-native';
 
@@ -32,6 +32,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 type HistoryPages = InfiniteData<Page<OwnerBookingItem, BookingCursor>, BookingCursor | null>;
 
 export default function OwnerBookingHistoryScreen() {
+  const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const userId = profile?.id;
@@ -114,6 +115,9 @@ export default function OwnerBookingHistoryScreen() {
             vehicleLabel={item.vehicle ? [item.vehicle.plate, item.vehicle.brand].filter(Boolean).join(' · ') : null}
             overtimeMinutes={item.overtimeMinutes}
             overtimeCharge={item.overtimeCharge}
+            onPress={() =>
+              router.push({ pathname: '/(owner)/bookings/[id]', params: { id: item.id, from: 'history' } })
+            }
             actions={
               <Button
                 label="Borrar"

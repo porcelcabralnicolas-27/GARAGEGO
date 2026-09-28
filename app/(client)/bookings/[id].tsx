@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BusinessTimeNote } from '@/components/booking/BusinessTimeNote';
+import { DetailRow } from '@/components/booking/DetailRow';
 import { ProgressRing } from '@/components/booking/ProgressRing';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
@@ -49,17 +50,6 @@ function formatRemaining(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
   if (minutes > 0) return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
   return `${seconds}s`;
-}
-
-/** Fila de dato del resumen: etiqueta a la izquierda, valor a la derecha. */
-function DetailRow({ label, value }: { label: string; value: string }) {
-  const { colors, typography } = useTheme();
-  return (
-    <View style={styles.detailRow}>
-      <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{label}</Text>
-      <Text style={[typography.bodyMedium, styles.detailValue, { color: colors.onSurface }]}>{value}</Text>
-    </View>
-  );
 }
 
 // Pantallas 4-6 del Figma en una sola ruta. Son tres momentos de la misma reserva, no tres
@@ -384,10 +374,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.lg,
     marginBottom: spacing.sm,
-  },
-  detailValue: {
-    flexShrink: 1,
-    textAlign: 'right',
   },
   divider: {
     height: 1,
