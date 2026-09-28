@@ -29,8 +29,8 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
 
   const { data, isLoading, isError, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery({
-      queryKey: queryKeys.tickets.list(userId ?? ''),
-      queryFn: ({ pageParam }) => listMyTicketsPage(pageParam),
+      queryKey: queryKeys.tickets.list(userId ?? '', role),
+      queryFn: ({ pageParam }) => listMyTicketsPage(role, pageParam),
       initialPageParam: null as TicketCursor | null,
       getNextPageParam: (page) => page.nextCursor,
       enabled: Boolean(userId),

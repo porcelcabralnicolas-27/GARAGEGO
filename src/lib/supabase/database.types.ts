@@ -533,6 +533,12 @@ export type Database = {
           vehicle_model: string | null;
         }[];
       };
+      get_owner_booking: {
+        Args: { p_booking_id: string };
+        Returns: (Database['public']['Functions']['list_owner_bookings']['Returns'][number] & {
+          parking_lot_address: string | null;
+        })[];
+      };
       list_notifications: {
         Args: {
           p_audience: 'client' | 'owner';
@@ -566,6 +572,7 @@ export type Database = {
       };
       list_my_tickets: {
         Args: {
+          p_role: 'client' | 'owner';
           p_limit?: number;
           p_cursor_last_message_at?: string | null;
           p_cursor_id?: string | null;

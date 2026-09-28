@@ -110,7 +110,7 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.driver'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
     select count(*) into v_count from public.list_notifications('client', 100) r where r.user_id <> current_setting('gg.driver')::uuid;
-    select count(*) into v_other from public.list_my_tickets(100) r where r.reporter_id <> current_setting('gg.driver')::uuid;
+    select count(*) into v_other from public.list_my_tickets('client', 100) r where r.reporter_id <> current_setting('gg.driver')::uuid;
     execute 'reset role';
     v_report := v_report || e'\n' || concat_ws(' | ', 5, 'notificaciones y tickets ajenos',
       case when v_count = 0 and v_other = 0 then 'OK' else 'FALLA' end,

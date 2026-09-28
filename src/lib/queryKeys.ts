@@ -50,7 +50,7 @@ export const queryKeys = {
   },
   tickets: {
     all: ['tickets'] as const,
-    list: (userId: string) => ['tickets', 'list', userId] as const,
+    list: (userId: string, role: string) => ['tickets', 'list', userId, role] as const,
     thread: (ticketId: string) => ['tickets', 'thread', ticketId] as const,
     messages: (ticketId: string) => ['tickets', 'messages', ticketId] as const,
     targets: (userId: string, role: string) => ['tickets', 'targets', userId, role] as const,

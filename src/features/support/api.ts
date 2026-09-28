@@ -67,13 +67,15 @@ function mapMessageRow(row: {
 export type TicketCursor = { lastMessageAt: string; id: string };
 
 /**
- * Una página de los tickets del usuario, con el nombre de la cochera relacionada y el último
- * mensaje (list_my_tickets, 0059). Antes eran tres consultas encadenadas.
+ * Una página de los tickets que el usuario abrió desde el modo `role`, con el nombre de la
+ * cochera relacionada y el último mensaje (list_my_tickets, 0063).
  */
 export async function listMyTicketsPage(
+  role: ReporterRole,
   cursor: TicketCursor | null = null
 ): Promise<Page<SupportTicketListItem, TicketCursor>> {
   const { data, error } = await supabase.rpc('list_my_tickets', {
+    p_role: role,
     p_limit: TICKETS_PAGE_SIZE,
     p_cursor_last_message_at: cursor?.lastMessageAt ?? null,
     p_cursor_id: cursor?.id ?? null,
