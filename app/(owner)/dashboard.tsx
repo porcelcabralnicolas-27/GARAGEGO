@@ -8,6 +8,7 @@ import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { formatMoney } from '@/lib/money';
 import { listRecentTransactions, type WalletTransaction } from '@/features/profile/api';
 import { getOwnerStats } from '@/features/stats/api';
@@ -83,6 +84,7 @@ export default function OwnerDashboardScreen() {
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false}>
+        <ScreenHeader title="Dashboard" backHref="/(owner)/profile" />
         <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: spacing.xs }]}>
           Hola{profile ? `, ${profile.firstName}` : ''}
         </Text>

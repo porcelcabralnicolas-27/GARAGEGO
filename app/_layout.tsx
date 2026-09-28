@@ -134,7 +134,7 @@ function useNavigationGuard() {
     const isInRoleGroup = group === '(client)' || group === '(owner)';
 
     if (inAuthGroup || (isInRoleGroup && group !== expectedGroup)) {
-      router.replace(profile.activeRole === 'owner' ? '/(owner)/dashboard' : '/(client)');
+      router.replace(profile.activeRole === 'owner' ? '/(owner)/parkings' : '/(client)');
     }
   }, [session, profile, segments, isInitializing, router]);
 }

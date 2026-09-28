@@ -20,10 +20,6 @@ export default function OwnerLayout() {
       }}
     >
       <Tabs.Screen
-        name="dashboard"
-        options={{ title: 'Dashboard', tabBarIcon: ({ color, size }) => <Ionicons name="grid" color={color} size={size} /> }}
-      />
-      <Tabs.Screen
         name="parkings"
         options={{
           title: 'Publicaciones',
@@ -52,6 +48,8 @@ export default function OwnerLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="notifications" color={color} size={size} />,
         }}
       />
+      {/* Dashboard y estadísticas se abren desde Perfil: abajo quedan 5 tabs, como el conductor. */}
+      <Tabs.Screen name="dashboard" options={{ href: null }} />
       <Tabs.Screen name="stats" options={{ href: null }} />
       <Tabs.Screen
         name="profile"

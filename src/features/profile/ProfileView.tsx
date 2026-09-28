@@ -121,7 +121,7 @@ export function ProfileView() {
     try {
       const updated = await switchActiveRole(profile.id, role);
       setProfile(updated);
-      router.replace(role === 'owner' ? '/(owner)/dashboard' : '/(client)');
+      router.replace(role === 'owner' ? '/(owner)/parkings' : '/(client)');
     } catch {
       setErrorMessage('No pudimos cambiar de rol. Intenta nuevamente.');
     } finally {
@@ -239,10 +239,20 @@ export function ProfileView() {
             <InfoField label="Correo electrónico" value={session.user.email ?? '—'} />
             <InfoField label="Teléfono" value={profile.phone || 'No registrado'} />
 
-            {/* El saldo y la recarga son del conductor. En modo propietario el perfil es solo
-                identidad + cambio de rol; el saldo y el retiro viven en su panel. Vehículos,
-                centro de ayuda y cierre de sesión están en Ajustes (la tuerca). */}
-            {!isOwnerActive ? (
+            {/* El saldo y la recarga son del conductor. En modo propietario el saldo y el retiro
+                viven en su dashboard, que se abre desde acá. Vehículos, centro de ayuda y cierre
+                de sesión están en Ajustes (la tuerca). */}
+            {isOwnerActive ? (
+              <View style={styles.dashboardButton}>
+                <Button
+                  label="Ver dashboard"
+                  icon="grid-outline"
+                  variant="outlined"
+                  fullWidth
+                  onPress={() => router.push('/(owner)/dashboard')}
+                />
+              </View>
+            ) : (
               <>
                 <Text style={[typography.titleLarge, styles.balanceHeading, { color: colors.onSurface }]}>Saldo:</Text>
 
@@ -275,7 +285,7 @@ export function ProfileView() {
                   </>
                 ) : null}
               </>
-            ) : null}
+            )}
 
             <View style={styles.roleBlock}>
               <View style={styles.roleLabels}>
@@ -359,6 +369,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  dashboardButton: {
     marginBottom: spacing.xl,
   },
   roleBlock: {
