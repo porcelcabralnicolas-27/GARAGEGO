@@ -72,9 +72,10 @@ export default function BookingScreen() {
     if (vehicles.length === 1 && selectedVehicleId === null) setSelectedVehicleId(vehicles[0].id);
   }, [vehicles, selectedVehicleId]);
 
+  const capacity = lot?.capacity ?? 1;
   const availableDates = useMemo(
-    () => listAvailableDates(recurring, exceptions, booked, 30),
-    [recurring, exceptions, booked]
+    () => listAvailableDates(recurring, exceptions, booked, capacity, 30),
+    [recurring, exceptions, booked, capacity]
   );
 
   useEffect(() => {
@@ -82,8 +83,8 @@ export default function BookingScreen() {
   }, [availableDates, selectedDate]);
 
   const windowsForDate = useMemo(
-    () => (selectedDate ? getFreeWindowsForDate(selectedDate, recurring, exceptions, booked) : []),
-    [selectedDate, recurring, exceptions, booked]
+    () => (selectedDate ? getFreeWindowsForDate(selectedDate, recurring, exceptions, booked, capacity) : []),
+    [selectedDate, recurring, exceptions, booked, capacity]
   );
   const startOptions = useMemo(() => generateStartTimeOptions(windowsForDate), [windowsForDate]);
   const endOptions = useMemo(

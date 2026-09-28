@@ -13,6 +13,8 @@ export type ParkingLot = {
   latitude: number;
   longitude: number;
   pricePerHour: number;
+  /** Cuántos autos pueden estar reservados en el mismo horario (0064). */
+  capacity: number;
   ratingAvg: number;
   isActive: boolean;
   createdAt: string;

@@ -29,7 +29,9 @@ function mapParkingLotRow(row: {
   is_active: boolean;
   created_at: string;
   // `search_parking_lots` (RPC) no devuelve estas columnas: sus filas ya están aprobadas y en
-  // vivo por definición, así que se les asume el valor bueno.
+  // vivo por definición, así que se les asume el valor bueno. La capacidad no se usa en la
+  // búsqueda; las pantallas que la muestran leen la cochera con getParkingLot.
+  capacity?: number;
   approval_status?: ApprovalStatus;
   rejection_reason?: string | null;
   moderation_state?: ModerationState;
@@ -43,6 +45,7 @@ function mapParkingLotRow(row: {
     latitude: row.latitude,
     longitude: row.longitude,
     pricePerHour: row.price_per_hour,
+    capacity: row.capacity ?? 1,
     ratingAvg: row.rating_avg,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -134,6 +137,7 @@ export type ParkingLotInput = {
   latitude: number;
   longitude: number;
   pricePerHour: number;
+  capacity: number;
 };
 
 export async function createParkingLot(
@@ -153,6 +157,7 @@ export async function createParkingLot(
       latitude: input.latitude,
       longitude: input.longitude,
       price_per_hour: input.pricePerHour,
+      capacity: input.capacity,
       is_active: options?.isActive ?? true,
     })
     .select('*')
@@ -171,6 +176,7 @@ export async function updateParkingLot(id: string, input: ParkingLotInput): Prom
       latitude: input.latitude,
       longitude: input.longitude,
       price_per_hour: input.pricePerHour,
+      capacity: input.capacity,
     })
     .eq('id', id)
     .select('*')

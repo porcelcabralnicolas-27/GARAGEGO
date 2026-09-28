@@ -90,6 +90,8 @@ export type Database = {
           latitude: number;
           longitude: number;
           price_per_hour: number;
+          /** Autos a la vez (0064). */
+          capacity: number;
           rating_avg: number;
           is_active: boolean;
           created_at: string;
@@ -115,6 +117,7 @@ export type Database = {
           latitude: number;
           longitude: number;
           price_per_hour: number;
+          capacity?: number;
           is_active?: boolean;
         };
         Update: {
@@ -124,6 +127,7 @@ export type Database = {
           latitude?: number;
           longitude?: number;
           price_per_hour?: number;
+          capacity?: number;
           is_active?: boolean;
           // Solo la transición changes_requested → pending pasa el trigger (0037/0038).
           approval_status?: 'pending';

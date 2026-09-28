@@ -10,8 +10,8 @@ export type TimeWindow = { start: string; end: string };
 
 const STEP_MINUTES = 30;
 const MIN_DURATION_MINUTES = 30;
-/** Margen entre reservas de una misma cochera. Tiene que coincidir con `v_buffer` de
- *  `_assert_slot_bookable` (migración 0048): si no, la app ofrece horarios que el servidor
+/** Margen alrededor de cada reserva. Tiene que coincidir con `v_buffer` de
+ *  `_assert_slot_bookable` (migración 0064): si no, la app ofrece horarios que el servidor
  *  rechaza con `buffer_conflict`. */
 const BUFFER_MINUTES = 15;
 const MINUTES_PER_DAY = 24 * 60;
@@ -49,6 +49,35 @@ function subtractInterval(window: TimeWindow, booked: TimeWindow): TimeWindow[] 
 
 function subtractAll(windows: TimeWindow[], booked: TimeWindow[]): TimeWindow[] {
   return booked.reduce((current, interval) => current.flatMap((w) => subtractInterval(w, interval)), windows);
+}
+
+/**
+ * Tramos donde la ocupación simultánea llega a `capacity`: ahí no entra otro auto. Con
+ * capacidad 1 es simplemente la unión de las reservas. Los intervalos son semiabiertos
+ * [inicio, fin), igual que los tsrange de `_assert_slot_bookable` (0064): uno que termina a las
+ * 11:00 no se suma a otro que empieza a las 11:00.
+ */
+function fullSegments(intervals: TimeWindow[], capacity: number): TimeWindow[] {
+  const events = intervals.flatMap((i) => [
+    { at: toMinutes(i.start), delta: 1 },
+    { at: toMinutes(i.end), delta: -1 },
+  ]);
+  // A igual minuto, primero los fines: así los intervalos que se tocan no se pisan.
+  events.sort((a, b) => a.at - b.at || a.delta - b.delta);
+
+  const result: TimeWindow[] = [];
+  let occupancy = 0;
+  let fullSince: number | null = null;
+  for (const event of events) {
+    occupancy += event.delta;
+    if (fullSince === null && occupancy >= capacity) {
+      fullSince = event.at;
+    } else if (fullSince !== null && occupancy < capacity) {
+      if (event.at > fullSince) result.push({ start: toTimeString(fullSince), end: toTimeString(event.at) });
+      fullSince = null;
+    }
+  }
+  return result;
 }
 
 /** Ventanas horarias configuradas para una fecha (excepción puntual si existe, si no la franja recurrente del día). */
@@ -95,12 +124,16 @@ function clipPastWindows(dateStr: string, windows: TimeWindow[], now: Date): Tim
   });
 }
 
-/** Ventanas realmente libres para una fecha: configuradas, menos lo ya reservado, menos lo ya pasado. */
+/**
+ * Ventanas realmente libres para una fecha: configuradas, menos los tramos donde la cochera ya
+ * está llena (`capacity` autos a la vez), menos lo ya pasado.
+ */
 export function getFreeWindowsForDate(
   dateStr: string,
   recurring: RecurringAvailability[],
   exceptions: AvailabilityException[],
   booked: BookedInterval[],
+  capacity: number,
   now: Date = new Date()
 ): TimeWindow[] {
   const configured = getConfiguredWindowsForDate(dateStr, recurring, exceptions);
@@ -112,7 +145,7 @@ export function getFreeWindowsForDate(
       start: toTimeString(Math.max(0, toMinutes(normalizeTime(b.startTime)) - BUFFER_MINUTES)),
       end: toTimeString(Math.min(MINUTES_PER_DAY, toMinutes(normalizeTime(b.endTime)) + BUFFER_MINUTES)),
     }));
-  return clipPastWindows(dateStr, subtractAll(configured, bookedToday), now);
+  return clipPastWindows(dateStr, subtractAll(configured, fullSegments(bookedToday, capacity)), now);
 }
 
 /** Próximas fechas (YYYY-MM-DD) con al menos una ventana libre, dentro de los próximos `days` días. */
@@ -120,6 +153,7 @@ export function listAvailableDates(
   recurring: RecurringAvailability[],
   exceptions: AvailabilityException[],
   booked: BookedInterval[],
+  capacity: number,
   days = 30,
   now: Date = new Date()
 ): string[] {
@@ -127,7 +161,7 @@ export function listAvailableDates(
   const today = businessDate(now);
   for (let i = 0; i < days; i += 1) {
     const dateStr = addDays(today, i);
-    if (getFreeWindowsForDate(dateStr, recurring, exceptions, booked, now).length > 0) {
+    if (getFreeWindowsForDate(dateStr, recurring, exceptions, booked, capacity, now).length > 0) {
       result.push(dateStr);
     }
   }

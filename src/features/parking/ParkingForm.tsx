@@ -5,11 +5,17 @@ import { Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
+import { CountStepper } from '@/components/ui/CountStepper';
 import { FormSection } from '@/components/ui/FormSection';
 import { PriceStepper } from '@/components/ui/PriceStepper';
 import { TextField } from '@/components/ui/TextField';
 import { LocationPicker } from '@/features/parking/LocationPicker';
-import { parkingLotSchema, type ParkingLotFormValues } from '@/features/parking/schemas';
+import {
+  MAX_CAPACITY,
+  MIN_CAPACITY,
+  parkingLotSchema,
+  type ParkingLotFormValues,
+} from '@/features/parking/schemas';
 import type { ParkingLotInput } from '@/features/parking/api';
 import { spacing, useTheme } from '@/theme';
 
@@ -38,6 +44,7 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
       latitude: defaultValues?.latitude ?? '',
       longitude: defaultValues?.longitude ?? '',
       pricePerHour: defaultValues?.pricePerHour ?? '',
+      capacity: defaultValues?.capacity ?? MIN_CAPACITY,
     },
   });
 
@@ -60,6 +67,7 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
         latitude: Number(values.latitude),
         longitude: Number(values.longitude),
         pricePerHour: Number(values.pricePerHour),
+        capacity: values.capacity,
       });
     } catch {
       setErrorMessage('No pudimos guardar los cambios. Intenta nuevamente.');
@@ -147,6 +155,26 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
               value={field.value}
               onChangeText={field.onChange}
               errorMessage={fieldState.error?.message}
+            />
+          )}
+        />
+      </FormSection>
+
+      <FormSection
+        title="Capacidad"
+        description="Cuántos autos entran a la vez. Esa cantidad de conductores puede reservar el mismo horario."
+      >
+        <Controller
+          control={control}
+          name="capacity"
+          render={({ field }) => (
+            <CountStepper
+              value={field.value}
+              onChange={field.onChange}
+              min={MIN_CAPACITY}
+              max={MAX_CAPACITY}
+              unit={(n) => (n === 1 ? 'auto' : 'autos')}
+              accessibilityLabel="Capacidad"
             />
           )}
         />

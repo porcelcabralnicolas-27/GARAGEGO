@@ -17,6 +17,8 @@ type ParkingCardProps = {
   note?: string | null;
   imageUrl?: string | null;
   distanceKm?: number;
+  /** Autos a la vez. Solo lo pasa el propietario: la búsqueda no trae la capacidad. */
+  capacity?: number;
   onPress: () => void;
 };
 
@@ -40,6 +42,7 @@ export function ParkingCard({
   note,
   imageUrl,
   distanceKm,
+  capacity,
   onPress,
 }: ParkingCardProps) {
   const { colors, typography } = useTheme();
@@ -95,6 +98,11 @@ export function ParkingCard({
           ) : null}
           {distanceKm !== undefined ? (
             <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{distanceKm.toFixed(1)} km</Text>
+          ) : null}
+          {capacity !== undefined ? (
+            <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>
+              Capacidad: {capacity} {capacity === 1 ? 'auto' : 'autos'}
+            </Text>
           ) : null}
 
           <View style={styles.priceRow}>

@@ -41,6 +41,8 @@ if (!DATABASE_URL || !DRIVER || !OWNER) {
 
 const LOT = 'dddddddd-0000-0000-0000-00000000000d';
 const OTHER_LOT = 'dddddddd-0000-0000-0000-00000000000e';
+/** Cochera con capacidad 2 (0064): dos autos a la vez, no tres. */
+const CAPACITY_LOT = 'dddddddd-0000-0000-0000-00000000000f';
 const PRICE_PER_HOUR = 100;
 /** Cuánto se espera antes de concluir que la segunda operación quedó bloqueada por un lock. */
 const BLOCK_WAIT_MS = 1500;
@@ -111,7 +113,7 @@ const topup = (amount) => ({ sql: 'select public.topup_wallet($1)', params: [amo
 // ── Fixtures ─────────────────────────────────────────────────────────────────────────────────
 
 async function cleanup(admin) {
-  const lots = [LOT, OTHER_LOT];
+  const lots = [LOT, OTHER_LOT, CAPACITY_LOT];
   // Primero los movimientos: su FK a la reserva es `on delete set null` y quedarían huérfanos.
   await admin.query(
     'delete from public.wallet_transactions where related_booking_id in (select id from public.bookings where parking_lot_id = any($1))',
@@ -132,15 +134,16 @@ async function setup(admin) {
   ]);
   if (wallets.rowCount !== 2) throw new Error('No se encontraron las billeteras de GG_DRIVER_ID y GG_OWNER_ID.');
 
-  for (const [id, name] of [
-    [LOT, 'Cochera de prueba (concurrency-checks)'],
-    [OTHER_LOT, 'Cochera de prueba 2 (concurrency-checks)'],
+  for (const [id, name, capacity] of [
+    [LOT, 'Cochera de prueba (concurrency-checks)', 1],
+    [OTHER_LOT, 'Cochera de prueba 2 (concurrency-checks)', 1],
+    [CAPACITY_LOT, 'Cochera de prueba con capacidad 2 (concurrency-checks)', 2],
   ]) {
     await admin.query(
       `insert into public.parking_lots
-         (id, owner_id, name, address, latitude, longitude, price_per_hour, is_active, approval_status, moderation_state)
-       values ($1, $2, $3, 'Dirección de prueba', -34.6037, -58.3816, $4, true, 'approved', 'live')`,
-      [id, OWNER, name, PRICE_PER_HOUR]
+         (id, owner_id, name, address, latitude, longitude, price_per_hour, capacity, is_active, approval_status, moderation_state)
+       values ($1, $2, $3, 'Dirección de prueba', -34.6037, -58.3816, $4, $5, true, 'approved', 'live')`,
+      [id, OWNER, name, PRICE_PER_HOUR, capacity]
     );
     await admin.query(
       `insert into public.parking_availability_recurring (parking_lot_id, day_of_week, start_time, end_time)
@@ -242,8 +245,8 @@ const scenarios = [
   },
   {
     name: 'Reservas simultáneas pegadas (margen de 15 min)',
-    // La exclusion constraint solo cubre el solapamiento directo: 10-11 y 11-11:30 no se pisan,
-    // pero violan el margen. Esto solo lo frena el lock por cochera de la 0048.
+    // 10-11 y 11-11:30 no se pisan, pero violan el margen. Lo frena el lock por cochera de la
+    // 0048 (desde la 0064 ya no hay exclusion constraint: es la única barrera).
     async run(admin, fx) {
       const r = await race({
         userA: DRIVER,
@@ -283,6 +286,43 @@ const scenarios = [
         return {
           ok: succeeded === 1 && booked.length === 1 && payments === 1,
           detail: `exitosas: ${succeeded} de 5 · reservas: ${booked.length} · pagos: ${payments}`,
+        };
+      } finally {
+        await Promise.all(clients.map((c) => c.end().catch(() => {})));
+      }
+    },
+  },
+  {
+    name: 'Ráfaga de 3 reservas del mismo horario en una cochera de capacidad 2',
+    // Sin la exclusion constraint (0064), lo único que impide un tercer auto es el lock por
+    // cochera + el conteo de ocupación de _assert_slot_bookable.
+    async run(admin, fx) {
+      const clients = await Promise.all(Array.from({ length: 3 }, connect));
+      try {
+        await Promise.all(clients.map((c) => beginAs(c, DRIVER)));
+        const { sql, params } = createBooking(CAPACITY_LOT, 411, '10:00', '11:00', fx.vehicleId);
+        const results = await Promise.allSettled(
+          clients.map(async (c) => {
+            try {
+              await c.query(sql, params);
+              await c.query('commit');
+            } catch (error) {
+              await c.query('rollback');
+              throw error;
+            }
+          })
+        );
+        const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+        const rejected = results.find((r) => r.status === 'rejected');
+        const booked = await bookingsOn(admin, CAPACITY_LOT, 411);
+        const payments = await txCount(admin, booked, 'booking_payment');
+        return {
+          ok:
+            succeeded === 2 &&
+            booked.length === 2 &&
+            payments === 2 &&
+            /buffer_conflict/.test(rejected?.reason?.message ?? ''),
+          detail: `exitosas: ${succeeded} de 3 · reservas: ${booked.length} · pagos: ${payments} · rechazada: ${rejected?.reason?.message ?? 'ninguna'}`,
         };
       } finally {
         await Promise.all(clients.map((c) => c.end().catch(() => {})));

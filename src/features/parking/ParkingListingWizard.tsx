@@ -228,6 +228,7 @@ export function ParkingListingWizard(props: WizardProps) {
           latitude: String(props.lot.latitude),
           longitude: String(props.lot.longitude),
           pricePerHour: String(props.lot.pricePerHour),
+          capacity: props.lot.capacity,
         }
       : undefined;
 

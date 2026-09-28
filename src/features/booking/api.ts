@@ -218,7 +218,7 @@ export function getBookingErrorMessage(error: unknown): string {
     if (message.includes('insufficient_balance')) return 'No tenés saldo suficiente para esta reserva.';
     if (message.includes('overlap_conflict')) return 'Ese horario ya no está disponible. Elegí otro.';
     if (message.includes('buffer_conflict')) {
-      return 'Ese horario está muy cerca de otra reserva. Dejá al menos 15 minutos de margen.';
+      return 'Ese horario ya no tiene lugar disponible (cada reserva deja 15 minutos de margen). Elegí otro.';
     }
     if (message.includes('booking_in_past') || message.includes('No se puede reservar en el pasado')) {
       return 'Ese horario ya pasó. Elegí uno posterior.';

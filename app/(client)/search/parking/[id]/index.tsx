@@ -112,6 +112,13 @@ export default function ParkingDetailScreen() {
           </View>
         </View>
 
+        <View style={styles.capacityRow}>
+          <Ionicons name="car-outline" size={16} color={colors.onSurfaceVariant} />
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginLeft: 6 }]}>
+            Capacidad: {lot.capacity} {lot.capacity === 1 ? 'auto' : 'autos'} a la vez
+          </Text>
+        </View>
+
         {lot.description ? (
           <Text style={[typography.bodyLarge, { color: colors.onSurface, marginTop: 16 }]}>{lot.description}</Text>
         ) : null}
@@ -203,6 +210,11 @@ const styles = StyleSheet.create({
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  capacityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
   },
   spacer: {
     height: 12,
