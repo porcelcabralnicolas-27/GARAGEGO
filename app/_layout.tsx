@@ -112,9 +112,14 @@ function useNavigationGuard() {
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const isInitializing = useAuthStore((s) => s.isInitializing);
+  const passwordRecoveryInProgress = useAuthStore((s) => s.passwordRecoveryInProgress);
 
   useEffect(() => {
     if (isInitializing) return;
+    // El código de recuperación abre una sesión antes de guardar la clave nueva: sin esto, el
+    // guard vería "sesión + perfil dentro de (auth)" y mandaría al usuario al inicio a mitad
+    // del cambio.
+    if (passwordRecoveryInProgress) return;
 
     const group = segments[0];
     const inAuthGroup = group === '(auth)';
@@ -136,7 +141,7 @@ function useNavigationGuard() {
     if (inAuthGroup || (isInRoleGroup && group !== expectedGroup)) {
       router.replace(profile.activeRole === 'owner' ? '/(owner)/parkings' : '/(client)');
     }
-  }, [session, profile, segments, isInitializing, router]);
+  }, [session, profile, segments, isInitializing, passwordRecoveryInProgress, router]);
 }
 
 export default function RootLayout() {

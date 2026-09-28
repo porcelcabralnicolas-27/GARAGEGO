@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -17,6 +17,7 @@ import { spacing, useTheme } from '@/theme';
 export default function LoginScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
+  const { passwordChanged } = useLocalSearchParams<{ passwordChanged?: string }>();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const {
@@ -54,6 +55,9 @@ export default function LoginScreen() {
       <ScrollView keyboardShouldPersistTaps="handled">
         <AuthHeading title="Iniciar sesión" />
 
+        {passwordChanged && !errorMessage ? (
+          <Banner variant="success" message="Listo, ya podés entrar con tu contraseña nueva." />
+        ) : null}
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
         <Controller

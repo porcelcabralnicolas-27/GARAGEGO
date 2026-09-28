@@ -38,10 +38,20 @@ export async function resendSignUpConfirmation(email: string) {
   if (error) throw error;
 }
 
+/**
+ * Manda el mail de recuperación. La plantilla "Reset Password" de Supabase tiene que mostrar el
+ * código ({{ .Token }}): se recupera con código y no con link porque el link solo funcionaba en
+ * el mismo dispositivo donde se pidió (PKCE) y dependía de que el mail abriera la app.
+ * Sirve también para cuentas creadas con Google: les crea una contraseña.
+ */
 export async function requestPasswordReset(email: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: Linking.createURL('/reset-password'),
-  });
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+  if (error) throw error;
+}
+
+/** Valida el código del mail. Si es correcto, deja abierta una sesión para cambiar la clave. */
+export async function verifyRecoveryCode(email: string, code: string) {
+  const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'recovery' });
   if (error) throw error;
 }
 
@@ -95,6 +105,15 @@ export function getAuthErrorMessage(error: unknown): string {
     if (message.includes('Invalid login credentials')) return 'Correo o contraseña incorrectos.';
     if (message.includes('Email not confirmed')) return 'Debes confirmar tu correo antes de iniciar sesión.';
     if (message.includes('User already registered')) return 'Ya existe una cuenta con ese correo.';
+    if (message.includes('Token has expired or is invalid')) {
+      return 'El código no es válido o ya venció. Revisalo o pedí uno nuevo.';
+    }
+    if (message.includes('only request this after') || message.toLowerCase().includes('rate limit')) {
+      return 'Pediste varios correos seguidos. Esperá un minuto y volvé a intentar.';
+    }
+    if (message.includes('New password should be different')) {
+      return 'La nueva contraseña tiene que ser distinta de la anterior.';
+    }
     return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';
