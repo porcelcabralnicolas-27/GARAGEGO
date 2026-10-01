@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { LinkText } from '@/components/ui/LinkText';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatsButton } from '@/components/ui/StatsButton';
 import { TextField } from '@/components/ui/TextField';
 import { signOut } from '@/features/auth/api';
 import { getTopupErrorMessage, topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
@@ -244,13 +245,7 @@ export function ProfileView() {
                 de sesión están en Ajustes (la tuerca). */}
             {isOwnerActive ? (
               <View style={styles.dashboardButton}>
-                <Button
-                  label="Ver dashboard"
-                  icon="grid-outline"
-                  variant="outlined"
-                  fullWidth
-                  onPress={() => router.push('/(owner)/dashboard')}
-                />
+                <StatsButton label="Mis estadísticas" onPress={() => router.push('/(owner)/dashboard')} />
               </View>
             ) : (
               <>
