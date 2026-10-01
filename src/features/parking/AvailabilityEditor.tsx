@@ -6,8 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { TextField } from '@/components/ui/TextField';
+import { DateSelect } from '@/components/ui/DateSelect';
 import { TimeSelect } from '@/components/ui/TimeSelect';
 import {
   addAvailabilityException,
@@ -20,6 +19,7 @@ import {
 } from '@/features/parking/api';
 import { DAY_LABELS, type AvailabilityException, type RecurringAvailability } from '@/features/parking/types';
 import { queryKeys } from '@/lib/queryKeys';
+import { businessDate, formatCalendarDate } from '@/lib/time';
 import { useTheme } from '@/theme';
 
 type AvailabilityData = {
@@ -29,7 +29,6 @@ type AvailabilityData = {
 
 const EMPTY_DATA: AvailabilityData = { recurring: [], exceptions: [] };
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_OPTIONS = DAY_LABELS.map((label, index) => ({ value: String(index), label: label.slice(0, 2) }));
 
 /** ¿Se superponen [aStart,aEnd) y [bStart,bEnd)? Las horas son strings "HH:MM", comparables como texto. */
@@ -67,10 +66,8 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
   const [isAddingRecurring, setIsAddingRecurring] = useState(false);
 
   const [exceptionDate, setExceptionDate] = useState('');
-  const [exceptionMode, setExceptionMode] = useState<'blocked' | 'special'>('blocked');
-  const [exceptionStart, setExceptionStart] = useState('');
-  const [exceptionEnd, setExceptionEnd] = useState('');
   const [exceptionError, setExceptionError] = useState<string | null>(null);
+  const [isAddingException, setIsAddingException] = useState(false);
 
   const handleAddRecurring = async () => {
     setRecurringError(null);
@@ -126,34 +123,35 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
     }
   };
 
+  // Solo se bloquean días: el "horario especial" se sacó. Las excepciones especiales que ya
+  // existían se siguen mostrando (y el servidor las sigue respetando) hasta que se borren.
   const handleAddException = async () => {
     setExceptionError(null);
-    if (!DATE_REGEX.test(exceptionDate)) {
-      setExceptionError('Usa el formato YYYY-MM-DD.');
+    if (!exceptionDate) {
+      setExceptionError('Elegí la fecha a bloquear.');
       return;
     }
-    if (exceptionMode === 'special') {
-      if (!exceptionStart || !exceptionEnd || exceptionStart >= exceptionEnd) {
-        setExceptionError('Elegí un horario válido, con inicio menor a fin.');
-        return;
-      }
+    if (exceptions.some((e) => e.date === exceptionDate)) {
+      setExceptionError(`El ${formatCalendarDate(exceptionDate)} ya tiene una excepción. Borrala si querés cambiarla.`);
+      return;
     }
+    setIsAddingException(true);
     try {
       const entry = await addAvailabilityException(parkingLotId, {
         date: exceptionDate,
-        startTime: exceptionMode === 'special' ? exceptionStart : null,
-        endTime: exceptionMode === 'special' ? exceptionEnd : null,
-        isAvailable: exceptionMode === 'special',
+        startTime: null,
+        endTime: null,
+        isAvailable: false,
       });
       applyChange((current) => ({
         ...current,
         exceptions: [...current.exceptions, entry].sort((a, b) => a.date.localeCompare(b.date)),
       }));
       setExceptionDate('');
-      setExceptionStart('');
-      setExceptionEnd('');
     } catch {
       setExceptionError('No se pudo agregar la excepción.');
+    } finally {
+      setIsAddingException(false);
     }
   };
 
@@ -211,13 +209,13 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         Excepciones por fecha
       </Text>
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 12 }]}>
-        Bloquea un día puntual o abre un horario especial fuera de lo recurrente.
+        Bloqueá un día puntual en el que la cochera no va a estar disponible.
       </Text>
 
       {exceptions.map((entry) => (
         <View key={entry.id} style={[styles.entryRow, { borderColor: colors.outline }]}>
           <Text style={[typography.bodyLarge, { color: colors.onSurface }]}>
-            {entry.date} ·{' '}
+            {formatCalendarDate(entry.date)} ·{' '}
             {entry.isAvailable && entry.startTime && entry.endTime
               ? `${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`
               : 'Bloqueado'}
@@ -228,32 +226,18 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         </View>
       ))}
 
-      <TextField label="Fecha (YYYY-MM-DD)" placeholder="2026-08-20" value={exceptionDate} onChangeText={setExceptionDate} />
-
-      <SegmentedControl
-        value={exceptionMode}
-        onChange={setExceptionMode}
-        options={[
-          { value: 'blocked', label: 'Bloquear día' },
-          { value: 'special', label: 'Horario especial' },
-        ]}
-      />
-
+      <View style={styles.sectionSpacerSmall} />
+      <DateSelect label="Fecha" value={exceptionDate} onChange={setExceptionDate} minDate={businessDate()} />
       <View style={styles.sectionSpacerSmall} />
 
-      {exceptionMode === 'special' ? (
-        <View style={styles.timeRow}>
-          <View style={styles.timeField}>
-            <TimeSelect label="Inicio" value={exceptionStart} onChange={setExceptionStart} />
-          </View>
-          <View style={styles.timeField}>
-            <TimeSelect label="Fin" value={exceptionEnd} onChange={setExceptionEnd} />
-          </View>
-        </View>
-      ) : null}
-
       {exceptionError ? <Banner message={exceptionError} /> : null}
-      <Button label="Agregar excepción" variant="outlined" onPress={handleAddException} />
+      <Button
+        label="Bloquear día"
+        variant="outlined"
+        onPress={handleAddException}
+        loading={isAddingException}
+        disabled={isAddingException}
+      />
     </View>
   );
 }
