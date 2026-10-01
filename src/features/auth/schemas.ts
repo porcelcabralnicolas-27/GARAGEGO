@@ -32,9 +32,14 @@ export const forgotPasswordSchema = z.object({
 export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
 // El largo del código se configura en Supabase (Auth > Providers > Email, entre 6 y 10).
-export const recoveryCodeSchema = z
+export const recoveryCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6,10}$/, 'Ingresá el código numérico que te llegó por correo'),
+});
+
+export type RecoveryCodeFormValues = z.infer<typeof recoveryCodeSchema>;
+
+export const newPasswordSchema = z
   .object({
-    code: z.string().trim().regex(/^\d{6,10}$/, 'Ingresá el código numérico que te llegó por correo'),
     password: passwordField,
     confirmPassword: z.string().min(1, 'Confirma tu contraseña'),
   })
@@ -43,4 +48,4 @@ export const recoveryCodeSchema = z
     path: ['confirmPassword'],
   });
 
-export type RecoveryCodeFormValues = z.infer<typeof recoveryCodeSchema>;
+export type NewPasswordFormValues = z.infer<typeof newPasswordSchema>;

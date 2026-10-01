@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -19,23 +19,47 @@ import {
 } from '@/features/auth/api';
 import {
   forgotPasswordSchema,
+  newPasswordSchema,
   recoveryCodeSchema,
   type ForgotPasswordFormValues,
+  type NewPasswordFormValues,
   type RecoveryCodeFormValues,
 } from '@/features/auth/schemas';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
 
-// Recuperación en dos pasos, en la misma pantalla: 1) el correo, 2) el código que llega por
-// mail + la contraseña nueva. El correo queda en el estado de la pantalla, nunca en la URL.
+type Step = 'email' | 'code' | 'password';
+
+// Recuperación en tres pasos, en la misma pantalla: 1) el correo, 2) el código que llega por mail,
+// 3) la contraseña nueva. El link del mail abre la app directo en el paso 2 con el correo ya
+// cargado (`?email=`); el usuario también puede volver a la app y escribir el código a mano.
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
+  const { email: emailParam } = useLocalSearchParams<{ email?: string }>();
   const setPasswordRecoveryInProgress = useAuthStore((s) => s.setPasswordRecoveryInProgress);
-  const [email, setEmail] = useState<string | null>(null);
+
+  const [email, setEmail] = useState<string | null>(emailParam?.trim() || null);
+  const [verified, setVerified] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
+
+  const step: Step = !email ? 'email' : verified ? 'password' : 'code';
+
+  // Verificar el código abre una sesión: si el usuario se va sin cambiar la clave, se cierra,
+  // para que quien solo "probó" el código no quede logueado sin haber elegido contraseña.
+  const sessionOpenRef = useRef(false);
+  useEffect(
+    () => () => {
+      if (sessionOpenRef.current) {
+        sessionOpenRef.current = false;
+        signOut().catch(() => {});
+        setPasswordRecoveryInProgress(false);
+      }
+    },
+    [setPasswordRecoveryInProgress]
+  );
 
   const emailForm = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -43,7 +67,11 @@ export default function ForgotPasswordScreen() {
   });
   const codeForm = useForm<RecoveryCodeFormValues>({
     resolver: zodResolver(recoveryCodeSchema),
-    defaultValues: { code: '', password: '', confirmPassword: '' },
+    defaultValues: { code: '' },
+  });
+  const passwordForm = useForm<NewPasswordFormValues>({
+    resolver: zodResolver(newPasswordSchema),
+    defaultValues: { password: '', confirmPassword: '' },
   });
 
   const onSendCode = async (values: ForgotPasswordFormValues) => {
@@ -72,23 +100,34 @@ export default function ForgotPasswordScreen() {
     }
   };
 
-  const onChangePassword = async (values: RecoveryCodeFormValues) => {
+  const onVerifyCode = async (values: RecoveryCodeFormValues) => {
     if (!email) return;
     setErrorMessage(null);
+    // El guard de navegación tiene que saberlo antes: verificar el código abre la sesión al
+    // instante y, sin esto, lo sacaría de la pantalla antes de elegir la contraseña.
     setPasswordRecoveryInProgress(true);
-    let verified = false;
     try {
       await verifyRecoveryCode(email, values.code);
-      verified = true;
+      sessionOpenRef.current = true;
+      setInfoMessage(null);
+      setVerified(true);
+    } catch (error) {
+      setPasswordRecoveryInProgress(false);
+      setErrorMessage(getAuthErrorMessage(error));
+    }
+  };
+
+  const onChangePassword = async (values: NewPasswordFormValues) => {
+    setErrorMessage(null);
+    try {
       await updatePassword(values.password);
+      sessionOpenRef.current = false;
       await signOut();
+      setPasswordRecoveryInProgress(false);
       router.replace({ pathname: '/(auth)/login', params: { passwordChanged: '1' } });
     } catch (error) {
-      // Si el código era válido pero falló el cambio, no se deja abierta la sesión de recuperación.
-      if (verified) await signOut().catch(() => {});
+      // Se queda en este paso con la sesión abierta, para que pueda reintentar con otra clave.
       setErrorMessage(getAuthErrorMessage(error));
-    } finally {
-      setPasswordRecoveryInProgress(false);
     }
   };
 
@@ -102,13 +141,13 @@ export default function ForgotPasswordScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <AuthHeading title="Recuperar contraseña" />
+        <AuthHeading title={step === 'password' ? 'Nueva contraseña' : 'Recuperar contraseña'} />
 
-        {!email ? (
+        {step === 'email' ? (
           <>
             <Text style={[typography.bodyMedium, styles.intro, { color: colors.onSurfaceVariant }]}>
-              Te enviaremos un código a tu correo para crear una contraseña nueva. Si entrás con Google,
-              también te sirve para crearte una contraseña.
+              Escribí tu correo y te enviamos un código para crear una contraseña nueva. Si entrás con
+              Google, también te sirve para crearte una contraseña.
             </Text>
 
             {errorMessage ? <Banner message={errorMessage} /> : null}
@@ -139,10 +178,12 @@ export default function ForgotPasswordScreen() {
               disabled={emailForm.formState.isSubmitting}
             />
           </>
-        ) : (
+        ) : null}
+
+        {step === 'code' ? (
           <>
             <Text style={[typography.bodyMedium, styles.intro, { color: colors.onSurfaceVariant }]}>
-              Ingresá el código que enviamos a {email} y elegí tu contraseña nueva.
+              Ingresá el código que enviamos a {email}.
             </Text>
 
             {infoMessage ? <Banner variant="success" message={infoMessage} /> : null}
@@ -166,8 +207,38 @@ export default function ForgotPasswordScreen() {
               )}
             />
 
+            <View style={styles.spacer} />
+
+            <Button
+              label="Verificar código"
+              onPress={codeForm.handleSubmit(onVerifyCode)}
+              loading={codeForm.formState.isSubmitting}
+              disabled={codeForm.formState.isSubmitting}
+            />
+
+            <View style={styles.spacer} />
+
+            <Button
+              label="Reenviar código"
+              variant="text"
+              onPress={onResend}
+              loading={isResending}
+              disabled={isResending || codeForm.formState.isSubmitting}
+            />
+            <LinkText label="Usar otro correo" onPress={backToEmail} />
+          </>
+        ) : null}
+
+        {step === 'password' ? (
+          <>
+            <Text style={[typography.bodyMedium, styles.intro, { color: colors.onSurfaceVariant }]}>
+              Código verificado. Elegí tu contraseña nueva.
+            </Text>
+
+            {errorMessage ? <Banner message={errorMessage} /> : null}
+
             <Controller
-              control={codeForm.control}
+              control={passwordForm.control}
               name="password"
               render={({ field, fieldState }) => (
                 <TextField
@@ -182,7 +253,7 @@ export default function ForgotPasswordScreen() {
             />
 
             <Controller
-              control={codeForm.control}
+              control={passwordForm.control}
               name="confirmPassword"
               render={({ field, fieldState }) => (
                 <TextField
@@ -200,23 +271,12 @@ export default function ForgotPasswordScreen() {
 
             <Button
               label="Guardar contraseña"
-              onPress={codeForm.handleSubmit(onChangePassword)}
-              loading={codeForm.formState.isSubmitting}
-              disabled={codeForm.formState.isSubmitting}
+              onPress={passwordForm.handleSubmit(onChangePassword)}
+              loading={passwordForm.formState.isSubmitting}
+              disabled={passwordForm.formState.isSubmitting}
             />
-
-            <View style={styles.spacer} />
-
-            <Button
-              label="Reenviar código"
-              variant="text"
-              onPress={onResend}
-              loading={isResending}
-              disabled={isResending || codeForm.formState.isSubmitting}
-            />
-            <LinkText label="Usar otro correo" onPress={backToEmail} />
           </>
-        )}
+        ) : null}
 
         <View style={styles.spacer} />
 
