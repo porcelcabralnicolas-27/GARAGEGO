@@ -306,7 +306,8 @@ function ApprovalListItem({
             {row.lot.address}
           </div>
           <div style={{ color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)', marginTop: 2 }}>
-            {row.owner ? fullName(row.owner) : '—'} · {formatMoney(row.lot.pricePerHour)}/h
+            {row.owner ? fullName(row.owner) : '—'} · {formatMoney(row.lot.pricePerHour)}/h ·{' '}
+            {row.lot.capacity} {row.lot.capacity === 1 ? 'auto' : 'autos'}
           </div>
         </div>
 
@@ -392,6 +393,13 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
       align: 'num',
       render: (r) => formatMoney(r.lot.pricePerHour),
       sortValue: (r) => r.lot.pricePerHour,
+    },
+    {
+      key: 'capacity',
+      header: 'Capacidad',
+      align: 'num',
+      render: (r) => `${r.lot.capacity} ${r.lot.capacity === 1 ? 'auto' : 'autos'}`,
+      sortValue: (r) => r.lot.capacity,
     },
     {
       key: 'bookings',

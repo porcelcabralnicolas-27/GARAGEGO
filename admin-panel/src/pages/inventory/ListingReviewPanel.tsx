@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { formatDate, formatMoney, formatRelative, fullName } from '../../lib/format';
-import { APPROVAL_STATUS_LABELS, findContactInfo, type LotRow } from '../../domain';
+import { AMENITY_LABELS, APPROVAL_STATUS_LABELS, findContactInfo, type LotRow } from '../../domain';
 import { Modal } from '../../ui/overlays';
 import { Badge, Button, Callout, KeyValue, StarRating } from '../../ui/primitives';
 
@@ -157,6 +157,11 @@ export function ListingReviewPanel({
           <KeyValue
             items={[
               ['Precio por hora', <strong key="p">{formatMoney(lot.pricePerHour)}</strong>],
+              ['Capacidad', `${lot.capacity} ${lot.capacity === 1 ? 'auto' : 'autos'} a la vez`],
+              [
+                'Servicios',
+                lot.amenities.length > 0 ? lot.amenities.map((a) => AMENITY_LABELS[a]).join(' · ') : 'Ninguno indicado',
+              ],
               ['Dirección', lot.address],
               [
                 'Coordenadas',

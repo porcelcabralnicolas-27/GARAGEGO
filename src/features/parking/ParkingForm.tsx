@@ -5,6 +5,7 @@ import { Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
+import { ChipSelect } from '@/components/ui/ChipSelect';
 import { CountStepper } from '@/components/ui/CountStepper';
 import { FormSection } from '@/components/ui/FormSection';
 import { PriceStepper } from '@/components/ui/PriceStepper';
@@ -17,7 +18,10 @@ import {
   type ParkingLotFormValues,
 } from '@/features/parking/schemas';
 import type { ParkingLotInput } from '@/features/parking/api';
+import { AMENITIES, AMENITY_LABELS } from '@/features/parking/types';
 import { spacing, useTheme } from '@/theme';
+
+const AMENITY_OPTIONS = AMENITIES.map((value) => ({ value, label: AMENITY_LABELS[value] }));
 
 type ParkingFormProps = {
   defaultValues?: Partial<ParkingLotFormValues>;
@@ -45,6 +49,7 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
       longitude: defaultValues?.longitude ?? '',
       pricePerHour: defaultValues?.pricePerHour ?? '',
       capacity: defaultValues?.capacity ?? MIN_CAPACITY,
+      amenities: defaultValues?.amenities ?? [],
     },
   });
 
@@ -68,6 +73,8 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
         longitude: Number(values.longitude),
         pricePerHour: Number(values.pricePerHour),
         capacity: values.capacity,
+        // Mismo orden siempre, sin importar en cuál tocó primero.
+        amenities: AMENITIES.filter((a) => values.amenities.includes(a)),
       });
     } catch {
       setErrorMessage('No pudimos guardar los cambios. Intenta nuevamente.');
@@ -176,6 +183,16 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
               unit={(n) => (n === 1 ? 'auto' : 'autos')}
               accessibilityLabel="Capacidad"
             />
+          )}
+        />
+      </FormSection>
+
+      <FormSection title="Servicios" description="Marcá los que tenga tu cochera. Es opcional.">
+        <Controller
+          control={control}
+          name="amenities"
+          render={({ field }) => (
+            <ChipSelect multiple options={AMENITY_OPTIONS} value={field.value} onChange={field.onChange} />
           )}
         />
       </FormSection>

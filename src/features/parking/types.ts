@@ -1,8 +1,9 @@
 // ApprovalStatus y ModerationState viven en shared/domain.ts (lo comparte con
 // admin-panel/src/domain.ts): ver ese archivo para el porqué.
-export type { ApprovalStatus, ModerationState } from '../../../shared/domain';
+export type { Amenity, ApprovalStatus, ModerationState } from '../../../shared/domain';
+export { AMENITIES, AMENITY_LABELS } from '../../../shared/domain';
 
-import type { ApprovalStatus, ModerationState } from '../../../shared/domain';
+import type { Amenity, ApprovalStatus, ModerationState } from '../../../shared/domain';
 
 export type ParkingLot = {
   id: string;
@@ -15,6 +16,8 @@ export type ParkingLot = {
   pricePerHour: number;
   /** Cuántos autos pueden estar reservados en el mismo horario (0064). */
   capacity: number;
+  /** Servicios que ofrece (0065). Puede estar vacío. */
+  amenities: Amenity[];
   ratingAvg: number;
   isActive: boolean;
   createdAt: string;

@@ -15,7 +15,14 @@
  */
 
 import { supabase } from '../../lib/supabase';
-import type { AdminParkingLot, AdminProfile, ApprovalStatus, LotRow, ModerationState } from '../../domain';
+import type {
+  AdminParkingLot,
+  AdminProfile,
+  Amenity,
+  ApprovalStatus,
+  LotRow,
+  ModerationState,
+} from '../../domain';
 
 const STORAGE_BUCKET = 'parking-images';
 
@@ -37,6 +44,8 @@ type ParkingLotRow = {
   latitude: number;
   longitude: number;
   price_per_hour: number;
+  capacity: number;
+  amenities: string[];
   rating_avg: number;
   is_active: boolean;
   created_at: string;
@@ -72,6 +81,9 @@ function toAdminLot(row: ParkingLotRow): AdminParkingLot {
     latitude: row.latitude,
     longitude: row.longitude,
     pricePerHour: row.price_per_hour,
+    capacity: row.capacity,
+    // El check de la 0065 garantiza que solo vengan códigos conocidos.
+    amenities: row.amenities as Amenity[],
     ratingAvg: row.rating_avg,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -110,7 +122,7 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
   const { data: lots, error } = await supabase
     .from('parking_lots')
     .select(
-      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at'
+      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, capacity, amenities, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at'
     )
     .order('created_at', { ascending: true })
     .returns<ParkingLotRow[]>();

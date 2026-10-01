@@ -9,15 +9,16 @@
  */
 
 export type {
+  Amenity,
   ApprovalStatus,
   ModerationState,
   TicketCategory,
   TicketStatus,
   UserRole,
 } from '../../shared/domain';
-export { TICKET_CATEGORY_LABELS } from '../../shared/domain';
+export { AMENITY_LABELS, TICKET_CATEGORY_LABELS } from '../../shared/domain';
 
-import type { ApprovalStatus, ModerationState, UserRole } from '../../shared/domain';
+import type { Amenity, ApprovalStatus, ModerationState, UserRole } from '../../shared/domain';
 
 /** Fila de `profiles` + el email resuelto por RPC. */
 export type AdminProfile = {
@@ -42,6 +43,10 @@ export type AdminParkingLot = {
   latitude: number;
   longitude: number;
   pricePerHour: number;
+  /** Autos a la vez (0064). */
+  capacity: number;
+  /** Servicios (0065). */
+  amenities: Amenity[];
   ratingAvg: number;
   isActive: boolean;
   createdAt: string;

@@ -41,6 +41,19 @@ export type TicketStatus = 'open' | 'resolved';
 /** `support_tickets.category` (migración 0041). */
 export type TicketCategory = 'access' | 'payment' | 'listing' | 'behavior' | 'other';
 
+/** Servicios de una cochera. `parking_lots.amenities` (migración 0065), en este orden. */
+export const AMENITIES = ['cameras', 'security_staff', 'lighting', 'ev_charger', 'restrooms'] as const;
+
+export type Amenity = (typeof AMENITIES)[number];
+
+export const AMENITY_LABELS: Record<Amenity, string> = {
+  cameras: 'Cámaras de seguridad',
+  security_staff: 'Personal de vigilancia',
+  lighting: 'Iluminación y señalización',
+  ev_charger: 'Cargador para eléctricos',
+  restrooms: 'Sanitarios',
+};
+
 export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
   access: 'Acceso a la cochera',
   payment: 'Pagos y saldo',

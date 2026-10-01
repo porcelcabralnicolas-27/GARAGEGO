@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { AMENITIES } from '../../../shared/domain';
+
 /** Mismo rango que el check `parking_lots_capacity_range` (0064). */
 export const MIN_CAPACITY = 1;
 export const MAX_CAPACITY = 50;
@@ -25,6 +27,7 @@ export const parkingLotSchema = z.object({
     .int()
     .min(MIN_CAPACITY, `La capacidad mínima es ${MIN_CAPACITY}`)
     .max(MAX_CAPACITY, `La capacidad máxima es ${MAX_CAPACITY}`),
+  amenities: z.array(z.enum(AMENITIES)),
 });
 
 export type ParkingLotFormValues = z.infer<typeof parkingLotSchema>;

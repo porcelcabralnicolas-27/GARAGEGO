@@ -92,6 +92,8 @@ export type Database = {
           price_per_hour: number;
           /** Autos a la vez (0064). */
           capacity: number;
+          /** Servicios (0065): códigos de AMENITIES en shared/domain.ts. */
+          amenities: string[];
           rating_avg: number;
           is_active: boolean;
           created_at: string;
@@ -118,6 +120,7 @@ export type Database = {
           longitude: number;
           price_per_hour: number;
           capacity?: number;
+          amenities?: string[];
           is_active?: boolean;
         };
         Update: {
@@ -128,6 +131,7 @@ export type Database = {
           longitude?: number;
           price_per_hour?: number;
           capacity?: number;
+          amenities?: string[];
           is_active?: boolean;
           // Solo la transición changes_requested → pending pasa el trigger (0037/0038).
           approval_status?: 'pending';
