@@ -131,13 +131,6 @@ export default function ForgotPasswordScreen() {
     }
   };
 
-  const backToEmail = () => {
-    setEmail(null);
-    setInfoMessage(null);
-    setErrorMessage(null);
-    codeForm.reset();
-  };
-
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
@@ -225,7 +218,6 @@ export default function ForgotPasswordScreen() {
               loading={isResending}
               disabled={isResending || codeForm.formState.isSubmitting}
             />
-            <LinkText label="Usar otro correo" onPress={backToEmail} />
           </>
         ) : null}
 
@@ -278,9 +270,12 @@ export default function ForgotPasswordScreen() {
           </>
         ) : null}
 
-        <View style={styles.spacer} />
-
-        <LinkText label="Volver a iniciar sesión" onPress={() => router.replace('/(auth)/login')} />
+        {step !== 'code' ? (
+          <>
+            <View style={styles.spacer} />
+            <LinkText label="Volver a iniciar sesión" onPress={() => router.replace('/(auth)/login')} />
+          </>
+        ) : null}
       </ScrollView>
     </Screen>
   );
