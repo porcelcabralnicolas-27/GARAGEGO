@@ -104,7 +104,8 @@ export default function ClientBookingHistoryScreen() {
         onEndReachedThreshold={0.5}
         ListFooterComponent={<LoadMoreFooter isFetching={isFetchingNextPage} />}
         renderItem={({ item }) => {
-          const canRate = item.status === 'completed' && !item.isRated;
+          // Sin registro de entrada (no se presentó) no se califica: lo exige también la 0066.
+          const canRate = item.status === 'completed' && item.actualStartAt !== null && !item.isRated;
           return (
             <BookingCard
               title={item.parkingLotName}

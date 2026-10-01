@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { BookingCard } from '@/components/booking/BookingCard';
@@ -12,6 +12,7 @@ import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { cancelBooking, getBookingErrorMessage, listClientBookingsPage } from '@/features/booking/api';
+import { syncBookingEndReminders } from '@/features/booking/endReminder';
 import type { ClientBookingItem } from '@/features/booking/types';
 import { queryKeys } from '@/lib/queryKeys';
 import { businessInstant } from '@/lib/time';
@@ -104,6 +105,24 @@ export default function MyBookingsScreen() {
       if (userId) refetch();
     }, [userId, refetch])
   );
+
+  // Avisos del celular: quedan programados solo los de las sesiones activas. Así se cancelan los
+  // de reservas que finalizó el propietario o cerró el sistema, y se reprograman si se reinstaló
+  // la app.
+  const activeRemindersKey = bookings
+    .filter((b) => b.status === 'confirmed' && b.actualStartAt !== null)
+    .map((b) => `${b.id}|${b.date}|${b.endTime}`)
+    .join(',');
+  useEffect(() => {
+    if (isLoading || isError) return;
+    const active = activeRemindersKey
+      ? activeRemindersKey.split(',').map((entry) => {
+          const [bookingId, date, endTime] = entry.split('|');
+          return { bookingId, endsAt: businessInstant(date, endTime) };
+        })
+      : [];
+    syncBookingEndReminders(active).catch(() => {});
+  }, [activeRemindersKey, isLoading, isError]);
 
   // Las secciones vacías no se muestran. "Ver todo" recorta a los primeros COLLAPSED_LIMIT en
   // vez de navegar a otra pantalla: no existe una ruta por estado y la lista completa ya está

@@ -56,7 +56,9 @@ export function BookingCard({
   const { colors, typography } = useTheme();
 
   const isInProgress = status === 'confirmed' && !!actualStartAt;
-  const statusLabel = isInProgress ? 'En curso' : BOOKING_STATUS_LABELS[status];
+  // Finalizada sin entrada: la cerró el sistema porque el conductor nunca llegó (0066).
+  const isNoShow = status === 'completed' && !actualStartAt;
+  const statusLabel = isInProgress ? 'En curso' : isNoShow ? 'No se presentó' : BOOKING_STATUS_LABELS[status];
 
   return (
     <Card onPress={onPress} accessibilityLabel={onPress ? `Ver la reserva de ${title}` : undefined}>

@@ -19,6 +19,7 @@ import {
   getClientBooking,
   startBooking,
 } from '@/features/booking/api';
+import { cancelBookingEndReminder, scheduleBookingEndReminder } from '@/features/booking/endReminder';
 import type { ClientBookingItem } from '@/features/booking/types';
 import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
 import { formatMoney } from '@/lib/money';
@@ -93,6 +94,19 @@ export default function BookingSessionScreen() {
     const timer = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(timer);
   }, [needsClock]);
+
+  // Aviso en el celular 15 min antes del final: se programa mientras la reserva está en curso y
+  // se cancela en cuanto deja de estarlo (finalizada por el conductor, el propietario o el cron).
+  const reminderBookingId = booking?.id;
+  const reminderActive = booking?.status === 'confirmed' && booking.actualStartAt !== null;
+  const reminderEndsAt = booking ? businessInstant(booking.date, booking.endTime).getTime() : null;
+  useEffect(() => {
+    if (!reminderBookingId || reminderEndsAt === null) return;
+    const task = reminderActive
+      ? scheduleBookingEndReminder({ bookingId: reminderBookingId, endsAt: new Date(reminderEndsAt) })
+      : cancelBookingEndReminder(reminderBookingId);
+    task.catch(() => {});
+  }, [reminderBookingId, reminderActive, reminderEndsAt]);
 
   const handleStart = async () => {
     setIsBusy(true);
@@ -276,9 +290,20 @@ export default function BookingSessionScreen() {
           <>
             <View style={styles.centerBlock}>
               <View style={[styles.badge, { backgroundColor: colors.primaryContainer }]}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.onPrimaryContainer} />
-                <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>COMPLETADO</Text>
+                <Ionicons
+                  name={isStarted ? 'checkmark-circle' : 'close-circle'}
+                  size={20}
+                  color={colors.onPrimaryContainer}
+                />
+                <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>
+                  {isStarted ? 'COMPLETADO' : 'NO SE PRESENTÓ'}
+                </Text>
               </View>
+              {!isStarted ? (
+                <Text style={[typography.bodyMedium, styles.centerText, { color: colors.onSurfaceVariant }]}>
+                  La reserva no se inició y se cerró automáticamente 15 minutos después del horario.
+                </Text>
+              ) : null}
             </View>
 
             {detailCard}
@@ -304,7 +329,8 @@ export default function BookingSessionScreen() {
               ) : null}
             </Card>
 
-            {!isRated ? (
+            {/* Sin registro de entrada no se califica (lo exige también la 0066). */}
+            {isStarted && !isRated ? (
               <>
                 <Button label="Calificar" onPress={() => setShowRateDialog(true)} />
                 <View style={styles.buttonGap} />

@@ -19,6 +19,7 @@ import { radius, spacing, useTheme } from '@/theme';
 type StatusBadge = { label: string; icon: keyof typeof Ionicons.glyphMap };
 
 function statusBadgeOf(booking: OwnerBookingDetail): StatusBadge {
+  if (booking.status === 'completed' && !booking.actualStartAt) return { label: 'NO SE PRESENTÓ', icon: 'close-circle' };
   if (booking.status === 'completed') return { label: 'FINALIZADA', icon: 'checkmark-circle' };
   if (booking.status === 'cancelled') return { label: 'CANCELADA', icon: 'close-circle' };
   if (booking.status === 'confirmed' && booking.actualStartAt) return { label: 'EN CURSO', icon: 'car-sport' };
