@@ -7,6 +7,8 @@ export type NotificationType =
   | 'overtime_charged'
   // 15 minutos antes del final de una reserva en curso (send_booking_end_reminders, 0066).
   | 'booking_ending'
+  // 24 horas antes de una reserva futura (send_booking_day_before_reminders, 0068).
+  | 'booking_reminder'
   | 'new_message'
   // Revisión de una publicación por el equipo (panel de admin, RPC admin_review_parking_lot).
   // Sin `related_booking_id`; llegan con `audience = 'owner'`.

@@ -231,6 +231,12 @@ export function getBookingErrorMessage(error: unknown): string {
     }
     if (message.includes('vehicle_required')) return 'Elegí un vehículo para esta reserva.';
     if (message.includes('vehicle_not_found')) return 'Ese vehículo ya no está disponible. Elegí otro.';
+    if (message.includes('vehicle_busy')) {
+      return 'Ese vehículo ya tiene otra reserva en ese horario. Elegí otro vehículo o cambiá el horario.';
+    }
+    if (message.includes('vehicle_in_use')) {
+      return 'Ese vehículo está en otra reserva en curso. Finalizala antes de iniciar esta, o usá otro vehículo.';
+    }
     if (message.includes('already_started')) return 'Esta reserva ya fue iniciada.';
     if (message.includes('start_too_early')) {
       return 'Todavía es muy temprano. Podés iniciar desde 15 minutos antes del horario reservado.';

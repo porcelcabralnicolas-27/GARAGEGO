@@ -121,13 +121,29 @@ async function cleanup(admin) {
   );
   // Reservas, disponibilidad y notificaciones caen en cascada con la cochera.
   await admin.query('delete from public.parking_lots where id = any($1)', [lots]);
+  // Vehículos de prueba que armó setup() para completar los 3 del conductor.
+  await admin.query("delete from public.vehicles where user_id = $1 and plate like 'GGTEST%'", [DRIVER]);
 }
 
 async function setup(admin) {
   await cleanup(admin);
 
-  const vehicle = await admin.query('select id from public.vehicles where user_id = $1 limit 1', [DRIVER]);
+  const vehicle = await admin.query(
+    'select id from public.vehicles where user_id = $1 order by created_at limit 3',
+    [DRIVER]
+  );
   if (vehicle.rowCount === 0) throw new Error('El conductor de prueba (GG_DRIVER_ID) no tiene ningún vehículo cargado.');
+  // Desde la 0067 un vehículo no puede estar en dos reservas a la vez, así que los escenarios con
+  // varios autos simultáneos necesitan vehículos distintos: se completan hasta los 3 que permite
+  // el sistema (cleanup() borra los GGTEST al terminar).
+  const vehicleIds = vehicle.rows.map((row) => row.id);
+  for (let i = vehicleIds.length; i < 3; i += 1) {
+    const created = await admin.query(
+      "insert into public.vehicles (user_id, plate, brand) values ($1, $2, 'Prueba') returning id",
+      [DRIVER, `GGTEST${i}`]
+    );
+    vehicleIds.push(created.rows[0].id);
+  }
 
   const wallets = await admin.query('select id, user_id, balance from public.wallets where user_id = any($1)', [
     [DRIVER, OWNER],
@@ -154,7 +170,8 @@ async function setup(admin) {
 
   const startedAt = (await admin.query('select now() as now')).rows[0].now;
   return {
-    vehicleId: vehicle.rows[0].id,
+    vehicleId: vehicleIds[0],
+    vehicleIds,
     driverWalletId: wallets.rows.find((w) => w.user_id === DRIVER).id,
     originalBalances: wallets.rows.map((w) => ({ userId: w.user_id, balance: w.balance })),
     startedAt,
@@ -300,10 +317,11 @@ const scenarios = [
       const clients = await Promise.all(Array.from({ length: 3 }, connect));
       try {
         await Promise.all(clients.map((c) => beginAs(c, DRIVER)));
-        const { sql, params } = createBooking(CAPACITY_LOT, 411, '10:00', '11:00', fx.vehicleId);
         const results = await Promise.allSettled(
-          clients.map(async (c) => {
+          clients.map(async (c, i) => {
             try {
+              // Un vehículo distinto por reserva: con el mismo, la 0067 las rechazaría a todas menos una.
+              const { sql, params } = createBooking(CAPACITY_LOT, 411, '10:00', '11:00', fx.vehicleIds[i]);
               await c.query(sql, params);
               await c.query('commit');
             } catch (error) {
@@ -330,8 +348,27 @@ const scenarios = [
     },
   },
   {
+    name: 'Mismo vehículo reservado a la vez en dos cocheras distintas',
+    // Las dos cocheras no se serializan entre sí (cada una tiene su lock): lo único que frena la
+    // segunda es el lock por vehículo de la 0067.
+    async run(admin, fx) {
+      const r = await race({
+        userA: DRIVER,
+        first: createBooking(LOT, 412, '10:00', '11:00', fx.vehicleId),
+        userB: DRIVER,
+        second: createBooking(OTHER_LOT, 412, '10:30', '11:30', fx.vehicleId),
+      });
+      const booked = [...(await bookingsOn(admin, LOT, 412)), ...(await bookingsOn(admin, OTHER_LOT, 412))];
+      return {
+        ok: r.waited && /vehicle_busy/.test(r.error ?? '') && booked.length === 1,
+        detail: `B esperó: ${r.waited} · B: ${r.error ?? 'pasó'} · reservas: ${booked.length}`,
+      };
+    },
+  },
+  {
     name: 'Dos reservas simultáneas que juntas superan el saldo',
-    // Cocheras distintas: no las serializa el lock por cochera, solo el de la billetera.
+    // Cocheras distintas: no las serializa el lock por cochera, solo el de la billetera. Horarios
+    // distintos para que no salte la regla del vehículo (0067) antes que la del saldo.
     async run(admin, fx) {
       await setDriverBalance(admin, PRICE_PER_HOUR);
       try {
@@ -339,7 +376,7 @@ const scenarios = [
           userA: DRIVER,
           first: createBooking(LOT, 404, '10:00', '11:00', fx.vehicleId),
           userB: DRIVER,
-          second: createBooking(OTHER_LOT, 404, '10:00', '11:00', fx.vehicleId),
+          second: createBooking(OTHER_LOT, 404, '12:00', '13:00', fx.vehicleId),
         });
         const balance = await driverBalance(admin);
         const booked = [...(await bookingsOn(admin, LOT, 404)), ...(await bookingsOn(admin, OTHER_LOT, 404))];

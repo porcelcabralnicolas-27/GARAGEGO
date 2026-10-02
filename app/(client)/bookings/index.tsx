@@ -12,7 +12,7 @@ import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { cancelBooking, getBookingErrorMessage, listClientBookingsPage } from '@/features/booking/api';
-import { syncBookingEndReminders } from '@/features/booking/endReminder';
+import { syncBookingDayBeforeReminders, syncBookingEndReminders } from '@/features/booking/endReminder';
 import type { ClientBookingItem } from '@/features/booking/types';
 import { queryKeys } from '@/lib/queryKeys';
 import { businessInstant } from '@/lib/time';
@@ -106,23 +106,35 @@ export default function MyBookingsScreen() {
     }, [userId, refetch])
   );
 
-  // Avisos del celular: quedan programados solo los de las sesiones activas. Así se cancelan los
-  // de reservas que finalizó el propietario o cerró el sistema, y se reprograman si se reinstaló
-  // la app.
-  const activeRemindersKey = bookings
-    .filter((b) => b.status === 'confirmed' && b.actualStartAt !== null)
-    .map((b) => `${b.id}|${b.date}|${b.endTime}`)
-    .join(',');
+  // Avisos del celular: quedan programados solo los de las reservas de esta lista (sesiones
+  // activas para el aviso de fin, reservas futuras para el de un día antes). Así se cancelan los
+  // de reservas que finalizó el propietario, canceló o cerró el sistema, y se reprograman si se
+  // reinstaló la app.
+  const remindersKey = JSON.stringify({
+    active: bookings
+      .filter((b) => b.status === 'confirmed' && b.actualStartAt !== null)
+      .map((b) => [b.id, b.date, b.endTime]),
+    upcoming: bookings
+      .filter((b) => b.status === 'confirmed' && b.actualStartAt === null)
+      .map((b) => [b.id, b.date, b.startTime, b.parkingLotName]),
+  });
   useEffect(() => {
     if (isLoading || isError) return;
-    const active = activeRemindersKey
-      ? activeRemindersKey.split(',').map((entry) => {
-          const [bookingId, date, endTime] = entry.split('|');
-          return { bookingId, endsAt: businessInstant(date, endTime) };
-        })
-      : [];
-    syncBookingEndReminders(active).catch(() => {});
-  }, [activeRemindersKey, isLoading, isError]);
+    const { active, upcoming } = JSON.parse(remindersKey) as {
+      active: [string, string, string][];
+      upcoming: [string, string, string, string][];
+    };
+    syncBookingEndReminders(
+      active.map(([bookingId, date, endTime]) => ({ bookingId, endsAt: businessInstant(date, endTime) }))
+    ).catch(() => {});
+    syncBookingDayBeforeReminders(
+      upcoming.map(([bookingId, date, startTime, placeName]) => ({
+        bookingId,
+        startsAt: businessInstant(date, startTime),
+        placeName,
+      }))
+    ).catch(() => {});
+  }, [remindersKey, isLoading, isError]);
 
   // Las secciones vacías no se muestran. "Ver todo" recorta a los primeros COLLAPSED_LIMIT en
   // vez de navegar a otra pantalla: no existe una ruta por estado y la lista completa ya está

@@ -21,6 +21,8 @@ declare
   v_text text;
   v_res text;
   v_vehicle uuid;
+  v_vehicle2 uuid;
+  v_vehicle3 uuid;
   v_booking uuid := 'ffffffff-0000-0000-0000-00000000000b';
   v_lot uuid := 'ffffffff-0000-0000-0000-00000000000c';
   v_cap_lot uuid := 'ffffffff-0000-0000-0000-00000000000d';
@@ -28,7 +30,15 @@ begin
   perform set_config('gg.driver', '58c73669-a744-4eff-8fe1-f74d1f2af37b', true);  -- ← completar
   perform set_config('gg.owner',  'c6838a83-c035-4d2f-bf87-4717e40bd37d', true);  -- ← completar
 
-  select id into v_vehicle from public.vehicles where user_id = current_setting('gg.driver')::uuid limit 1;
+  -- Desde la 0067 un vehículo no puede estar en dos reservas a la vez: las pruebas de capacidad
+  -- necesitan tres vehículos distintos. Se completan hasta los 3 que permite el sistema (se
+  -- revierten con el resto).
+  insert into public.vehicles (user_id, plate, brand)
+  select current_setting('gg.driver')::uuid, 'GGTEST' || n, 'Prueba'
+  from generate_series(1, 3 - (select count(*) from public.vehicles where user_id = current_setting('gg.driver')::uuid)::int) n;
+  select (array_agg(id order by created_at))[1], (array_agg(id order by created_at))[2], (array_agg(id order by created_at))[3]
+  into v_vehicle, v_vehicle2, v_vehicle3
+  from public.vehicles where user_id = current_setting('gg.driver')::uuid;
 
   -- Fixtures (como postgres, se revierten al final) ---------------------------------------
   insert into public.parking_lots
@@ -96,9 +106,9 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.driver'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
     perform public.create_booking(v_cap_lot, current_date + 500, '10:00', '11:00', v_vehicle);
-    perform public.create_booking(v_cap_lot, current_date + 500, '10:00', '11:00', v_vehicle);
+    perform public.create_booking(v_cap_lot, current_date + 500, '10:00', '11:00', v_vehicle2);
     begin
-      perform public.create_booking(v_cap_lot, current_date + 500, '10:30', '11:30', v_vehicle);
+      perform public.create_booking(v_cap_lot, current_date + 500, '10:30', '11:30', v_vehicle3);
       v_res := 'entró un tercer auto';
     exception when others then
       v_res := sqlerrm;
@@ -119,7 +129,7 @@ begin
     execute 'set local role authenticated';
     perform public.create_booking(v_cap_lot, current_date + 501, '10:00', '11:00', v_vehicle);
     perform public.create_booking(v_cap_lot, current_date + 501, '12:00', '13:00', v_vehicle);
-    perform public.create_booking(v_cap_lot, current_date + 501, '10:00', '13:00', v_vehicle);
+    perform public.create_booking(v_cap_lot, current_date + 501, '10:00', '13:00', v_vehicle2);
     execute 'reset role';
     v_report := v_report || e'\n' || concat_ws(' | ', 4, 'capacidad: máximo y no total (0064)', 'OK', 'entró la de 10 a 13');
   exception when others then
@@ -134,13 +144,13 @@ begin
     execute 'set local role authenticated';
     perform public.create_booking(v_lot, current_date + 502, '10:00', '11:00', v_vehicle);
     begin
-      perform public.create_booking(v_lot, current_date + 502, '10:00', '11:00', v_vehicle);
+      perform public.create_booking(v_lot, current_date + 502, '10:00', '11:00', v_vehicle2);
       v_res := 'misma hora: entró';
     exception when others then
       v_res := 'misma hora: ' || sqlerrm;
     end;
     begin
-      perform public.create_booking(v_lot, current_date + 502, '11:00', '11:30', v_vehicle);
+      perform public.create_booking(v_lot, current_date + 502, '11:00', '11:30', v_vehicle3);
       v_res := v_res || ' / pegada: entró';
     exception when others then
       v_res := v_res || ' / pegada: ' || sqlerrm;
