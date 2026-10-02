@@ -1,4 +1,25 @@
-import { newPasswordSchema, recoveryCodeSchema } from '../schemas';
+import { newPasswordSchema, recoveryCodeSchema, registerSchema } from '../schemas';
+
+const validRegistration = {
+  firstName: 'Ana',
+  lastName: 'Pérez',
+  email: 'ana@ejemplo.com',
+  password: 'claveNueva1',
+  confirmPassword: 'claveNueva1',
+  acceptedTerms: true,
+};
+
+describe('registerSchema', () => {
+  it('acepta un registro completo con los términos aceptados', () => {
+    expect(registerSchema.safeParse(validRegistration).success).toBe(true);
+  });
+
+  it('rechaza el registro si no se aceptaron los términos y condiciones', () => {
+    const result = registerSchema.safeParse({ ...validRegistration, acceptedTerms: false });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues.some((i) => i.path[0] === 'acceptedTerms')).toBe(true);
+  });
+});
 
 describe('recoveryCodeSchema', () => {
   it('acepta un código numérico de 6 dígitos', () => {

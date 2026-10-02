@@ -7,6 +7,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AuthHeading } from '@/components/ui/AuthHeading';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { GoogleButton } from '@/components/ui/GoogleButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -22,10 +23,12 @@ export default function RegisterScreen() {
   const {
     control,
     handleSubmit,
+    getValues,
+    setError,
     formState: { isSubmitting },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { firstName: '', lastName: '', email: '', password: '', confirmPassword: '' },
+    defaultValues: { firstName: '', lastName: '', email: '', password: '', confirmPassword: '', acceptedTerms: false },
   });
 
   const onSubmit = async (values: RegisterFormValues) => {
@@ -40,6 +43,11 @@ export default function RegisterScreen() {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
+    // Google también crea la cuenta desde acá: sin aceptar los términos no se avanza.
+    if (!getValues('acceptedTerms')) {
+      setError('acceptedTerms', { message: 'Tenés que aceptar los términos y condiciones para crear tu cuenta' });
+      return;
+    }
     setIsGoogleLoading(true);
     try {
       await signInWithGoogle();
@@ -131,7 +139,18 @@ export default function RegisterScreen() {
           )}
         />
 
-        <View style={styles.spacer} />
+        <Controller
+          control={control}
+          name="acceptedTerms"
+          render={({ field, fieldState }) => (
+            <Checkbox
+              checked={field.value}
+              onChange={field.onChange}
+              label="Acepto los términos y condiciones"
+              errorMessage={fieldState.error?.message}
+            />
+          )}
+        />
 
         <Button
           label="Registrarme"
