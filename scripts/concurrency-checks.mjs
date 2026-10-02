@@ -139,7 +139,7 @@ async function setup(admin) {
   const vehicleIds = vehicle.rows.map((row) => row.id);
   for (let i = vehicleIds.length; i < 3; i += 1) {
     const created = await admin.query(
-      "insert into public.vehicles (user_id, plate, brand) values ($1, $2, 'Prueba') returning id",
+      "insert into public.vehicles (user_id, plate, brand, model) values ($1, $2, 'Prueba', 'Prueba') returning id",
       [DRIVER, `GGTEST${i}`]
     );
     vehicleIds.push(created.rows[0].id);

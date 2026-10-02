@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AmenityList } from '@/components/parking/AmenityList';
@@ -22,6 +23,9 @@ import { StarRating } from '@/components/ui/StarRating';
 import { flattenPages } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTheme } from '@/theme';
+
+/** Opiniones que se ven antes de tocar "Ver más opiniones". */
+const VISIBLE_RATINGS = 3;
 
 type ParkingDetailData = {
   lot: ParkingLot;
@@ -58,6 +62,10 @@ export default function ParkingDetailScreen() {
     getNextPageParam: (page) => page.nextCursor,
   });
   const ratings = flattenPages(ratingsQuery.data);
+  // Se ven pocas opiniones de entrada para que la ficha no se llene; el resto está detrás de un botón.
+  const [showAllRatings, setShowAllRatings] = useState(false);
+  const visibleRatings = showAllRatings ? ratings : ratings.slice(0, VISIBLE_RATINGS);
+  const hasMoreRatings = ratings.length > VISIBLE_RATINGS || ratingsQuery.hasNextPage;
 
   if (isError) {
     return (
@@ -146,7 +154,7 @@ export default function ParkingDetailScreen() {
             Todavía no hay opiniones sobre este estacionamiento.
           </Text>
         ) : (
-          ratings.map((rating) => (
+          visibleRatings.map((rating) => (
             <View key={rating.id} style={[styles.reviewCard, { borderColor: colors.outline }]}>
               <View style={styles.reviewHeader}>
                 <Text style={[typography.bodyLarge, { color: colors.onSurface }]}>{rating.authorName}</Text>
@@ -160,13 +168,19 @@ export default function ParkingDetailScreen() {
             </View>
           ))
         )}
-        {ratingsQuery.hasNextPage ? (
+        {!showAllRatings && hasMoreRatings ? (
+          <Button label="Ver más opiniones" variant="text" onPress={() => setShowAllRatings(true)} />
+        ) : null}
+        {showAllRatings && ratingsQuery.hasNextPage ? (
           <Button
-            label="Ver más opiniones"
+            label="Cargar más opiniones"
             variant="text"
             onPress={() => ratingsQuery.fetchNextPage()}
             loading={ratingsQuery.isFetchingNextPage}
           />
+        ) : null}
+        {showAllRatings && ratings.length > VISIBLE_RATINGS ? (
+          <Button label="Ver menos" variant="text" onPress={() => setShowAllRatings(false)} />
         ) : null}
 
         <View style={styles.spacerLarge} />

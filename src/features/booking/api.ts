@@ -6,6 +6,7 @@ import type {
   Booking,
   BookingCursor,
   BookingScope,
+  ClientBookingDetail,
   ClientBookingItem,
   OwnerBookingDetail,
   OwnerBookingItem,
@@ -143,7 +144,7 @@ export async function listClientBookingsPage(
 
 /** Una sola reserva del conductor, con los datos del estacionamiento. La usa la pantalla de
  *  sesión activa, que se abre por id y no puede depender de que la lista esté cargada. */
-export async function getClientBooking(bookingId: string): Promise<ClientBookingItem> {
+export async function getClientBooking(bookingId: string): Promise<ClientBookingDetail> {
   const { data, error } = await supabase.rpc('get_client_booking', { p_booking_id: bookingId });
   if (error) throw error;
   const row = data[0];
@@ -156,6 +157,8 @@ export async function getClientBooking(bookingId: string): Promise<ClientBooking
     parkingLotName: row.parking_lot_name ?? 'Estacionamiento',
     parkingLotAddress: row.parking_lot_address ?? '',
     isRated: row.is_rated,
+    // Una reserva vieja puede no tener vehículo, o el vehículo pudo borrarse después.
+    vehicle: row.vehicle_plate ? { plate: row.vehicle_plate, brand: row.vehicle_brand, model: row.vehicle_model } : null,
   };
 }
 

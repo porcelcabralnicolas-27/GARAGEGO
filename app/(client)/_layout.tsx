@@ -26,7 +26,7 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="bookings"
         options={{
-          title: 'Mis reservas',
+          title: 'Reservas',
           tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
         }}
       />

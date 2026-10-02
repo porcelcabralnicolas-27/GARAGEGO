@@ -33,8 +33,8 @@ begin
   -- Desde la 0067 un vehículo no puede estar en dos reservas a la vez: las pruebas de capacidad
   -- necesitan tres vehículos distintos. Se completan hasta los 3 que permite el sistema (se
   -- revierten con el resto).
-  insert into public.vehicles (user_id, plate, brand)
-  select current_setting('gg.driver')::uuid, 'GGTEST' || n, 'Prueba'
+  insert into public.vehicles (user_id, plate, brand, model)
+  select current_setting('gg.driver')::uuid, 'GGTEST' || n, 'Prueba', 'Prueba'
   from generate_series(1, 3 - (select count(*) from public.vehicles where user_id = current_setting('gg.driver')::uuid)::int) n;
   select (array_agg(id order by created_at))[1], (array_agg(id order by created_at))[2], (array_agg(id order by created_at))[3]
   into v_vehicle, v_vehicle2, v_vehicle3

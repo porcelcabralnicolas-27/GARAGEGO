@@ -509,7 +509,11 @@ export type Database = {
       };
       get_client_booking: {
         Args: { p_booking_id: string };
-        Returns: Database['public']['Functions']['list_client_bookings']['Returns'];
+        Returns: (Database['public']['Functions']['list_client_bookings']['Returns'][number] & {
+          vehicle_plate: string | null;
+          vehicle_brand: string | null;
+          vehicle_model: string | null;
+        })[];
       };
       list_owner_bookings: {
         Args: {

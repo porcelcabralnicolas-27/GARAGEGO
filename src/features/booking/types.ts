@@ -24,6 +24,11 @@ export type ClientBookingItem = Booking & {
   isRated: boolean;
 };
 
+/** El detalle de una reserva del conductor, con el vehículo con el que se hizo (0069). */
+export type ClientBookingDetail = ClientBookingItem & {
+  vehicle: BookingVehicleInfo | null;
+};
+
 /** Qué reservas trae un listado: las vigentes (pending / confirmed) o el historial. */
 export type BookingScope = 'active' | 'history';
 

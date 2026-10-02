@@ -20,8 +20,8 @@ export const vehicleSchema = z.object({
     .trim()
     .min(1, 'La patente es obligatoria')
     .refine(isValidArgentinePlate, 'Patente inválida. Formato viejo: ABC123, formato Mercosur: AB123CD'),
-  brand: z.string().trim().max(40, 'Máximo 40 caracteres').optional(),
-  model: z.string().trim().max(40, 'Máximo 40 caracteres').optional(),
+  brand: z.string().trim().min(1, 'La marca es obligatoria').max(40, 'Máximo 40 caracteres'),
+  model: z.string().trim().min(1, 'El modelo es obligatorio').max(40, 'Máximo 40 caracteres'),
   color: z.string().trim().max(30, 'Máximo 30 caracteres').optional(),
 });
 

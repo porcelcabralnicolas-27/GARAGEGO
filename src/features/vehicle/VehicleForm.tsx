@@ -42,8 +42,8 @@ export function VehicleForm({ defaultValues, submitLabel, onSubmit }: VehicleFor
     try {
       await onSubmit({
         plate: normalizePlate(values.plate),
-        brand: values.brand?.trim() ? values.brand.trim() : null,
-        model: values.model?.trim() ? values.model.trim() : null,
+        brand: values.brand.trim(),
+        model: values.model.trim(),
         color: values.color?.trim() ? values.color.trim() : null,
       });
     } catch (error) {
@@ -81,7 +81,7 @@ export function VehicleForm({ defaultValues, submitLabel, onSubmit }: VehicleFor
         name="brand"
         render={({ field, fieldState }) => (
           <TextField
-            label="Marca (opcional)"
+            label="Marca"
             value={field.value}
             onChangeText={field.onChange}
             errorMessage={fieldState.error?.message}
@@ -94,7 +94,7 @@ export function VehicleForm({ defaultValues, submitLabel, onSubmit }: VehicleFor
         name="model"
         render={({ field, fieldState }) => (
           <TextField
-            label="Modelo (opcional)"
+            label="Modelo"
             value={field.value}
             onChangeText={field.onChange}
             errorMessage={fieldState.error?.message}

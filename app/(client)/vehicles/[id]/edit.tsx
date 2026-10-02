@@ -37,6 +37,7 @@ export default function EditClientVehicleScreen() {
     queryClient.setQueryData<Vehicle>(queryKeys.vehicles.detail(id), updated);
     // Ver el comentario en create.tsx: la lista de vehículos vive en la cache de React Query.
     queryClient.invalidateQueries({ queryKey: queryKeys.vehicles.all });
+    router.replace('/(client)/vehicles');
   };
 
   const handleConfirmDelete = async () => {

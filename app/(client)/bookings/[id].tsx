@@ -20,7 +20,7 @@ import {
   startBooking,
 } from '@/features/booking/api';
 import { cancelBookingEndReminder, scheduleBookingEndReminder } from '@/features/booking/endReminder';
-import type { ClientBookingItem } from '@/features/booking/types';
+import type { ClientBookingDetail } from '@/features/booking/types';
 import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
 import { formatMoney } from '@/lib/money';
 import { queryKeys } from '@/lib/queryKeys';
@@ -186,6 +186,17 @@ export default function BookingSessionScreen() {
       <DetailRow label="Dirección" value={booking.parkingLotAddress} />
       <DetailRow label="Fecha" value={formatCalendarDate(booking.date)} />
       <DetailRow label="Horario" value={`${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`} />
+      {booking.vehicle ? (
+        <DetailRow
+          label="Vehículo"
+          value={[
+            booking.vehicle.plate,
+            [booking.vehicle.brand, booking.vehicle.model].filter(Boolean).join(' '),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        />
+      ) : null}
       <View style={[styles.divider, { backgroundColor: colors.outline }]} />
       <View style={styles.detailRow}>
         <Text style={[typography.titleMedium, { color: colors.onSurface }]}>Pagado</Text>
@@ -380,7 +391,7 @@ export default function BookingSessionScreen() {
           onClose={() => setShowRateDialog(false)}
           onSuccess={() => {
             setShowRateDialog(false);
-            queryClient.setQueryData<ClientBookingItem>(bookingQueryKey, (current) =>
+            queryClient.setQueryData<ClientBookingDetail>(bookingQueryKey, (current) =>
               current ? { ...current, isRated: true } : current
             );
             // El historial y la ficha pública de la cochera también muestran la calificación.

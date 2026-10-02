@@ -245,7 +245,7 @@ export default function BookingScreen() {
           <ChipSelect
             options={vehicles.map((v) => ({
               value: v.id,
-              label: [v.plate, v.brand].filter(Boolean).join(' · '),
+              label: [v.plate, v.model].filter(Boolean).join(' · '),
             }))}
             value={selectedVehicleId ?? ''}
             onChange={setSelectedVehicleId}
