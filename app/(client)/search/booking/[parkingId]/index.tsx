@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BusinessTimeNote } from '@/components/booking/BusinessTimeNote';
+import { ParkingGallery } from '@/components/parking/ParkingGallery';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
@@ -17,7 +18,12 @@ import {
   listAvailableDates,
 } from '@/features/booking/availability';
 import { computeBookingPrice } from '@/features/booking/pricing';
-import { getParkingLot, getAvailabilityExceptions, getRecurringAvailability } from '@/features/parking/api';
+import {
+  getParkingLot,
+  getAvailabilityExceptions,
+  getRecurringAvailability,
+  listParkingImages,
+} from '@/features/parking/api';
 import type { AvailabilityException, ParkingLot, RecurringAvailability } from '@/features/parking/types';
 import { listMyVehicles } from '@/features/vehicle/api';
 import { formatMoney, formatPricePerHour } from '@/lib/money';
@@ -55,6 +61,13 @@ export default function BookingScreen() {
     staleTime: 0,
   });
   const { lot = null, recurring = [], exceptions = [], booked = [] } = availability ?? {};
+
+  // Las fotos van aparte: no bloquean la carga de la disponibilidad, y si fallan se muestra el
+  // marcador sin foto en vez de impedir reservar.
+  const { data: images = [] } = useQuery({
+    queryKey: queryKeys.parkingLots.images(parkingId),
+    queryFn: () => listParkingImages(parkingId),
+  });
 
   const { data: vehicles = [] } = useQuery({
     queryKey: queryKeys.vehicles.list(profile?.id ?? ''),
@@ -163,7 +176,9 @@ export default function BookingScreen() {
           backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
         />
 
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 20 }]}>
+        <ParkingGallery images={images} height={200} />
+
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 12, marginBottom: 20 }]}>
           {lot.name} · {formatPricePerHour(lot.pricePerHour)}
         </Text>
 

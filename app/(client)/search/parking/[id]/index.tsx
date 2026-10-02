@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AmenityList } from '@/components/parking/AmenityList';
+import { ParkingGallery } from '@/components/parking/ParkingGallery';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
@@ -82,17 +83,9 @@ export default function ParkingDetailScreen() {
       <ScrollView keyboardShouldPersistTaps="handled">
         <ScreenHeader title={lot.name} backHref="/(client)/search/list" />
 
-        {images.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
-            {images.map((image) => (
-              <Image key={image.id} source={{ uri: image.publicUrl }} style={styles.galleryImage} />
-            ))}
-          </ScrollView>
-        ) : (
-          <View style={[styles.galleryImage, styles.galleryPlaceholder, { backgroundColor: colors.primaryContainer }]}>
-            <Ionicons name="car" size={40} color={colors.onPrimaryContainer} />
-          </View>
-        )}
+        <View style={styles.gallery}>
+          <ParkingGallery images={images} />
+        </View>
 
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 16, marginBottom: 4 }]}>
           {lot.address}
@@ -196,16 +189,6 @@ export default function ParkingDetailScreen() {
 const styles = StyleSheet.create({
   gallery: {
     marginTop: 8,
-  },
-  galleryImage: {
-    width: 280,
-    height: 180,
-    borderRadius: 12,
-    marginRight: 10,
-  },
-  galleryPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   row: {
     flexDirection: 'row',
