@@ -6,7 +6,11 @@ import { AMENITIES } from '../../../shared/domain';
 export const MIN_CAPACITY = 1;
 export const MAX_CAPACITY = 50;
 
-export const parkingLotSchema = z.object({
+// La publicación se carga en dos pasos del asistente: los datos del lugar y la tarifa con los
+// servicios. Cada uno tiene su propio esquema; el lote completo es la unión de los dos.
+
+/** Paso 1: nombre, descripción, dirección y ubicación en el mapa. */
+export const placeSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio'),
   description: z.string().optional(),
   address: z.string().min(1, 'La dirección es obligatoria'),
@@ -18,6 +22,10 @@ export const parkingLotSchema = z.object({
     .string()
     .min(1, 'La longitud es obligatoria')
     .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= -180 && Number(v) <= 180, 'Longitud inválida'),
+});
+
+/** Paso 2: tarifa por hora, capacidad y servicios. */
+export const ratesSchema = z.object({
   pricePerHour: z
     .string()
     .min(1, 'El precio es obligatorio')
@@ -30,4 +38,5 @@ export const parkingLotSchema = z.object({
   amenities: z.array(z.enum(AMENITIES)),
 });
 
-export type ParkingLotFormValues = z.infer<typeof parkingLotSchema>;
+export type PlaceFormValues = z.infer<typeof placeSchema>;
+export type RatesFormValues = z.infer<typeof ratesSchema>;

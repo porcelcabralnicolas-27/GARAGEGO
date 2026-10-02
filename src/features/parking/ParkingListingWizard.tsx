@@ -20,20 +20,21 @@ import {
   type ParkingLotInput,
 } from '@/features/parking/api';
 import { ImageManager } from '@/features/parking/ImageManager';
-import { ParkingForm } from '@/features/parking/ParkingForm';
+import { ParkingPlaceForm, type PlaceInput } from '@/features/parking/ParkingPlaceForm';
+import { ParkingRatesForm, type RatesInput } from '@/features/parking/ParkingRatesForm';
 import type { ParkingLot } from '@/features/parking/types';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
-const STEPS = ['Datos del lugar', 'Disponibilidad', 'Fotos'] as const;
+const STEPS = ['Datos del lugar', 'Tarifa y servicios', 'Disponibilidad', 'Fotos'] as const;
 
 type WizardProps =
   | { mode: 'create' }
   | { mode: 'edit'; lot: ParkingLot };
 
-/** Barra de progreso 1·2·3. En edición los pasos ya son navegables (el lote existe); al crear,
- *  hasta que el paso 1 no se guarda, los siguientes están bloqueados. */
+/** Barra de progreso 1·2·3·4. En edición los pasos ya son navegables (el lote existe); al crear,
+ *  los pasos se habilitan a medida que se completan (el lote se guarda al terminar el paso 2). */
 function StepIndicator({
   step,
   reachableUpTo,
@@ -85,7 +86,7 @@ function StepIndicator({
                 styles.indicatorLabel,
                 { color: current ? colors.onSurface : colors.onSurfaceVariant },
               ]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {label}
             </Text>
@@ -96,16 +97,33 @@ function StepIndicator({
   );
 }
 
-// Asistente de publicación en 3 pasos, compartido por crear y editar.
+// Asistente de publicación en 4 pasos, compartido por crear y editar:
+//   1. Datos del lugar      nombre, descripción, dirección y ubicación en el mapa
+//   2. Tarifa y servicios   tarifa por hora, capacidad y servicios
+//   3. Disponibilidad       días y horarios
+//   4. Fotos
 //
-// El flujo se parte en pasos porque los pasos 2 y 3 (disponibilidad y fotos) reutilizan
+// El flujo se parte en pasos porque los pasos 3 y 4 (disponibilidad y fotos) reutilizan
 // AvailabilityEditor e ImageManager, y los dos necesitan un lote ya guardado — las fotos se
 // suben a una carpeta con el id del lote. Por eso no puede ser una sola pantalla.
 //
-// Al crear: el lote se guarda como borrador (inactivo) al terminar el paso 1 y se activa
-// recién al finalizar. Si se abandona, queda un borrador PAUSADO editable.
-// Al editar: cada paso guarda lo suyo (el paso 1 al tocar "Guardar y seguir", los pasos 2 y 3
-// en vivo). Los pasos ya son navegables porque el lote existe.
+// Al crear: los pasos 1 y 2 se guardan en memoria y el lote se crea como borrador (inactivo) al
+// terminar el paso 2 —una publicación necesita tarifa para existir—; se activa recién al
+// finalizar. Si se abandona, queda un borrador PAUSADO editable.
+// Al editar: los pasos 1 y 2 guardan al tocar "Guardar y seguir" y los pasos 3 y 4 en vivo. Los
+// pasos ya son navegables porque el lote existe.
+function placeDefaultsOf(props: WizardProps): PlaceInput | null {
+  if (props.mode !== 'edit') return null;
+  const { name, description, address, latitude, longitude } = props.lot;
+  return { name, description, address, latitude, longitude };
+}
+
+function ratesDefaultsOf(props: WizardProps): RatesInput | null {
+  if (props.mode !== 'edit') return null;
+  const { pricePerHour, capacity, amenities } = props.lot;
+  return { pricePerHour, capacity, amenities };
+}
+
 export function ParkingListingWizard(props: WizardProps) {
   const router = useRouter();
   const { colors, typography } = useTheme();
@@ -141,10 +159,16 @@ export function ParkingListingWizard(props: WizardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const reachableUpTo = lotId ? 3 : 1;
+  // Los dos primeros pasos se completan en memoria; en edición ya vienen cargados del lote.
+  const [place, setPlace] = useState<PlaceInput | null>(placeDefaultsOf(props));
+  const [rates, setRates] = useState<RatesInput | null>(ratesDefaultsOf(props));
 
-  const handleStepOne = async (input: ParkingLotInput) => {
+  const reachableUpTo = lotId ? 4 : place ? 2 : 1;
+
+  // Crea el lote (si todavía no existe) o actualiza el que ya está, con los datos de los dos pasos.
+  const saveLot = async (nextPlace: PlaceInput, nextRates: RatesInput) => {
     if (!profile) return;
+    const input: ParkingLotInput = { ...nextPlace, ...nextRates };
     if (lotId) {
       await updateParkingLot(lotId, input);
       await maybeResubmit(lotId);
@@ -153,7 +177,20 @@ export function ParkingListingWizard(props: WizardProps) {
       setLotId(lot.id);
     }
     invalidateLots();
+  };
+
+  const handleStepOne = async (input: PlaceInput) => {
+    setPlace(input);
+    // Con el lote ya creado (edición, o volviendo atrás después del paso 2) se guarda enseguida.
+    if (lotId && rates) await saveLot(input, rates);
     setStep(2);
+  };
+
+  const handleStepTwo = async (input: RatesInput) => {
+    if (!place) return;
+    setRates(input);
+    await saveLot(place, input);
+    setStep(3);
   };
 
   const handleFinish = async () => {
@@ -219,7 +256,7 @@ export function ParkingListingWizard(props: WizardProps) {
     }
   };
 
-  const editDefaults =
+  const placeFormDefaults =
     props.mode === 'edit'
       ? {
           name: props.lot.name,
@@ -227,6 +264,12 @@ export function ParkingListingWizard(props: WizardProps) {
           address: props.lot.address,
           latitude: String(props.lot.latitude),
           longitude: String(props.lot.longitude),
+        }
+      : undefined;
+
+  const ratesFormDefaults =
+    props.mode === 'edit'
+      ? {
           pricePerHour: String(props.lot.pricePerHour),
           capacity: props.lot.capacity,
           amenities: props.lot.amenities,
@@ -258,11 +301,11 @@ export function ParkingListingWizard(props: WizardProps) {
           />
         ) : null}
 
-        {/* El paso 1 se mantiene montado (oculto) para no perder lo escrito al volver atrás. */}
+        {/* Los pasos 1 y 2 se mantienen montados (ocultos) para no perder lo escrito al volver atrás. */}
         <View style={step === 1 ? undefined : styles.hidden}>
-          <ParkingForm
+          <ParkingPlaceForm
             submitLabel={isEdit ? 'Guardar y seguir' : 'Siguiente'}
-            defaultValues={editDefaults}
+            defaultValues={placeFormDefaults}
             onSubmit={handleStepOne}
           />
 
@@ -286,25 +329,33 @@ export function ParkingListingWizard(props: WizardProps) {
           ) : null}
         </View>
 
-        {step === 2 && lotId ? (
+        <View style={step === 2 ? undefined : styles.hidden}>
+          <ParkingRatesForm
+            submitLabel={isEdit ? 'Guardar y seguir' : 'Siguiente'}
+            defaultValues={ratesFormDefaults}
+            onSubmit={handleStepTwo}
+          />
+        </View>
+
+        {step === 3 && lotId ? (
           <View>
             <Text style={[typography.bodyMedium, styles.stepIntro, { color: colors.onSurfaceVariant }]}>
               Definí los días y horarios en que se puede reservar.
             </Text>
             <AvailabilityEditor parkingLotId={lotId} />
             <View style={styles.stepActions}>
-              <Button label="Siguiente" onPress={() => setStep(3)} />
+              <Button label="Siguiente" onPress={() => setStep(4)} />
               {!isEdit ? (
                 <>
                   <View style={styles.spacer} />
-                  <LinkText label="Configurar la disponibilidad más tarde" onPress={() => setStep(3)} />
+                  <LinkText label="Configurar la disponibilidad más tarde" onPress={() => setStep(4)} />
                 </>
               ) : null}
             </View>
           </View>
         ) : null}
 
-        {step === 3 && lotId && profile ? (
+        {step === 4 && lotId && profile ? (
           <View>
             <Text style={[typography.bodyMedium, styles.stepIntro, { color: colors.onSurfaceVariant }]}>
               Subí hasta 3 fotos del lugar. La primera es la que se ve en la búsqueda.
@@ -376,6 +427,9 @@ const styles = StyleSheet.create({
   },
   indicatorLabel: {
     textAlign: 'center',
+    // Con 4 pasos, "Disponibilidad" no entra entera en un celular angosto con el tamaño normal.
+    fontSize: 11,
+    letterSpacing: 0,
   },
   hidden: {
     display: 'none',

@@ -5,31 +5,29 @@ import { Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
-import { ChipSelect } from '@/components/ui/ChipSelect';
-import { CountStepper } from '@/components/ui/CountStepper';
 import { FormSection } from '@/components/ui/FormSection';
-import { PriceStepper } from '@/components/ui/PriceStepper';
 import { TextField } from '@/components/ui/TextField';
 import { LocationPicker } from '@/features/parking/LocationPicker';
-import {
-  MAX_CAPACITY,
-  MIN_CAPACITY,
-  parkingLotSchema,
-  type ParkingLotFormValues,
-} from '@/features/parking/schemas';
-import type { ParkingLotInput } from '@/features/parking/api';
-import { AMENITIES, AMENITY_LABELS } from '@/features/parking/types';
+import { placeSchema, type PlaceFormValues } from '@/features/parking/schemas';
 import { spacing, useTheme } from '@/theme';
 
-const AMENITY_OPTIONS = AMENITIES.map((value) => ({ value, label: AMENITY_LABELS[value] }));
-
-type ParkingFormProps = {
-  defaultValues?: Partial<ParkingLotFormValues>;
-  submitLabel: string;
-  onSubmit: (input: ParkingLotInput) => Promise<void>;
+/** Los datos del lugar ya convertidos para guardar. */
+export type PlaceInput = {
+  name: string;
+  description: string | null;
+  address: string;
+  latitude: number;
+  longitude: number;
 };
 
-export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFormProps) {
+type ParkingPlaceFormProps = {
+  defaultValues?: Partial<PlaceFormValues>;
+  submitLabel: string;
+  onSubmit: (input: PlaceInput) => Promise<void>;
+};
+
+// Paso 1 del asistente de publicación: nombre, descripción, dirección y ubicación en el mapa.
+export function ParkingPlaceForm({ defaultValues, submitLabel, onSubmit }: ParkingPlaceFormProps) {
   const { colors, typography } = useTheme();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isSubmittingRef = useRef(false);
@@ -39,17 +37,14 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
     setValue,
     watch,
     formState: { isSubmitting, errors },
-  } = useForm<ParkingLotFormValues>({
-    resolver: zodResolver(parkingLotSchema),
+  } = useForm<PlaceFormValues>({
+    resolver: zodResolver(placeSchema),
     defaultValues: {
       name: defaultValues?.name ?? '',
       description: defaultValues?.description ?? '',
       address: defaultValues?.address ?? '',
       latitude: defaultValues?.latitude ?? '',
       longitude: defaultValues?.longitude ?? '',
-      pricePerHour: defaultValues?.pricePerHour ?? '',
-      capacity: defaultValues?.capacity ?? MIN_CAPACITY,
-      amenities: defaultValues?.amenities ?? [],
     },
   });
 
@@ -58,7 +53,7 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
   const pickerLatitude = watchedLatitude && !Number.isNaN(Number(watchedLatitude)) ? Number(watchedLatitude) : null;
   const pickerLongitude = watchedLongitude && !Number.isNaN(Number(watchedLongitude)) ? Number(watchedLongitude) : null;
 
-  const submit = async (values: ParkingLotFormValues) => {
+  const submit = async (values: PlaceFormValues) => {
     // Protección contra doble envío: un doble clic/tap muy rápido puede disparar
     // dos submits antes de que "isSubmitting" (estado, asíncrono) llegue a deshabilitar el botón.
     if (isSubmittingRef.current) return;
@@ -71,10 +66,6 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
         address: values.address,
         latitude: Number(values.latitude),
         longitude: Number(values.longitude),
-        pricePerHour: Number(values.pricePerHour),
-        capacity: values.capacity,
-        // Mismo orden siempre, sin importar en cuál tocó primero.
-        amenities: AMENITIES.filter((a) => values.amenities.includes(a)),
       });
     } catch {
       setErrorMessage('No pudimos guardar los cambios. Intenta nuevamente.');
@@ -151,50 +142,6 @@ export function ParkingForm({ defaultValues, submitLabel, onSubmit }: ParkingFor
         {errors.latitude || errors.longitude ? (
           <Banner message={errors.latitude?.message ?? errors.longitude?.message ?? 'Ubicación inválida'} />
         ) : null}
-      </FormSection>
-
-      <FormSection title="Tarifa por hora" description="Lo que paga el conductor por cada hora reservada.">
-        <Controller
-          control={control}
-          name="pricePerHour"
-          render={({ field, fieldState }) => (
-            <PriceStepper
-              value={field.value}
-              onChangeText={field.onChange}
-              errorMessage={fieldState.error?.message}
-            />
-          )}
-        />
-      </FormSection>
-
-      <FormSection
-        title="Capacidad"
-        description="Cuántos autos entran a la vez. Esa cantidad de conductores puede reservar el mismo horario."
-      >
-        <Controller
-          control={control}
-          name="capacity"
-          render={({ field }) => (
-            <CountStepper
-              value={field.value}
-              onChange={field.onChange}
-              min={MIN_CAPACITY}
-              max={MAX_CAPACITY}
-              unit={(n) => (n === 1 ? 'auto' : 'autos')}
-              accessibilityLabel="Capacidad"
-            />
-          )}
-        />
-      </FormSection>
-
-      <FormSection title="Servicios" description="Marcá los que tenga tu cochera. Es opcional.">
-        <Controller
-          control={control}
-          name="amenities"
-          render={({ field }) => (
-            <ChipSelect multiple options={AMENITY_OPTIONS} value={field.value} onChange={field.onChange} />
-          )}
-        />
       </FormSection>
 
       <Button label={submitLabel} onPress={handleSubmit(submit)} loading={isSubmitting} disabled={isSubmitting} />
