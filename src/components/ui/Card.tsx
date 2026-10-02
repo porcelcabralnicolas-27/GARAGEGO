@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { radius, shadows, spacing, useTheme } from '@/theme';
 
@@ -58,7 +58,10 @@ export function Card({
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      // En web `role="button"` dibuja un <button>, y las tarjetas llevan botones adentro
+      // (acciones, íconos): HTML no permite un botón dentro de otro y React avisa de un error de
+      // hidratación. Sin rol se dibuja un <div> que igual se puede tocar y enfocar.
+      accessibilityRole={Platform.OS === 'web' ? undefined : 'button'}
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [outer, pressed && styles.pressed]}
     >
