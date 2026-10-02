@@ -6,7 +6,8 @@ import { radius, spacing, useTheme } from '@/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-type ButtonVariant = 'filled' | 'outlined' | 'text';
+/** `danger`: relleno rojo para acciones destructivas (p. ej. eliminar la cuenta). */
+type ButtonVariant = 'filled' | 'outlined' | 'text' | 'danger';
 type ButtonSize = 'default' | 'compact';
 
 type ButtonProps = {
@@ -39,10 +40,12 @@ export function Button({
   const isDisabled = disabled || loading;
   const isCompact = size === 'compact';
 
-  const backgroundColor =
-    variant === 'filled' ? (isDisabled ? colors.surfaceVariant : colors.primary) : 'transparent';
-  const textColor =
-    variant === 'filled' ? (isDisabled ? colors.onSurfaceVariant : colors.onPrimary) : colors.accent;
+  const isFilled = variant === 'filled' || variant === 'danger';
+  const fillColor = variant === 'danger' ? colors.error : colors.primary;
+  const onFillColor = variant === 'danger' ? colors.onError : colors.onPrimary;
+
+  const backgroundColor = isFilled ? (isDisabled ? colors.surfaceVariant : fillColor) : 'transparent';
+  const textColor = isFilled ? (isDisabled ? colors.onSurfaceVariant : onFillColor) : colors.accent;
   const borderColor = variant === 'outlined' ? colors.outline : 'transparent';
 
   const alignSelf = fullWidth === undefined ? undefined : fullWidth ? 'stretch' : 'flex-start';

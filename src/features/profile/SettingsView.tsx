@@ -21,19 +21,19 @@ type SettingsItem = {
 
 // Grilla del Figma de Ajustes. El conductor tiene "Mis vehículos" en el lugar que el Figma
 // le da a "Seguridad"; el propietario no maneja vehículos, así que en su lugar tiene
-// "Seguridad". Seguridad, Legal e Información todavía no tienen contenido.
+// "Seguridad".
 const ITEMS: Record<Role, SettingsItem[]> = {
   client: [
     { key: 'vehicles', label: 'Mis vehículos', icon: 'car-outline', href: '/(client)/vehicles' },
     { key: 'support', label: 'Soporte y ayuda', icon: 'headset-outline', href: '/(client)/profile/support' },
-    { key: 'legal', label: 'Legal', icon: 'document-text-outline' },
-    { key: 'info', label: 'Información', icon: 'information-circle-outline' },
+    { key: 'legal', label: 'Legal', icon: 'document-text-outline', href: '/(client)/profile/legal' },
+    { key: 'info', label: 'Información', icon: 'information-circle-outline', href: '/(client)/profile/info' },
   ],
   owner: [
-    { key: 'security', label: 'Seguridad', icon: 'shield-checkmark-outline' },
+    { key: 'security', label: 'Seguridad', icon: 'shield-checkmark-outline', href: '/(owner)/profile/security' },
     { key: 'support', label: 'Soporte y ayuda', icon: 'headset-outline', href: '/(owner)/profile/support' },
-    { key: 'legal', label: 'Legal', icon: 'document-text-outline' },
-    { key: 'info', label: 'Información', icon: 'information-circle-outline' },
+    { key: 'legal', label: 'Legal', icon: 'document-text-outline', href: '/(owner)/profile/legal' },
+    { key: 'info', label: 'Información', icon: 'information-circle-outline', href: '/(owner)/profile/info' },
   ],
 };
 
@@ -68,6 +68,7 @@ function SettingsCard({ item }: { item: SettingsItem }) {
 }
 
 export function SettingsView({ backHref, role }: { backHref: Href; role: Role }) {
+  const { colors, typography } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = async () => {
@@ -91,6 +92,14 @@ export function SettingsView({ backHref, role }: { backHref: Href; role: Role })
         </View>
 
         <Button label="Cerrar sesión" onPress={handleSignOut} loading={isSigningOut} disabled={isSigningOut} fullWidth />
+
+        {/* Todavía sin funcionalidad: solo el botón y el aviso. */}
+        <View style={styles.deleteBlock}>
+          <Button label="Eliminar cuenta" variant="danger" onPress={() => {}} fullWidth />
+          <Text style={[typography.label, styles.deleteNote, { color: colors.onSurfaceVariant }]}>
+            Esta acción es irreversible
+          </Text>
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -123,5 +132,13 @@ const styles = StyleSheet.create({
   },
   cardLabel: {
     textAlign: 'center',
+  },
+  deleteBlock: {
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  deleteNote: {
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
 });
