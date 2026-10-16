@@ -5,6 +5,21 @@ type LocationState = {
   longitude: number | null;
   isLoading: boolean;
   errorMessage: string | null;
+  /** true cuando las coordenadas son la ubicación por defecto y no la del usuario. */
+  isApproximate: boolean;
+};
+
+// Centro de Buenos Aires (Obelisco). Se usa SOLO si el navegador no entrega la ubicación del
+// usuario (permiso rechazado o no disponible): así la búsqueda no queda trabada, por ejemplo en
+// una demo. Si el usuario da el permiso, se usa siempre su ubicación real.
+const DEFAULT_LOCATION = { latitude: -34.6037, longitude: -58.3816 };
+
+type Options = {
+  /**
+   * Con `false`, sin permiso no se inventa una ubicación: las coordenadas quedan en null. Lo usa
+   * la pantalla de ruta, donde partir de un punto que no es el del usuario daría una ruta falsa.
+   */
+  fallback?: boolean;
 };
 
 // Versión web del hook. Usa navigator.geolocation directo en vez de expo-location porque:
@@ -14,24 +29,31 @@ type LocationState = {
 // 2. Necesitamos enableHighAccuracy + maximumAge:0 para no recibir la ubicación por IP
 //    del proveedor de internet, que puede estar a decenas de kilómetros.
 // Mismo patrón que ya usa LocationPicker.web.tsx.
-export function useCurrentLocation() {
+export function useCurrentLocation({ fallback = true }: Options = {}) {
   const [state, setState] = useState<LocationState>({
     latitude: null,
     longitude: null,
     isLoading: true,
     errorMessage: null,
+    isApproximate: false,
   });
+
+  // Sin ubicación real: o se usa la de por defecto (con un aviso) o se deja vacía.
+  const unavailable = (message: string): LocationState =>
+    fallback
+      ? {
+          ...DEFAULT_LOCATION,
+          isLoading: false,
+          errorMessage: `${message} Te mostramos estacionamientos cerca del Obelisco, en Buenos Aires.`,
+          isApproximate: true,
+        }
+      : { latitude: null, longitude: null, isLoading: false, errorMessage: message, isApproximate: false };
 
   const request = () => {
     setState((prev) => ({ ...prev, isLoading: true, errorMessage: null }));
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setState({
-        latitude: null,
-        longitude: null,
-        isLoading: false,
-        errorMessage: 'Tu navegador no permite obtener la ubicación.',
-      });
+      setState(unavailable('Tu navegador no permite obtener la ubicación.'));
       return;
     }
 
@@ -42,18 +64,17 @@ export function useCurrentLocation() {
           longitude: position.coords.longitude,
           isLoading: false,
           errorMessage: null,
+          isApproximate: false,
         });
       },
       (error) => {
-        setState({
-          latitude: null,
-          longitude: null,
-          isLoading: false,
-          errorMessage:
+        setState(
+          unavailable(
             error.code === error.PERMISSION_DENIED
-              ? 'Necesitamos permiso de ubicación para mostrarte estacionamientos cercanos.'
-              : 'No se pudo obtener tu ubicación.',
-        });
+              ? 'No tenemos permiso para usar tu ubicación.'
+              : 'No se pudo obtener tu ubicación.'
+          )
+        );
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );

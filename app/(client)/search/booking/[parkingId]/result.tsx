@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -24,6 +25,30 @@ export default function BookingResultScreen() {
   }>();
 
   const isSuccess = status === 'success';
+
+  // Al irse de la pantalla de pago exitoso —con cualquiera de los dos botones, o con la barra de
+  // pestañas sin tocar ninguno— se borra todo el flujo de reserva de la pila de búsqueda.
+  //
+  // Sin esto, la pestaña de búsqueda se acordaba del flujo: al volver a reservar el mismo
+  // estacionamiento, expo-router (que no duplica pantallas con los mismos parámetros) reabría la
+  // instancia anterior, con el cartel de "pago realizado" arriba de todo, en vez de un formulario
+  // nuevo.
+  //
+  // Es un RESET y no un "volver al principio" (POP_TO_TOP): cuando se llega desde el mapa, el flujo
+  // de reserva es la ÚNICA pantalla de esa pila, y retroceder hasta la primera no cambia nada.
+  // El reset deja la pila con solo su pantalla inicial, así la próxima reserva arma todo de cero.
+  // El error no entra acá: ahí "Volver a intentar" tiene que conservar el formulario.
+  const navigation = useNavigation();
+  useEffect(() => {
+    if (!isSuccess) return;
+    return navigation.addListener('blur', () => {
+      // En el próximo ciclo: no se puede cambiar la pila en medio del cambio de foco.
+      setTimeout(
+        () => navigation.getParent()?.dispatch({ type: 'RESET', payload: { index: 0, routes: [{ name: 'index' }] } }),
+        0
+      );
+    });
+  }, [navigation, isSuccess]);
 
   return (
     <Screen>

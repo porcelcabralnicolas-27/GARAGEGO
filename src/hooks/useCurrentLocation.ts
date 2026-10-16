@@ -6,14 +6,19 @@ type LocationState = {
   longitude: number | null;
   isLoading: boolean;
   errorMessage: string | null;
+  /** En la app nativa nunca se inventa una ubicación; existe para igualar el contrato de la web. */
+  isApproximate: boolean;
 };
 
-export function useCurrentLocation() {
+// `fallback` solo lo usa la versión web (useCurrentLocation.web.ts); acá se acepta para que las dos
+// versiones tengan la misma firma y nunca se inventa una ubicación.
+export function useCurrentLocation(_options: { fallback?: boolean } = {}) {
   const [state, setState] = useState<LocationState>({
     latitude: null,
     longitude: null,
     isLoading: true,
     errorMessage: null,
+    isApproximate: false,
   });
 
   const request = () => {
@@ -21,7 +26,7 @@ export function useCurrentLocation() {
     Location.requestForegroundPermissionsAsync()
       .then((permission) => {
         if (!permission.granted) {
-          setState({ latitude: null, longitude: null, isLoading: false, errorMessage: 'Necesitamos permiso de ubicación para mostrarte estacionamientos cercanos.' });
+          setState({ latitude: null, longitude: null, isLoading: false, errorMessage: 'Necesitamos permiso de ubicación para mostrarte estacionamientos cercanos.', isApproximate: false });
           return null;
         }
         // Alta precisión: con la precisión por defecto la posición puede venir de una
@@ -35,10 +40,11 @@ export function useCurrentLocation() {
           longitude: position.coords.longitude,
           isLoading: false,
           errorMessage: null,
+          isApproximate: false,
         });
       })
       .catch(() => {
-        setState({ latitude: null, longitude: null, isLoading: false, errorMessage: 'No se pudo obtener tu ubicación.' });
+        setState({ latitude: null, longitude: null, isLoading: false, errorMessage: 'No se pudo obtener tu ubicación.', isApproximate: false });
       });
   };
 

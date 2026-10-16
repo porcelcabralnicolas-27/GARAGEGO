@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useGoBack } from '@/hooks/useGoBack';
 import { createBooking, getBookingErrorMessage } from '@/features/booking/api';
 import { computeBookingPrice } from '@/features/booking/pricing';
 import { getParkingLot } from '@/features/parking/api';
@@ -43,6 +44,7 @@ export default function PaymentScreen() {
     endTime: string;
     vehicleId: string;
   }>();
+  const goBack = useGoBack({ pathname: '/(client)/search/booking/[parkingId]', params: { parkingId } });
 
   const walletBalance = useAuthStore((s) => s.walletBalance);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
@@ -116,15 +118,10 @@ export default function PaymentScreen() {
     }
   };
 
-  const backHref = {
-    pathname: '/(client)/search/booking/[parkingId]' as const,
-    params: { parkingId },
-  };
-
   if (loadError) {
     return (
       <Screen>
-        <ScreenHeader title="Pago" backHref={backHref} />
+        <ScreenHeader title="Pago" onBack={goBack} />
         <Banner message="No se pudo cargar este estacionamiento." />
       </Screen>
     );
@@ -133,7 +130,7 @@ export default function PaymentScreen() {
   if (!lot || total === null) {
     return (
       <Screen>
-        <ScreenHeader title="Pago" backHref={backHref} />
+        <ScreenHeader title="Pago" onBack={goBack} />
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
       </Screen>
     );
@@ -142,7 +139,7 @@ export default function PaymentScreen() {
   return (
     <Screen>
       <ScrollView>
-        <ScreenHeader title="Pago" backHref={backHref} />
+        <ScreenHeader title="Pago" onBack={goBack} />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
-import type { ListingStatus } from '@/features/parking/types';
+import { LOT_TYPE_LABELS, type ListingStatus, type LotType } from '@/features/parking/types';
 import { formatPricePerHour } from '@/lib/money';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -17,6 +17,8 @@ type ParkingCardProps = {
   note?: string | null;
   imageUrl?: string | null;
   distanceKm?: number;
+  /** Cochera de casa o estacionamiento. */
+  lotType?: LotType;
   /** Autos a la vez. Solo lo pasa el propietario: la búsqueda no trae la capacidad. */
   capacity?: number;
   onPress: () => void;
@@ -42,6 +44,7 @@ export function ParkingCard({
   note,
   imageUrl,
   distanceKm,
+  lotType,
   capacity,
   onPress,
 }: ParkingCardProps) {
@@ -94,6 +97,11 @@ export function ParkingCard({
           {note ? (
             <Text style={[typography.label, { color: colors.error, marginTop: 2 }]} numberOfLines={2}>
               {note}
+            </Text>
+          ) : null}
+          {lotType ? (
+            <Text style={[typography.label, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
+              {LOT_TYPE_LABELS[lotType]}
             </Text>
           ) : null}
           {distanceKm !== undefined ? (

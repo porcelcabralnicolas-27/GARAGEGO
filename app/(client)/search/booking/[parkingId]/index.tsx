@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useGoBack } from '@/hooks/useGoBack';
 import { getBookedIntervals, type BookedInterval } from '@/features/booking/api';
 import {
   generateEndTimeOptions,
@@ -42,7 +43,9 @@ type AvailabilityData = {
 export default function BookingScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
-  const { parkingId } = useLocalSearchParams<{ parkingId: string }>();
+  const { parkingId, from } = useLocalSearchParams<{ parkingId: string; from?: string }>();
+  // Vuelve a donde se vino (el mapa o la ficha); sin historial, a la ficha del estacionamiento.
+  const goBack = useGoBack({ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }, from);
   const profile = useAuthStore((s) => s.profile);
   const walletBalance = useAuthStore((s) => s.walletBalance);
 
@@ -149,7 +152,7 @@ export default function BookingScreen() {
       <Screen>
         <ScreenHeader
           title="Reservar"
-          backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
+          onBack={goBack}
         />
         <Banner message="No se pudo cargar la disponibilidad de este estacionamiento." />
       </Screen>
@@ -161,7 +164,7 @@ export default function BookingScreen() {
       <Screen>
         <ScreenHeader
           title="Reservar"
-          backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
+          onBack={goBack}
         />
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
       </Screen>
@@ -173,7 +176,7 @@ export default function BookingScreen() {
       <ScrollView keyboardShouldPersistTaps="handled">
         <ScreenHeader
           title="Reservar"
-          backHref={{ pathname: '/(client)/search/parking/[id]', params: { id: parkingId } }}
+          onBack={goBack}
         />
 
         <ParkingGallery images={images} height={200} />

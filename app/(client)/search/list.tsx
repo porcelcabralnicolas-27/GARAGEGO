@@ -96,6 +96,7 @@ export default function ListScreen() {
             pricePerHour={item.pricePerHour}
             ratingAvg={item.ratingAvg}
             distanceKm={item.distanceKm}
+            lotType={item.lotType}
             imageUrl={coverImages[item.id]}
             onPress={() => router.push({ pathname: '/(client)/search/parking/[id]', params: { id: item.id } })}
           />

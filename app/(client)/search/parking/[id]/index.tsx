@@ -10,6 +10,7 @@ import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useGoBack } from '@/hooks/useGoBack';
 import {
   getParkingLot,
   getParkingLotOwnerName,
@@ -17,7 +18,7 @@ import {
   listParkingImages,
 } from '@/features/parking/api';
 import { formatPricePerHour } from '@/lib/money';
-import { DAY_LABELS, type ParkingImage, type ParkingLot, type RecurringAvailability } from '@/features/parking/types';
+import { DAY_LABELS, LOT_TYPE_LABELS, type ParkingImage, type ParkingLot, type RecurringAvailability } from '@/features/parking/types';
 import { listRatingsPage, type RatingCursor } from '@/features/rating/api';
 import { StarRating } from '@/components/ui/StarRating';
 import { flattenPages } from '@/lib/pagination';
@@ -37,7 +38,9 @@ type ParkingDetailData = {
 export default function ParkingDetailScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  // Vuelve a donde se vino (el mapa o la lista de resultados); sin historial, al mapa de inicio.
+  const goBack = useGoBack('/(client)', from);
 
   // Todo en paralelo: el nombre del dueño se pide por id de cochera, así que ya no hace falta
   // esperar al lote para saber a quién buscar.
@@ -70,7 +73,7 @@ export default function ParkingDetailScreen() {
   if (isError) {
     return (
       <Screen>
-        <ScreenHeader title="Estacionamiento" backHref="/(client)/search/list" />
+        <ScreenHeader title="Estacionamiento" onBack={goBack} />
         <Banner message="No se pudo cargar el estacionamiento." />
       </Screen>
     );
@@ -89,7 +92,7 @@ export default function ParkingDetailScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <ScreenHeader title={lot.name} backHref="/(client)/search/list" />
+        <ScreenHeader title={lot.name} onBack={goBack} />
 
         <View style={styles.gallery}>
           <ParkingGallery images={images} />
@@ -115,9 +118,16 @@ export default function ParkingDetailScreen() {
         </View>
 
         <View style={styles.capacityRow}>
+          <Ionicons name={lot.lotType === 'house' ? 'home-outline' : 'business-outline'} size={16} color={colors.onSurfaceVariant} />
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginLeft: 6 }]}>
+            {LOT_TYPE_LABELS[lot.lotType]}
+          </Text>
+        </View>
+
+        <View style={styles.capacityRow}>
           <Ionicons name="car-outline" size={16} color={colors.onSurfaceVariant} />
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginLeft: 6 }]}>
-            Capacidad: {lot.capacity} {lot.capacity === 1 ? 'auto' : 'autos'} a la vez
+            Capacidad: {lot.capacity} {lot.capacity === 1 ? 'auto' : 'autos'}
           </Text>
         </View>
 

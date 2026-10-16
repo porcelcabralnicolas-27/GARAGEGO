@@ -4,11 +4,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { formatPricePerHour } from '@/lib/money';
 import { IconButton } from '@/components/ui/IconButton';
-import type { ParkingLotWithDistance } from '@/features/parking/types';
+import { LOT_TYPE_LABELS, type ParkingLotWithDistance } from '@/features/parking/types';
 import { radius, shadows, spacing, useTheme } from '@/theme';
 
 type ParkingPreviewSheetProps = {
   lot: ParkingLotWithDistance;
+  /** Si se puede usar ahora mismo. `undefined` = se desconoce y no se muestra nada. */
+  isAvailableNow?: boolean;
   onClose: () => void;
   onViewDetail: () => void;
   onBook: () => void;
@@ -26,7 +28,7 @@ type ParkingPreviewSheetProps = {
 //
 // Vive acá y no dentro de la pantalla de Inicio porque la usan las dos versiones del mapa,
 // la nativa y la web, que son archivos separados.
-export function ParkingPreviewSheet({ lot, onClose, onViewDetail, onBook }: ParkingPreviewSheetProps) {
+export function ParkingPreviewSheet({ lot, isAvailableNow, onClose, onViewDetail, onBook }: ParkingPreviewSheetProps) {
   const { colors, typography } = useTheme();
 
   return (
@@ -39,13 +41,27 @@ export function ParkingPreviewSheet({ lot, onClose, onViewDetail, onBook }: Park
       </View>
 
       <View style={[styles.detail, { borderColor: colors.outline }]}>
-        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>Localidad</Text>
+        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{LOT_TYPE_LABELS[lot.lotType]}</Text>
         <Text style={[typography.titleLarge, { color: colors.onSurface }]} numberOfLines={1}>
           {lot.name}
         </Text>
         <Text style={[typography.bodyMedium, styles.address, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
           {lot.address}
         </Text>
+
+        {isAvailableNow !== undefined ? (
+          <View style={styles.availability}>
+            <View
+              style={[
+                styles.availabilityDot,
+                { backgroundColor: isAvailableNow ? colors.success : colors.onSurfaceVariant },
+              ]}
+            />
+            <Text style={[typography.label, { color: isAvailableNow ? colors.accent : colors.onSurfaceVariant }]}>
+              {isAvailableNow ? 'Disponible ahora' : 'No disponible ahora · podés reservar para más tarde'}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={[styles.divider, { backgroundColor: colors.outline }]} />
 
@@ -104,6 +120,17 @@ const styles = StyleSheet.create({
   },
   address: {
     marginTop: spacing.xs,
+  },
+  availability: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  availabilityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: spacing.sm,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

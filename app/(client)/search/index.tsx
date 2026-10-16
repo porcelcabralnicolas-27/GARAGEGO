@@ -8,6 +8,7 @@ import { ChipSelect } from '@/components/ui/ChipSelect';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
+import { useGeocoder } from '@/features/search/useGeocoder';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useTheme } from '@/theme';
 
@@ -28,6 +29,11 @@ export default function SearchScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const location = useCurrentLocation();
+  const geocoder = useGeocoder();
+
+  const [address, setAddress] = useState('');
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
   const [radiusKm, setRadiusKm] = useState('5');
   const [maxPrice, setMaxPrice] = useState('');
@@ -47,14 +53,70 @@ export default function SearchScreen() {
     });
   };
 
+  // Busca una dirección escrita a mano y muestra en el mapa los estacionamientos que hay cerca
+  // de ella, con los mismos filtros de distancia, precio y calificación.
+  const searchAddress = async () => {
+    const query = address.trim();
+    if (query.length < 3 || isSearchingAddress) return;
+    setIsSearchingAddress(true);
+    setAddressError(null);
+    try {
+      const found = await geocoder.geocode(query);
+      if (!found) {
+        setAddressError('No encontramos esa dirección. Probá con calle, número y localidad.');
+        return;
+      }
+      router.push({
+        pathname: '/(client)',
+        params: {
+          lat: String(found.latitude),
+          lng: String(found.longitude),
+          radiusKm,
+          maxPrice: maxPrice.trim(),
+          minRating: minRating === '0' ? '' : minRating,
+          place: found.label,
+        },
+      });
+    } catch {
+      setAddressError('No se pudo buscar la dirección. Revisá tu conexión e intentá de nuevo.');
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
         <ScreenHeader title="Buscar" backHref="/(client)" />
 
+        <TextField
+          label="Buscar por dirección"
+          placeholder="Ej.: Av. Mitre 1500, Avellaneda"
+          value={address}
+          onChangeText={(text) => {
+            setAddress(text);
+            setAddressError(null);
+          }}
+          returnKeyType="search"
+          onSubmitEditing={searchAddress}
+          autoCapitalize="words"
+          errorMessage={addressError ?? undefined}
+        />
+        <Button
+          label="Buscar esta dirección en el mapa"
+          onPress={searchAddress}
+          loading={isSearchingAddress}
+          disabled={address.trim().length < 3 || isSearchingAddress || !geocoder.isReady}
+        />
+
+        <View style={styles.spacerLarge} />
+        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>
+          O buscá cerca de donde estás
+        </Text>
+
         {location.errorMessage ? (
           <>
-            <Banner message={location.errorMessage} />
+            <Banner message={location.errorMessage} variant={location.isApproximate ? 'info' : 'error'} />
             <Button label="Reintentar ubicación" variant="outlined" onPress={location.retry} />
             <View style={styles.spacer} />
           </>

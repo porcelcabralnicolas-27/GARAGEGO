@@ -8,6 +8,7 @@ import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useGoBack } from '@/hooks/useGoBack';
 import { RouteMap } from '@/features/directions/RouteMap';
 import { getDirections } from '@/features/directions/api';
 import type { DirectionsResult } from '@/features/directions/types';
@@ -31,7 +32,9 @@ function formatDuration(seconds: number): string {
 export default function ParkingRouteScreen() {
   const { colors, typography } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const location = useCurrentLocation();
+  const goBack = useGoBack({ pathname: '/(client)/search/parking/[id]', params: { id } });
+  // Sin permiso no se usa una ubicación por defecto: la ruta tiene que partir de donde está el usuario.
+  const location = useCurrentLocation({ fallback: false });
 
   const { data: lot, isError: isLotError } = useQuery({
     queryKey: queryKeys.parkingLots.detail(id),
@@ -73,10 +76,7 @@ export default function ParkingRouteScreen() {
 
   return (
     <Screen>
-      <ScreenHeader
-        title="Cómo llegar"
-        backHref={{ pathname: '/(client)/search/parking/[id]', params: { id } }}
-      />
+      <ScreenHeader title="Cómo llegar" onBack={goBack} />
 
       {location.errorMessage ? <Banner message={location.errorMessage} /> : null}
       {isLotError ? <Banner message="No se pudo cargar el estacionamiento." /> : null}
