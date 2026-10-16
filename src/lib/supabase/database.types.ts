@@ -94,6 +94,13 @@ export type Database = {
           capacity: number;
           /** Servicios (0065): códigos de AMENITIES en shared/domain.ts. */
           amenities: string[];
+          /** Migración 0075: 'house' (cochera de casa) o 'lot' (estacionamiento). */
+          lot_type: 'house' | 'lot';
+          /** Migración 0078: relación de quien publica con el lugar (qué documentos se le piden). */
+          holder_role: 'owner' | 'tenant' | 'manager';
+          /** Migración 0079: cuándo y quién verificó la titularidad. Lo pone la RPC de revisión. */
+          ownership_verified_at: string | null;
+          ownership_verified_by: string | null;
           rating_avg: number;
           is_active: boolean;
           created_at: string;
@@ -102,6 +109,8 @@ export type Database = {
           // impide cambiar todo esto desde el cliente salvo reenviar a revisión.
           approval_status: 'pending' | 'approved' | 'rejected' | 'changes_requested';
           rejection_reason: string | null;
+          /** Migración 0072: campos que el equipo pidió cambiar (códigos de ListingChangeField). */
+          requested_changes: string[] | null;
           reviewed_at: string | null;
           reviewed_by: string | null;
           moderation_state: 'live' | 'paused_by_admin' | 'suspended';
@@ -121,6 +130,8 @@ export type Database = {
           price_per_hour: number;
           capacity?: number;
           amenities?: string[];
+          lot_type?: 'house' | 'lot';
+          holder_role?: 'owner' | 'tenant' | 'manager';
           is_active?: boolean;
         };
         Update: {
@@ -132,10 +143,30 @@ export type Database = {
           price_per_hour?: number;
           capacity?: number;
           amenities?: string[];
+          lot_type?: 'house' | 'lot';
+          holder_role?: 'owner' | 'tenant' | 'manager';
           is_active?: boolean;
           // Solo la transición changes_requested → pending pasa el trigger (0037/0038).
           approval_status?: 'pending';
         };
+        Relationships: [];
+      };
+      // Documentos de titularidad (0078). Bucket privado `ownership-docs`.
+      parking_lot_documents: {
+        Row: {
+          id: string;
+          parking_lot_id: string;
+          kind: 'dni' | 'ownership_deed' | 'tax_bill' | 'rental_contract' | 'owner_authorization' | 'commercial_license';
+          storage_path: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          parking_lot_id: string;
+          kind: 'dni' | 'ownership_deed' | 'tax_bill' | 'rental_contract' | 'owner_authorization' | 'commercial_license';
+          storage_path: string;
+        };
+        Update: Record<string, never>;
         Relationships: [];
       };
       parking_images: {
@@ -286,6 +317,8 @@ export type Database = {
           id: string;
           user_id: string;
           title: string;
+          /** Migración 0070: en los mensajes nuevos, el nombre del estacionamiento (el "asunto"). */
+          subtitle: string | null;
           description: string | null;
           type: string;
           audience: 'client' | 'owner' | null;
@@ -474,6 +507,11 @@ export type Database = {
         Args: { p_booking_id: string };
         Returns: undefined;
       };
+      // Requisitos de titularidad sin cumplir ('dni', 'property_proof', ...); vacío = completa (0078).
+      lot_missing_documents: {
+        Args: { p_lot_id: string };
+        Returns: string[];
+      };
       demo_topup_enabled: {
         Args: Record<string, never>;
         Returns: boolean;
@@ -626,6 +664,11 @@ export type Database = {
           sort_at: string;
         }[];
       };
+      /** Migración 0073: qué cocheras se pueden usar ahora (en vivo, en horario y con lugar libre). */
+      parking_lots_available_now: {
+        Args: { p_lot_ids: string[] };
+        Returns: { parking_lot_id: string; available_now: boolean }[];
+      };
       search_parking_lots: {
         Args: {
           p_lat: number;
@@ -649,6 +692,7 @@ export type Database = {
           rating_avg: number;
           is_active: boolean;
           created_at: string;
+          lot_type: 'house' | 'lot';
           distance_km: number;
         }[];
       };

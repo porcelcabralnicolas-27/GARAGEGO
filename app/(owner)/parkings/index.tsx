@@ -137,6 +137,7 @@ export default function OwnerParkingsScreen() {
               pricePerHour={item.pricePerHour}
               ratingAvg={item.ratingAvg}
               capacity={item.capacity}
+              lotType={item.lotType}
               status={status}
               note={note}
               imageUrl={coverImages[item.id]}

@@ -13,15 +13,18 @@ type LocationPickerProps = {
   longitude: number | null;
   onChange: (latitude: number, longitude: number) => void;
   onAddressResolved?: (address: string) => void;
+  /** Cada vez que cambia, el mapa se centra en el marcador (por ejemplo, al ubicar una dirección escrita). */
+  recenterToken?: number;
 };
 
-export function LocationPicker({ latitude, longitude, onChange, onAddressResolved }: LocationPickerProps) {
+export function LocationPicker({ latitude, longitude, onChange, onAddressResolved, recenterToken }: LocationPickerProps) {
   const { colors, typography } = useTheme();
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'garagego-google-maps-web',
     googleMapsApiKey: GOOGLE_MAPS_WEB_API_KEY,
   });
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+  const [map, setMap] = useState<google.maps.Map | null>(null);
 
   // Centro fijo del mapa: se calcula una sola vez para no "recentrar" el mapa cada vez
   // que el usuario arrastra el marcador (eso pisaría el paneo/zoom del usuario).
@@ -37,6 +40,15 @@ export function LocationPicker({ latitude, longitude, onChange, onAddressResolve
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Al ubicar una dirección escrita, el marcador cambia de lugar y el mapa lo acompaña.
+  useEffect(() => {
+    if (!recenterToken || !map || latitude === null || longitude === null) return;
+    map.panTo({ lat: latitude, lng: longitude });
+    map.setZoom(16);
+    // Solo cuando cambia el token: mover el marcador a mano no tiene que mover el mapa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterToken, map]);
 
   const markerPosition = latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : fallbackCenter;
 
@@ -67,6 +79,8 @@ export function LocationPicker({ latitude, longitude, onChange, onAddressResolve
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={center ?? fallbackCenter}
             zoom={15}
+            onLoad={setMap}
+            onUnmount={() => setMap(null)}
             onClick={(e) => {
               if (e.latLng) handleMove({ lat: e.latLng.lat(), lng: e.latLng.lng() });
             }}

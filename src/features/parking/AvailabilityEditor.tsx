@@ -27,7 +27,21 @@ type AvailabilityData = {
   exceptions: AvailabilityException[];
 };
 
+/** Disponibilidad cargada en el asistente antes de que la cochera exista (ids provisorios). */
+export type AvailabilityDraft = AvailabilityData;
+
 const EMPTY_DATA: AvailabilityData = { recurring: [], exceptions: [] };
+export const EMPTY_AVAILABILITY_DRAFT: AvailabilityDraft = EMPTY_DATA;
+
+// Con `parkingLotId` edita la disponibilidad de una cochera existente (cada cambio se guarda en el
+// momento). Con `draft` trabaja en memoria y avisa cada cambio con `onDraftChange`: lo usa el
+// asistente al crear, que recién guarda todo al terminar el último paso.
+type Props =
+  | { parkingLotId: string; draft?: undefined; onDraftChange?: undefined }
+  | { parkingLotId?: undefined; draft: AvailabilityDraft; onDraftChange: (next: AvailabilityDraft) => void };
+
+let draftIdCounter = 0;
+const nextDraftId = () => `draft-${(draftIdCounter += 1)}`;
 
 const DAY_OPTIONS = DAY_LABELS.map((label, index) => ({ value: String(index), label: label.slice(0, 2) }));
 
@@ -36,25 +50,35 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): b
   return aStart < bEnd && bStart < aEnd;
 }
 
-export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
+export function AvailabilityEditor({ parkingLotId, draft, onDraftChange }: Props) {
   const { colors, typography } = useTheme();
   const queryClient = useQueryClient();
 
-  const queryKey = queryKeys.parkingLots.availability(parkingLotId);
-  const { data: { recurring, exceptions } = EMPTY_DATA, isError } = useQuery({
+  const queryKey = queryKeys.parkingLots.availability(parkingLotId ?? 'draft');
+  const { data: savedData = EMPTY_DATA, isError } = useQuery({
     queryKey,
+    enabled: !draft,
     queryFn: async (): Promise<AvailabilityData> => {
       const [r, e] = await Promise.all([
-        getRecurringAvailability(parkingLotId),
-        getAvailabilityExceptions(parkingLotId),
+        getRecurringAvailability(parkingLotId as string),
+        getAvailabilityExceptions(parkingLotId as string),
       ]);
-      return { recurring: r, exceptions: e };
+      // Los días bloqueados que ya pasaron no se muestran; el servidor los borra una vez por día
+      // (migración 0071) y acá se descartan para que no queden a la vista hasta esa limpieza.
+      const today = businessDate();
+      return { recurring: r, exceptions: e.filter((exception) => exception.date >= today) };
     },
   });
+
+  const { recurring, exceptions } = draft ?? savedData;
 
   // La disponibilidad también la usan la ficha pública y la pantalla de reservar: se invalida
   // todo el grupo para que un conductor no vea horarios que el propietario ya cambió.
   const applyChange = (update: (current: AvailabilityData) => AvailabilityData) => {
+    if (draft) {
+      onDraftChange(update(draft));
+      return;
+    }
     queryClient.setQueryData<AvailabilityData>(queryKey, (current = EMPTY_DATA) => update(current));
     queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
   };
@@ -97,10 +121,10 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
 
     setIsAddingRecurring(true);
     try {
-      const entries = await addRecurringAvailabilityBulk(
-        parkingLotId,
-        days.map((dayOfWeek) => ({ dayOfWeek, startTime, endTime }))
-      );
+      const newEntries = days.map((dayOfWeek) => ({ dayOfWeek, startTime, endTime }));
+      const entries = draft
+        ? newEntries.map((entry) => ({ id: nextDraftId(), ...entry }))
+        : await addRecurringAvailabilityBulk(parkingLotId, newEntries);
       applyChange((current) => ({
         ...current,
         recurring: [...current.recurring, ...entries].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
@@ -116,7 +140,7 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
 
   const handleRemoveRecurring = async (id: string) => {
     try {
-      await removeRecurringAvailability(id);
+      if (!draft) await removeRecurringAvailability(id);
       applyChange((current) => ({ ...current, recurring: current.recurring.filter((r) => r.id !== id) }));
     } catch {
       setRecurringError('No se pudo eliminar el horario.');
@@ -137,12 +161,10 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
     }
     setIsAddingException(true);
     try {
-      const entry = await addAvailabilityException(parkingLotId, {
-        date: exceptionDate,
-        startTime: null,
-        endTime: null,
-        isAvailable: false,
-      });
+      const newException = { date: exceptionDate, startTime: null, endTime: null, isAvailable: false };
+      const entry = draft
+        ? { id: nextDraftId(), ...newException }
+        : await addAvailabilityException(parkingLotId, newException);
       applyChange((current) => ({
         ...current,
         exceptions: [...current.exceptions, entry].sort((a, b) => a.date.localeCompare(b.date)),
@@ -157,7 +179,7 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
 
   const handleRemoveException = async (id: string) => {
     try {
-      await removeAvailabilityException(id);
+      if (!draft) await removeAvailabilityException(id);
       applyChange((current) => ({ ...current, exceptions: current.exceptions.filter((e) => e.id !== id) }));
     } catch {
       setExceptionError('No se pudo eliminar la excepción.');

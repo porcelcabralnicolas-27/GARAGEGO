@@ -61,3 +61,165 @@ export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
   behavior: 'Conducta',
   other: 'Otro',
 };
+
+/**
+ * Qué puede pedir el equipo que se cambie en una publicación ("Pedir cambios", migración 0072).
+ * `parking_lots.requested_changes` guarda estos códigos; al reenviar, el servidor verifica que
+ * cada uno haya cambiado. `other` es "algo que no entra en la lista": exige al menos un cambio.
+ */
+export const LISTING_CHANGE_FIELDS = [
+  'name',
+  'description',
+  'address',
+  'price',
+  'capacity',
+  'amenities',
+  'photos',
+  'availability',
+  'documents',
+  'other',
+] as const;
+
+export type ListingChangeField = (typeof LISTING_CHANGE_FIELDS)[number];
+
+export const LISTING_CHANGE_FIELD_LABELS: Record<ListingChangeField, string> = {
+  name: 'Nombre',
+  description: 'Descripción',
+  address: 'Dirección y ubicación',
+  price: 'Tarifa por hora',
+  capacity: 'Capacidad',
+  amenities: 'Servicios',
+  photos: 'Fotos',
+  availability: 'Disponibilidad (días y horarios)',
+  documents: 'Documentos de titularidad',
+  other: 'Otro (según el detalle)',
+};
+
+/**
+ * Tipo de publicación. `parking_lots.lot_type` (migración 0075):
+ *   - `house`: cochera de casa (un particular que alquila el espacio de su casa);
+ *   - `lot`: estacionamiento (un predio o playa de estacionamiento).
+ * El mapa dibuja un ícono distinto para cada tipo.
+ */
+export const LOT_TYPES = ['house', 'lot'] as const;
+
+export type LotType = (typeof LOT_TYPES)[number];
+
+export const LOT_TYPE_LABELS: Record<LotType, string> = {
+  house: 'Cochera de casa',
+  lot: 'Estacionamiento',
+};
+
+export const LOT_TYPE_DESCRIPTIONS: Record<LotType, string> = {
+  house: 'El espacio de tu casa: garaje o entrada.',
+  lot: 'Un predio o playa de estacionamiento.',
+};
+
+// ── Verificación de titularidad (migración 0078) ──────────────────────────────────────────────
+// Para publicar, el propietario sube documentos que acreditan que es el dueño del lugar o que
+// tiene permiso para ofrecerlo. El equipo los revisa antes de aprobar. Las reglas de abajo se
+// repiten en SQL (`lot_missing_documents`, 0078): el servidor es el que las hace cumplir, esto
+// solo le dice a la pantalla qué pedir y qué falta.
+
+/** Relación de quien publica con el lugar. `parking_lots.holder_role` (migración 0078). */
+export const HOLDER_ROLES = ['owner', 'tenant', 'manager'] as const;
+
+export type HolderRole = (typeof HOLDER_ROLES)[number];
+
+export const HOLDER_ROLE_LABELS: Record<HolderRole, string> = {
+  owner: 'Soy el titular (dueño)',
+  tenant: 'Soy inquilino',
+  manager: 'Administro el lugar para el dueño',
+};
+
+/** Tipo de documento. `parking_lot_documents.kind` (migración 0078). */
+export const DOCUMENT_KINDS = [
+  'dni',
+  'ownership_deed',
+  'tax_bill',
+  'rental_contract',
+  'owner_authorization',
+  'commercial_license',
+] as const;
+
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+
+export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {
+  dni: 'DNI (frente)',
+  ownership_deed: 'Escritura o título de propiedad',
+  tax_bill: 'Boleta de impuesto inmobiliario o ABL',
+  rental_contract: 'Contrato de alquiler',
+  owner_authorization: 'Autorización firmada del dueño',
+  commercial_license: 'Habilitación municipal',
+};
+
+/** Un renglón de lo que se pide. Se cumple con UNO de sus `kinds`. */
+export type DocumentRequirement = {
+  id: string;
+  label: string;
+  hint: string;
+  kinds: DocumentKind[];
+  /** Un requisito opcional no bloquea la publicación. */
+  optional?: boolean;
+};
+
+const DNI_REQUIREMENT: DocumentRequirement = {
+  id: 'dni',
+  label: 'DNI (frente)',
+  hint: 'Tiene que coincidir con el nombre de tu cuenta. Tapá el número de trámite.',
+  kinds: ['dni'],
+};
+
+const OWNER_AUTHORIZATION_REQUIREMENT: DocumentRequirement = {
+  id: 'owner_authorization',
+  label: 'Autorización firmada del dueño',
+  hint: 'Con su firma, la fecha y una copia de su DNI, para que ofrezcas el lugar.',
+  kinds: ['owner_authorization'],
+};
+
+/** Qué documentos pide cada relación con el lugar. */
+export function documentRequirements(role: HolderRole, lotType?: 'house' | 'lot'): DocumentRequirement[] {
+  const requirements: DocumentRequirement[] = [DNI_REQUIREMENT];
+
+  if (role === 'owner') {
+    requirements.push({
+      id: 'property_proof',
+      label: 'Documento que acredite que sos el dueño',
+      hint: 'Escritura, título de propiedad o una boleta reciente (últimos 6 meses) del impuesto inmobiliario o ABL, a tu nombre y con la dirección del lugar.',
+      kinds: ['ownership_deed', 'tax_bill'],
+    });
+  } else if (role === 'tenant') {
+    requirements.push({
+      id: 'rental_contract',
+      label: 'Contrato de alquiler',
+      hint: 'Vigente y con la dirección del lugar.',
+      kinds: ['rental_contract'],
+    });
+    requirements.push(OWNER_AUTHORIZATION_REQUIREMENT);
+  } else {
+    requirements.push(OWNER_AUTHORIZATION_REQUIREMENT);
+  }
+
+  if (lotType === 'lot') {
+    requirements.push({
+      id: 'commercial_license',
+      label: 'Habilitación municipal (opcional)',
+      hint: 'Si el predio tiene habilitación como estacionamiento, sumala: acelera la revisión.',
+      kinds: ['commercial_license'],
+      optional: true,
+    });
+  }
+
+  return requirements;
+}
+
+/** Los requisitos obligatorios que todavía no se cumplen con los documentos cargados. */
+export function missingDocumentRequirements(
+  role: HolderRole,
+  have: Iterable<DocumentKind>
+): DocumentRequirement[] {
+  const owned = new Set(have);
+  return documentRequirements(role).filter(
+    (requirement) => !requirement.optional && !requirement.kinds.some((kind) => owned.has(kind))
+  );
+}

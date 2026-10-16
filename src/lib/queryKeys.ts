@@ -26,6 +26,8 @@ export const queryKeys = {
     list: (userId: string, audience: NotificationAudience) => ['notifications', 'list', userId, audience] as const,
     unreadMessages: (userId: string, audience: NotificationAudience) =>
       ['notifications', 'unreadMessages', userId, audience] as const,
+    unread: (userId: string, audience: NotificationAudience) =>
+      ['notifications', 'unread', userId, audience] as const,
   },
   vehicles: {
     all: ['vehicles'] as const,
@@ -44,8 +46,10 @@ export const queryKeys = {
       ['parkingLots', 'search', filters] as const,
     nearby: (filters: { latitude: number; longitude: number; radiusKm: number; maxPrice: number | null; minRating: number | null }) =>
       ['parkingLots', 'nearby', filters] as const,
+    availableNow: (lotIdsKey: string) => ['parkingLots', 'availableNow', lotIdsKey] as const,
     bookingAvailability: (lotId: string) => ['parkingLots', 'bookingAvailability', lotId] as const,
     images: (lotId: string) => ['parkingLots', 'images', lotId] as const,
+    documents: (lotId: string) => ['parkingLots', 'documents', lotId] as const,
     availability: (lotId: string) => ['parkingLots', 'availability', lotId] as const,
   },
   tickets: {

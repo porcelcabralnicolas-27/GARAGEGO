@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AMENITIES } from '../../../shared/domain';
+import { AMENITIES, LOT_TYPES } from '../../../shared/domain';
 
 /** Mismo rango que el check `parking_lots_capacity_range` (0064). */
 export const MIN_CAPACITY = 1;
@@ -24,8 +24,9 @@ export const placeSchema = z.object({
     .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= -180 && Number(v) <= 180, 'Longitud inválida'),
 });
 
-/** Paso 2: tarifa por hora, capacidad y servicios. */
+/** Paso 2: tipo de publicación, tarifa por hora, capacidad y servicios. */
 export const ratesSchema = z.object({
+  lotType: z.enum(LOT_TYPES),
   pricePerHour: z
     .string()
     .min(1, 'El precio es obligatorio')

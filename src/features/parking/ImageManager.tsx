@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
 import {
@@ -10,6 +10,7 @@ import {
   uploadParkingImage,
 } from '@/features/parking/api';
 import { MAX_PARKING_IMAGES, type ParkingImage } from '@/features/parking/types';
+import { DUPLICATE_PHOTO_MESSAGE, fingerprintImage } from '@/lib/imageFingerprint';
 import { assertImageUploadable } from '@/lib/imageMime';
 import { queryKeys } from '@/lib/queryKeys';
 
@@ -31,6 +32,27 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
   const applyChange = (update: (current: ParkingImage[]) => ParkingImage[]) => {
     queryClient.setQueryData<ParkingImage[]>(queryKey, (current = []) => update(current));
     queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
+  };
+
+  // Huellas de las fotos ya subidas, para no volver a bajarlas cada vez que se agrega una.
+  const savedFingerprints = useRef(new Map<string, string>());
+
+  const isDuplicateOfExisting = async (localUri: string): Promise<boolean> => {
+    const candidate = await fingerprintImage(localUri);
+    for (const image of images) {
+      let known = savedFingerprints.current.get(image.id);
+      if (!known) {
+        try {
+          known = await fingerprintImage(image.publicUrl);
+        } catch {
+          // Si una foto ya guardada no se puede leer, no se frena la subida por eso.
+          continue;
+        }
+        savedFingerprints.current.set(image.id, known);
+      }
+      if (known === candidate) return true;
+    }
+    return false;
   };
 
   const handleAddImage = async () => {
@@ -58,6 +80,10 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
       assertImageUploadable(result.assets[0].uri, result.assets[0].fileSize);
 
       setIsUploading(true);
+      if (await isDuplicateOfExisting(result.assets[0].uri)) {
+        setErrorMessage(DUPLICATE_PHOTO_MESSAGE);
+        return;
+      }
       const image = await uploadParkingImage({
         ownerId,
         parkingLotId,

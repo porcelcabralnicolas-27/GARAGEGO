@@ -4,10 +4,16 @@ import { toPage, type Page } from '@/lib/pagination';
 import { supabase } from '@/lib/supabase/client';
 
 import {
+  LISTING_CHANGE_FIELD_LABELS,
   MAX_PARKING_IMAGES,
   type Amenity,
   type ApprovalStatus,
   type AvailabilityException,
+  type DocumentKind,
+  type HolderRole,
+  type ListingChangeField,
+  type LotDocument,
+  type LotType,
   type ModerationState,
   type ParkingImage,
   type ParkingLot,
@@ -16,6 +22,8 @@ import {
 } from './types';
 
 const STORAGE_BUCKET = 'parking-images';
+// Documentos de titularidad (0078): bucket PRIVADO, solo lo ven el dueño y el equipo.
+const DOCS_BUCKET = 'ownership-docs';
 
 function mapParkingLotRow(row: {
   id: string;
@@ -34,8 +42,12 @@ function mapParkingLotRow(row: {
   // búsqueda; las pantallas que la muestran leen la cochera con getParkingLot.
   capacity?: number;
   amenities?: string[];
+  lot_type?: LotType;
+  holder_role?: HolderRole;
+  ownership_verified_at?: string | null;
   approval_status?: ApprovalStatus;
   rejection_reason?: string | null;
+  requested_changes?: string[] | null;
   moderation_state?: ModerationState;
 }): ParkingLot {
   return {
@@ -50,11 +62,15 @@ function mapParkingLotRow(row: {
     capacity: row.capacity ?? 1,
     // El check de la 0065 garantiza que solo vengan códigos conocidos.
     amenities: (row.amenities ?? []) as Amenity[],
+    lotType: row.lot_type ?? 'lot',
+    holderRole: row.holder_role ?? 'owner',
+    ownershipVerifiedAt: row.ownership_verified_at ?? null,
     ratingAvg: row.rating_avg,
     isActive: row.is_active,
     createdAt: row.created_at,
     approvalStatus: row.approval_status ?? 'approved',
     rejectionReason: row.rejection_reason ?? null,
+    requestedChanges: (row.requested_changes ?? []) as ListingChangeField[],
     moderationState: row.moderation_state ?? 'live',
   };
 }
@@ -143,14 +159,15 @@ export type ParkingLotInput = {
   pricePerHour: number;
   capacity: number;
   amenities: Amenity[];
+  lotType: LotType;
 };
 
 export async function createParkingLot(
   ownerId: string,
   input: ParkingLotInput,
-  // El asistente de publicación crea el lote como borrador (inactivo) en el primer paso y lo
-  // activa recién al terminar, para que no aparezca en la búsqueda sin fotos ni horarios.
-  options?: { isActive?: boolean }
+  // El asistente de publicación la crea inactiva, le carga horarios y fotos y recién entonces la
+  // activa, para que no aparezca en la búsqueda a medio armar.
+  options?: { isActive?: boolean; holderRole?: HolderRole }
 ): Promise<ParkingLot> {
   const { data, error } = await supabase
     .from('parking_lots')
@@ -164,6 +181,8 @@ export async function createParkingLot(
       price_per_hour: input.pricePerHour,
       capacity: input.capacity,
       amenities: input.amenities,
+      lot_type: input.lotType,
+      holder_role: options?.holderRole ?? 'owner',
       is_active: options?.isActive ?? true,
     })
     .select('*')
@@ -184,6 +203,7 @@ export async function updateParkingLot(id: string, input: ParkingLotInput): Prom
       price_per_hour: input.pricePerHour,
       capacity: input.capacity,
       amenities: input.amenities,
+      lot_type: input.lotType,
     })
     .eq('id', id)
     .select('*')
@@ -222,6 +242,10 @@ export async function deleteParkingLot(id: string): Promise<'deleted' | 'archive
   // Las rutas se leen antes: si la cochera se borra, sus filas de parking_images se van en
   // cascada y ya no habría forma de saber qué archivos limpiar.
   const { data: images } = await supabase.from('parking_images').select('storage_path').eq('parking_lot_id', id);
+  const { data: documents } = await supabase
+    .from('parking_lot_documents')
+    .select('storage_path')
+    .eq('parking_lot_id', id);
 
   const { data, error } = await supabase.rpc('delete_parking_lot', { p_parking_lot_id: id });
   if (error) throw error;
@@ -229,6 +253,14 @@ export async function deleteParkingLot(id: string): Promise<'deleted' | 'archive
   if (data === 'deleted' && images && images.length > 0) {
     // Mejor esfuerzo: si falla, queda un archivo huérfano pero la cochera ya está borrada.
     await supabase.storage.from(STORAGE_BUCKET).remove(images.map((img) => img.storage_path));
+  }
+  if (documents && documents.length > 0) {
+    // Los documentos de titularidad son datos sensibles y ya no hacen falta, se haya borrado la
+    // cochera de verdad o archivado: se limpian los archivos y sus filas. Mejor esfuerzo.
+    await supabase.storage.from(DOCS_BUCKET).remove(documents.map((doc) => doc.storage_path)).catch(() => {});
+    if (data === 'archived') {
+      await supabase.from('parking_lot_documents').delete().eq('parking_lot_id', id).then(() => {}, () => {});
+    }
   }
   return data === 'archived' ? 'archived' : 'deleted';
 }
@@ -311,6 +343,87 @@ export async function deleteParkingImage(image: { id: string; storagePath: strin
   // registra pero no se revierte el borrado — deshacerlo sería más confuso que un archivo
   // huérfano en el bucket.
   if (storageError) console.error('No se pudo borrar el archivo de la imagen de la cochera:', storageError);
+}
+
+export async function setHolderRole(id: string, holderRole: HolderRole): Promise<void> {
+  const { error } = await supabase.from('parking_lots').update({ holder_role: holderRole }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function listLotDocuments(parkingLotId: string): Promise<LotDocument[]> {
+  const { data, error } = await supabase
+    .from('parking_lot_documents')
+    .select('id, kind, storage_path')
+    .eq('parking_lot_id', parkingLotId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data.map((row) => ({ id: row.id, kind: row.kind, storagePath: row.storage_path }));
+}
+
+/**
+ * Sube un documento de titularidad. Hay uno por tipo: si ya había uno de ese tipo, queda
+ * reemplazado. `replacesKinds` son otros tipos que cumplen el mismo requisito (por ejemplo,
+ * escritura y boleta): si se sube uno, el otro sobra y se quita.
+ */
+export async function uploadLotDocument(params: {
+  ownerId: string;
+  parkingLotId: string;
+  kind: DocumentKind;
+  localUri: string;
+  replacesKinds?: DocumentKind[];
+}): Promise<LotDocument> {
+  const { extension, contentType } = guessImageContentType(params.localUri);
+  const path = `${params.ownerId}/${params.parkingLotId}/${params.kind}-${Date.now()}.${extension}`;
+
+  const response = await fetch(params.localUri);
+  if (!response.ok) throw new Error(`No se pudo leer la imagen (${response.status}).`);
+  const arrayBuffer = await response.arrayBuffer();
+  const { error: uploadError } = await supabase.storage.from(DOCS_BUCKET).upload(path, arrayBuffer, { contentType });
+  if (uploadError) throw uploadError;
+
+  // Se quita lo anterior del mismo requisito (la tabla tiene un documento por tipo).
+  const kindsToClear = [params.kind, ...(params.replacesKinds ?? [])];
+  const { data: previous, error: previousError } = await supabase
+    .from('parking_lot_documents')
+    .select('id, storage_path')
+    .eq('parking_lot_id', params.parkingLotId)
+    .in('kind', kindsToClear);
+  if (previousError) {
+    await supabase.storage.from(DOCS_BUCKET).remove([path]).catch(() => {});
+    throw previousError;
+  }
+  if (previous && previous.length > 0) {
+    const { error: clearError } = await supabase
+      .from('parking_lot_documents')
+      .delete()
+      .in('id', previous.map((row) => row.id));
+    if (clearError) {
+      await supabase.storage.from(DOCS_BUCKET).remove([path]).catch(() => {});
+      throw clearError;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('parking_lot_documents')
+    .insert({ parking_lot_id: params.parkingLotId, kind: params.kind, storage_path: path })
+    .select('id, kind, storage_path')
+    .single();
+  if (error) {
+    await supabase.storage.from(DOCS_BUCKET).remove([path]).catch(() => {});
+    throw error;
+  }
+
+  if (previous && previous.length > 0) {
+    // Mejor esfuerzo: si falla, queda un archivo suelto en el bucket privado.
+    await supabase.storage.from(DOCS_BUCKET).remove(previous.map((row) => row.storage_path)).catch(() => {});
+  }
+  return { id: data.id, kind: data.kind, storagePath: data.storage_path };
+}
+
+export async function deleteLotDocument(doc: { id: string; storagePath: string }): Promise<void> {
+  const { error } = await supabase.from('parking_lot_documents').delete().eq('id', doc.id);
+  if (error) throw error;
+  await supabase.storage.from(DOCS_BUCKET).remove([doc.storagePath]).catch(() => {});
 }
 
 export async function getRecurringAvailability(parkingLotId: string): Promise<RecurringAvailability[]> {
@@ -412,12 +525,45 @@ export async function addRecurringAvailabilityBulk(
   return data.map((row) => ({ id: row.id, dayOfWeek: row.day_of_week, startTime: row.start_time, endTime: row.end_time }));
 }
 
+/**
+ * Qué cocheras de la lista se pueden usar AHORA: en vivo, dentro de su horario por al menos una
+ * hora y con lugar libre (migración 0073). Devuelve un mapa id → disponible; una cochera que no
+ * aparece en el mapa es "se desconoce".
+ */
+export async function getLotsAvailableNow(lotIds: string[]): Promise<Record<string, boolean>> {
+  if (lotIds.length === 0) return {};
+  const { data, error } = await supabase.rpc('parking_lots_available_now', { p_lot_ids: lotIds });
+  if (error) throw error;
+  return Object.fromEntries(data.map((row) => [row.parking_lot_id, row.available_now]));
+}
+
+/**
+ * Traduce el error `changes_not_made: name,photos` del reenvío a revisión (migración 0072) a un
+ * aviso con los nombres de lo que todavía falta modificar.
+ */
+function changesNotMadeMessage(message: string): string {
+  const raw = message.split('changes_not_made:')[1] ?? '';
+  const labels = raw
+    .split(/[\s,]+/)
+    .map((code) => code.trim())
+    .filter((code): code is ListingChangeField => code in LISTING_CHANGE_FIELD_LABELS)
+    .map((code) => LISTING_CHANGE_FIELD_LABELS[code]);
+  return labels.length > 0
+    ? `Todavía falta modificar lo que pidió el equipo: ${labels.join(', ')}.`
+    : 'Todavía falta modificar lo que pidió el equipo.';
+}
+
 export function getParkingErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
     if (message.includes('max_parking_images_reached')) return `Ya llegaste al máximo de ${MAX_PARKING_IMAGES} fotos.`;
     if (message.includes('duplicate key') || message.includes('parking_availability_recurring_no_dupes')) {
       return 'Ese horario ya está cargado para ese día.';
+    }
+    if (message.includes('changes_not_made')) return changesNotMadeMessage(message);
+    if (message.includes('photo_required')) return 'Subí al menos una foto del lugar para publicarlo.';
+    if (message.includes('ownership_docs_required')) {
+      return 'Faltan los documentos que acreditan que sos el dueño o que tenés permiso para publicar este lugar.';
     }
     if (message.includes('lot_has_active_bookings')) {
       return 'Esta cochera tiene reservas vigentes. Cancelalas o esperá a que terminen para poder borrarla.';
