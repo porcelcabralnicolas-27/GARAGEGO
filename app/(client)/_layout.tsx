@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
 import { useUnreadMessagesCount } from '@/features/notifications/useUnreadMessagesCount';
+import { useUnreadNotificationsCount } from '@/features/notifications/useUnreadNotificationsCount';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
@@ -9,6 +10,7 @@ export default function ClientLayout() {
   const { colors } = useTheme();
   const profile = useAuthStore((s) => s.profile);
   const unreadMessages = useUnreadMessagesCount(profile?.id, 'client');
+  const unreadNotifications = useUnreadNotificationsCount(profile?.id, 'client');
 
   return (
     <Tabs
@@ -43,6 +45,7 @@ export default function ClientLayout() {
         options={{
           title: 'Notificaciones',
           tabBarIcon: ({ color, size }) => <Ionicons name="notifications" color={color} size={size} />,
+          tabBarBadge: unreadNotifications > 0 ? unreadNotifications : undefined,
         }}
       />
       <Tabs.Screen

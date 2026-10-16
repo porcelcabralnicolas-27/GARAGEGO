@@ -56,7 +56,11 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
         heading: '4. Si sos propietario',
         bullets: [
           'Solo podés publicar cocheras que tenés derecho a ofrecer. La descripción, las fotos (hasta 3), los servicios, la capacidad y los horarios tienen que ser verdaderos.',
+          'Para publicar tenés que acreditar que sos el dueño del lugar o que tenés permiso para ofrecerlo: subís tu DNI y un documento que lo respalde (escritura, boleta del impuesto inmobiliario o ABL, o un contrato de alquiler con autorización firmada del dueño). Si el lugar está en un edificio, tenés que verificar que el reglamento de copropiedad lo permita.',
+          'Sos responsable de que lo que declarás y los documentos que subís sean verdaderos. Un documento falso o ajeno es motivo de rechazo y de suspensión de la cuenta.',
           'Toda publicación pasa por una revisión del equipo antes de aparecer en las búsquedas. El equipo puede aprobarla, pedirte cambios o rechazarla; un rechazo es definitivo.',
+          'Si después de aprobada cambiás los datos del lugar, la tarifa y los servicios o las fotos, el equipo los revisa de nuevo y, hasta que los apruebe, la publicación no aparece en las búsquedas. Los horarios los podés cambiar cuando quieras, sin revisión.',
+          'Si eliminás una publicación, se cierran los chats de esa cochera y ya no se pueden hacer reportes sobre ella. El historial de reservas y los movimientos de tu billetera se conservan.',
           'El equipo puede pausar o suspender una publicación que incumpla estas condiciones.',
           'No podés reservar tu propia cochera.',
           'Cobrás el precio de cada reserva cuando esta finaliza, en tu billetera de GarageGo.',
@@ -126,7 +130,7 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
           'De tus vehículos: patente, marca, modelo, color y foto (opcional).',
           'Tu ubicación, si das permiso, para mostrarte las cocheras cercanas y calcular la ruta. Solo se usa mientras usás la app.',
           'Tus reservas, los movimientos de tu billetera, tus calificaciones, tus mensajes y tus consultas de soporte.',
-          'Si sos propietario: los datos y las fotos de tus publicaciones.',
+          'Si sos propietario: los datos y las fotos de tus publicaciones y los documentos de titularidad que subís (tu DNI y los que acreditan que podés publicar el lugar).',
         ],
       },
       {
@@ -147,6 +151,7 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
           'Una reserva la ven el conductor y el propietario de esa cochera. El propietario ve únicamente el vehículo asociado a una reserva suya.',
           'Los mensajes de una reserva los ven solo las dos partes.',
           'Tus consultas de soporte las ven vos y el equipo de GarageGo.',
+          'Tus documentos de titularidad los ven solo vos y el equipo de GarageGo, que los usa únicamente para verificar tu publicación. Se guardan en un espacio privado y nunca se muestran a otros usuarios.',
           'Cada usuario accede únicamente a lo suyo: esas reglas las aplica la base de datos, no solo la pantalla.',
         ],
       },
@@ -161,6 +166,7 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
         heading: 'Cuánto tiempo los conservamos',
         paragraphs: [
           'Guardamos tus datos mientras tu cuenta esté activa. Las reservas y los movimientos de dinero se conservan como registro de las operaciones, porque la otra parte también los necesita.',
+          'Los documentos de titularidad (tu DNI y los que acreditan que podés publicar el lugar) los borramos apenas el equipo termina de revisar tu publicación, ya sea que la apruebe o la rechace. Mientras te pida cambios, se conservan para que puedas reenviarla. De la verificación queda solo la fecha en que se hizo.',
           'Todavía no existe una opción para eliminar la cuenta desde la app. Si querés que eliminemos tus datos, pedilo desde Soporte y ayuda.',
         ],
       },

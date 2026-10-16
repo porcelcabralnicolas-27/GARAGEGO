@@ -49,7 +49,7 @@ export default function OwnerMessagesScreen() {
             onPress={() =>
               router.push({
                 pathname: '/(owner)/messages/[lotId]',
-                params: { lotId: item.parkingLotId, peerId: item.peerId, title: item.otherPartyName },
+                params: { lotId: item.parkingLotId, peerId: item.peerId, title: item.otherPartyName, lotName: item.parkingLotName },
               })
             }
           />

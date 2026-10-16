@@ -6,7 +6,12 @@ import { useAuthStore } from '@/store/useAuthStore';
 // Para el propietario el hilo es por (estacionamiento, cliente): el mismo cliente en dos
 // estacionamientos distintos son dos conversaciones separadas.
 export default function OwnerChatScreen() {
-  const { lotId, peerId, title } = useLocalSearchParams<{ lotId: string; peerId: string; title?: string }>();
+  const { lotId, peerId, title, lotName } = useLocalSearchParams<{
+    lotId: string;
+    peerId: string;
+    title?: string;
+    lotName?: string;
+  }>();
   const profile = useAuthStore((s) => s.profile);
 
   if (!profile) return null;
@@ -18,6 +23,7 @@ export default function OwnerChatScreen() {
       role="owner"
       userId={profile.id}
       title={title || 'Chat con el cliente'}
+      lotName={lotName}
       backHref="/(owner)/messages"
     />
   );

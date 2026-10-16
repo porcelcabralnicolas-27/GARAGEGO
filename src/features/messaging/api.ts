@@ -106,7 +106,7 @@ export async function resolveThread(thread: ThreadRef, userId: string): Promise<
 export async function getThreadRefForBooking(
   bookingId: string,
   role: ThreadRole
-): Promise<{ parkingLotId: string; peerId: string; title: string } | null> {
+): Promise<{ parkingLotId: string; peerId: string; title: string; lotName: string } | null> {
   const { data: booking, error } = await supabase
     .from('bookings')
     .select('parking_lot_id, user_id')
@@ -117,11 +117,12 @@ export async function getThreadRefForBooking(
 
   const { data: lot, error: lotError } = await supabase
     .from('parking_lots')
-    .select('id, name, owner_id')
+    .select('id, name, owner_id, archived_at')
     .eq('id', booking.parking_lot_id)
     .maybeSingle();
   if (lotError) throw lotError;
-  if (!lot) return null;
+  // Una publicación eliminada ya no tiene chat (migración 0080).
+  if (!lot || lot.archived_at !== null) return null;
 
   const peerId = role === 'client' ? lot.owner_id : booking.user_id;
 
@@ -132,6 +133,7 @@ export async function getThreadRefForBooking(
     parkingLotId: lot.id,
     peerId,
     title: peerName || (role === 'client' ? 'Propietario' : 'Cliente'),
+    lotName: lot.name,
   };
 }
 
@@ -225,6 +227,8 @@ export function getMessagingErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
     if (message.includes('thread_empty')) return 'Esta conversación ya no tiene reservas asociadas.';
+    // La policy de `messages` rechaza escribir en el chat de una publicación eliminada (0080).
+    if (message.includes('row-level security')) return 'Esta publicación fue eliminada: ya no se puede chatear.';
     return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';

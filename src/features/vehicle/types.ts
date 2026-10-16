@@ -14,6 +14,8 @@ export type VehicleImage = {
   id: string;
   vehicleId: string;
   storagePath: string;
+  /** URL firmada y con vencimiento: el bucket es privado (0077). Se llama así porque es lo que
+   *  espera `PhotoUploader`. */
   publicUrl: string;
   position: number;
 };

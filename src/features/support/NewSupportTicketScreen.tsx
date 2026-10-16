@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ChipSelect } from '@/components/ui/ChipSelect';
+import { LinkText } from '@/components/ui/LinkText';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
@@ -28,6 +29,12 @@ const LIST_HREF = {
 
 const NO_TARGETS: TicketTargetOption[] = [];
 
+/** Cuántas reservas o cocheras se ven de entrada; el resto está detrás de "Ver más". */
+const VISIBLE_TARGETS = 5;
+
+/** Opción "no es sobre una reserva/cochera en particular": el ticket queda sin vínculo (0076). */
+const GENERAL_KEY = 'general';
+
 export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
   const router = useRouter();
   const { colors, typography } = useTheme();
@@ -38,6 +45,7 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [targetKey, setTargetKey] = useState<string | null>(null);
+  const [showAllTargets, setShowAllTargets] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -54,10 +62,15 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
   const visibleError = errorMessage ?? (targetsError ? getSupportErrorMessage(targetsError) : null);
 
   const target = useMemo(() => targets.find((t) => t.key === targetKey) ?? null, [targets, targetKey]);
-  const canSubmit = subject.trim().length > 0 && body.trim().length >= 10 && target !== null;
+  // Las opciones llegan de la más reciente a la más vieja: de entrada se ven las últimas 5.
+  const visibleTargets = showAllTargets ? targets : targets.slice(0, VISIBLE_TARGETS);
+  const hiddenTargetsCount = targets.length - VISIBLE_TARGETS;
+  const isGeneral = targetKey === GENERAL_KEY;
+  // Hay que elegir algo: una reserva/cochera concreta o "Consulta general".
+  const canSubmit = subject.trim().length > 0 && body.trim().length >= 10 && (isGeneral || target !== null);
 
   const handleSubmit = async () => {
-    if (!profile || !target || !canSubmit || isSubmitting) return;
+    if (!profile || !canSubmit || isSubmitting) return;
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
@@ -67,8 +80,8 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
         subject,
         category,
         body,
-        relatedBookingId: target.bookingId,
-        relatedParkingLotId: target.parkingLotId,
+        relatedBookingId: target?.bookingId ?? null,
+        relatedParkingLotId: target?.parkingLotId ?? null,
       });
       router.replace({
         pathname: role === 'client' ? '/(client)/profile/support/[id]' : '/(owner)/profile/support/[id]',
@@ -101,52 +114,71 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
         <Text style={[typography.label, styles.fieldLabel, { color: colors.onSurfaceVariant }]}>
           {role === 'owner' ? '¿SOBRE QUÉ COCHERA?' : '¿SOBRE QUÉ RESERVA?'}
         </Text>
-        {isLoadingTargets ? (
-          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: spacing.lg }]}>
-            Cargando…
-          </Text>
-        ) : targets.length === 0 ? (
-          <Banner
-            message={
-              role === 'owner'
-                ? 'Todavía no tenés cocheras publicadas para asociar a una consulta.'
-                : 'Todavía no tenés reservas para asociar a una consulta.'
-            }
-          />
-        ) : (
-          <View style={styles.targetList}>
-            {targets.map((t) => {
-              const selected = t.key === targetKey;
-              return (
-                <Pressable
-                  key={t.key}
-                  onPress={() => setTargetKey(t.key)}
-                  style={[
-                    styles.targetRow,
-                    {
-                      borderColor: selected ? colors.primary : colors.outline,
-                      backgroundColor: selected ? colors.primaryContainer : colors.surface,
-                    },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.bodyMedium, { color: colors.onSurface }]} numberOfLines={1}>
-                      {t.label}
-                    </Text>
-                    {t.sublabel ? (
-                      <Text
-                        style={[typography.label, { color: colors.onSurfaceVariant }]}
-                        numberOfLines={1}
-                      >
-                        {t.sublabel}
+        <View style={styles.targetList}>
+          {/* Para reportes que no son de una reserva o publicación en particular. */}
+          <Pressable
+            onPress={() => setTargetKey(GENERAL_KEY)}
+            accessibilityRole="button"
+            style={[
+              styles.targetRow,
+              {
+                borderColor: isGeneral ? colors.primary : colors.outline,
+                backgroundColor: isGeneral ? colors.primaryContainer : colors.surface,
+              },
+            ]}
+          >
+            <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Consulta general</Text>
+            <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>
+              {role === 'owner'
+                ? 'No es sobre una cochera en particular'
+                : 'No es sobre una reserva en particular'}
+            </Text>
+          </Pressable>
+
+          {isLoadingTargets ? (
+            <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
+          ) : (
+            <>
+              {visibleTargets.map((t) => {
+                const selected = t.key === targetKey;
+                return (
+                  <Pressable
+                    key={t.key}
+                    onPress={() => setTargetKey(t.key)}
+                    style={[
+                      styles.targetRow,
+                      {
+                        borderColor: selected ? colors.primary : colors.outline,
+                        backgroundColor: selected ? colors.primaryContainer : colors.surface,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[typography.bodyMedium, { color: colors.onSurface }]} numberOfLines={1}>
+                        {t.label}
                       </Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
+                      {t.sublabel ? (
+                        <Text
+                          style={[typography.label, { color: colors.onSurfaceVariant }]}
+                          numberOfLines={1}
+                        >
+                          {t.sublabel}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              {hiddenTargetsCount > 0 ? (
+                <LinkText
+                  label={showAllTargets ? 'Ver menos' : `Ver más (${hiddenTargetsCount})`}
+                  onPress={() => setShowAllTargets((current) => !current)}
+                />
+              ) : null}
+            </>
+          )}
+        </View>
 
         <TextField
           label="Asunto"

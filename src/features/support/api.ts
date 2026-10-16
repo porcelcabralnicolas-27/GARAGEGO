@@ -13,6 +13,10 @@ import type {
 
 const TICKETS_PAGE_SIZE = 20;
 const MESSAGES_PAGE_SIZE = 50;
+// Tope del selector "¿sobre qué es?" del ticket: las reservas o cocheras más recientes. Un reclamo
+// casi siempre es sobre algo reciente, y sin tope un conductor con años de uso traía todas sus
+// reservas de una vez (informe de recomendaciones 2026-10-15, escalabilidad 1).
+const TICKET_TARGETS_LIMIT = 50;
 
 type TicketRow = {
   id: string;
@@ -167,7 +171,8 @@ export async function sendTicketMessage(params: {
 
 /**
  * Opciones para el selector de "¿sobre qué es?". El conductor elige una reserva; el
- * propietario, una cochera. Un ticket siempre queda vinculado a una de las dos.
+ * propietario, una cochera. Un ticket siempre queda vinculado a una de las dos. Trae solo las
+ * `TICKET_TARGETS_LIMIT` más recientes.
  */
 export async function listTicketTargets(
   role: ReporterRole,
@@ -178,7 +183,10 @@ export async function listTicketTargets(
       .from('parking_lots')
       .select('id, name, address')
       .eq('owner_id', userId)
-      .order('created_at', { ascending: false });
+      // Una publicación eliminada (archivada) ya no admite reportes (migración 0080).
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+      .limit(TICKET_TARGETS_LIMIT);
     if (error) throw error;
     return data.map((lot) => ({
       key: `lot:${lot.id}`,
@@ -194,19 +202,23 @@ export async function listTicketTargets(
     .select('id, parking_lot_id, date, start_time')
     .eq('user_id', userId)
     .order('date', { ascending: false })
-    .order('start_time', { ascending: false });
+    .order('start_time', { ascending: false })
+    .limit(TICKET_TARGETS_LIMIT);
   if (error) throw error;
   if (bookings.length === 0) return [];
 
   const lotIds = [...new Set(bookings.map((b) => b.parking_lot_id))];
   const { data: lots, error: lotsError } = await supabase
     .from('parking_lots')
-    .select('id, name')
+    .select('id, name, archived_at')
     .in('id', lotIds);
   if (lotsError) throw lotsError;
   const lotNameById = new Map(lots.map((l) => [l.id, l.name]));
+  // Las reservas de una publicación eliminada se conservan en el historial, pero no se pueden
+  // reportar (migración 0080).
+  const archivedLotIds = new Set(lots.filter((l) => l.archived_at !== null).map((l) => l.id));
 
-  return bookings.map((b) => ({
+  return bookings.filter((b) => !archivedLotIds.has(b.parking_lot_id)).map((b) => ({
     key: `booking:${b.id}`,
     label: lotNameById.get(b.parking_lot_id) ?? 'Estacionamiento',
     sublabel: `${b.date} · ${b.start_time.slice(0, 5)}`,

@@ -78,6 +78,12 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role, queryClient]);
 
+  /** Recuenta los dos badges de las pestañas: Mensajes y Notificaciones. */
+  const refreshBadges = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadMessages(userId ?? '', role) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unread(userId ?? '', role) });
+  };
+
   /**
    * Devuelve los callbacks de una mutación optimista sobre la lista: el cambio se ve al toque
    * y, si el servidor lo rechaza, la lista vuelve a como estaba.
@@ -104,9 +110,7 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
         if (context?.previous) queryClient.setQueryData(listKey, context.previous);
         setErrorMessage(errorText);
       },
-      onSettled: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadMessages(userId ?? '', role) });
-      },
+      onSettled: refreshBadges,
     };
   }
 
@@ -145,8 +149,7 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
       setErrorMessage('No se pudieron borrar las notificaciones.');
       setIsConfirmingDeleteAll(false);
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadMessages(userId ?? '', role) }),
+    onSettled: refreshBadges,
   });
 
   const hasUnread = notifications.some((n) => !n.read);
@@ -162,7 +165,7 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
       if (!thread) return;
       router.push({
         pathname: role === 'client' ? '/(client)/messages/[lotId]' : '/(owner)/messages/[lotId]',
-        params: { lotId: thread.parkingLotId, peerId: thread.peerId, title: thread.title },
+        params: { lotId: thread.parkingLotId, peerId: thread.peerId, title: thread.title, lotName: thread.lotName },
       });
       return;
     }

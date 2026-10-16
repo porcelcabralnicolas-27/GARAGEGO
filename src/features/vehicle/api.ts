@@ -26,8 +26,23 @@ function mapVehicleRow(row: {
   };
 }
 
-function toPublicUrl(storagePath: string): string {
-  return supabase.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath).data.publicUrl;
+// El bucket es privado (migración 0077): una foto de un auto suele mostrar la patente. Las fotos
+// se muestran con URLs firmadas que vencen; una hora alcanza de sobra porque las pantallas las
+// vuelven a pedir cada vez que se abren (staleTime de 30 s, app/_layout.tsx).
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+/** URL firmada de cada ruta, por ruta. Las que no se pudieron firmar no aparecen en el mapa. */
+async function toSignedUrls(storagePaths: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (storagePaths.length === 0) return result;
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrls(storagePaths, SIGNED_URL_TTL_SECONDS);
+  if (error) throw error;
+  for (const item of data) {
+    if (item.path && item.signedUrl) result.set(item.path, item.signedUrl);
+  }
+  return result;
 }
 
 export async function listMyVehicles(userId: string): Promise<Vehicle[]> {
@@ -99,9 +114,17 @@ export async function getVehicleCoverImageUrls(vehicleIds: string[]): Promise<Re
     .order('position', { ascending: true });
   if (error) throw error;
 
-  const result: Record<string, string> = {};
+  // La primera foto de cada vehículo (vienen ordenadas por posición) es su portada.
+  const coverPaths = new Map<string, string>();
   for (const row of data) {
-    if (!result[row.vehicle_id]) result[row.vehicle_id] = toPublicUrl(row.storage_path);
+    if (!coverPaths.has(row.vehicle_id)) coverPaths.set(row.vehicle_id, row.storage_path);
+  }
+
+  const signedUrls = await toSignedUrls([...coverPaths.values()]);
+  const result: Record<string, string> = {};
+  for (const [vehicleId, storagePath] of coverPaths) {
+    const url = signedUrls.get(storagePath);
+    if (url) result[vehicleId] = url;
   }
   return result;
 }
@@ -113,11 +136,12 @@ export async function listVehicleImages(vehicleId: string): Promise<VehicleImage
     .eq('vehicle_id', vehicleId)
     .order('position', { ascending: true });
   if (error) throw error;
+  const signedUrls = await toSignedUrls(data.map((row) => row.storage_path));
   return data.map((row) => ({
     id: row.id,
     vehicleId: row.vehicle_id,
     storagePath: row.storage_path,
-    publicUrl: toPublicUrl(row.storage_path),
+    publicUrl: signedUrls.get(row.storage_path) ?? '',
     position: row.position,
   }));
 }
@@ -151,11 +175,12 @@ export async function uploadVehicleImage(params: {
     throw error;
   }
 
+  const signedUrls = await toSignedUrls([data.storage_path]);
   return {
     id: data.id,
     vehicleId: data.vehicle_id,
     storagePath: data.storage_path,
-    publicUrl: toPublicUrl(data.storage_path),
+    publicUrl: signedUrls.get(data.storage_path) ?? '',
     position: data.position,
   };
 }

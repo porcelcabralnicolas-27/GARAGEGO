@@ -6,18 +6,25 @@ const validRegistration = {
   email: 'ana@ejemplo.com',
   password: 'claveNueva1',
   confirmPassword: 'claveNueva1',
-  acceptedTerms: true,
 };
 
 describe('registerSchema', () => {
-  it('acepta un registro completo con los términos aceptados', () => {
+  it('acepta un registro completo', () => {
     expect(registerSchema.safeParse(validRegistration).success).toBe(true);
   });
 
-  it('rechaza el registro si no se aceptaron los términos y condiciones', () => {
-    const result = registerSchema.safeParse({ ...validRegistration, acceptedTerms: false });
+  it('rechaza el registro si las contraseñas no coinciden', () => {
+    expect(registerSchema.safeParse({ ...validRegistration, confirmPassword: 'otraClave1' }).success).toBe(false);
+  });
+
+  it.each([
+    ['menos de 8 caracteres', 'Abc1234'],
+    ['sin mayúscula', 'clavenueva1'],
+    ['sin minúscula', 'CLAVENUEVA1'],
+    ['sin número', 'claveNueva'],
+  ])('rechaza una contraseña %s', (_label, password) => {
+    const result = registerSchema.safeParse({ ...validRegistration, password, confirmPassword: password });
     expect(result.success).toBe(false);
-    expect(!result.success && result.error.issues.some((i) => i.path[0] === 'acceptedTerms')).toBe(true);
   });
 });
 

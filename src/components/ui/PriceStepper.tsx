@@ -100,13 +100,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // `flex: 1` + `minWidth: 0`: el bloque del número toma solo el espacio que dejan los dos botones.
+  // Sin esto, en pantallas angostas el campo de texto (que en web trae un ancho propio) lo empujaba
+  // y el botón "+" quedaba fuera de la pantalla.
   valueWrap: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'baseline',
+    justifyContent: 'center',
     gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   input: {
-    minWidth: 56,
+    flex: 1,
+    minWidth: 0,
     textAlign: 'center',
     padding: 0,
   },

@@ -6,7 +6,8 @@ import { radius, spacing, useTheme } from '@/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** `danger`: relleno rojo para acciones destructivas (p. ej. eliminar la cuenta). */
+/** `danger`: fondo blanco con texto y borde rojos, para acciones destructivas (p. ej. eliminar la
+ *  cuenta). Es deliberadamente menos llamativo que un botón relleno para que no se toque por error. */
 type ButtonVariant = 'filled' | 'outlined' | 'text' | 'danger';
 type ButtonSize = 'default' | 'compact';
 
@@ -40,13 +41,34 @@ export function Button({
   const isDisabled = disabled || loading;
   const isCompact = size === 'compact';
 
-  const isFilled = variant === 'filled' || variant === 'danger';
-  const fillColor = variant === 'danger' ? colors.error : colors.primary;
-  const onFillColor = variant === 'danger' ? colors.onError : colors.onPrimary;
+  const isDanger = variant === 'danger';
+  const isFilled = variant === 'filled';
 
-  const backgroundColor = isFilled ? (isDisabled ? colors.surfaceVariant : fillColor) : 'transparent';
-  const textColor = isFilled ? (isDisabled ? colors.onSurfaceVariant : onFillColor) : colors.accent;
-  const borderColor = variant === 'outlined' ? colors.outline : 'transparent';
+  const backgroundColor = isDanger
+    ? isDisabled
+      ? colors.surfaceVariant
+      : colors.surface
+    : isFilled
+      ? isDisabled
+        ? colors.surfaceVariant
+        : colors.primary
+      : 'transparent';
+  const textColor = isDanger
+    ? isDisabled
+      ? colors.onSurfaceVariant
+      : colors.error
+    : isFilled
+      ? isDisabled
+        ? colors.onSurfaceVariant
+        : colors.onPrimary
+      : colors.accent;
+  const borderColor = isDanger
+    ? isDisabled
+      ? colors.outline
+      : colors.error
+    : variant === 'outlined'
+      ? colors.outline
+      : 'transparent';
 
   const alignSelf = fullWidth === undefined ? undefined : fullWidth ? 'stretch' : 'flex-start';
 

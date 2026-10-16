@@ -3,8 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { isDemoTopupEnabled } from '@/features/profile/api';
 import { queryKeys } from '@/lib/queryKeys';
 
-/** Montos de la recarga de prueba, iguales en el perfil y en el pago. */
-export const DEMO_TOPUP_AMOUNTS = [1000, 3000, 5000];
+/**
+ * Montos de la recarga de prueba, iguales en el perfil y en el pago. El servidor acepta hasta
+ * $50.000 por recarga y $200.000 de saldo total (migración 0074).
+ */
+export const DEMO_TOPUP_AMOUNTS = [5000, 10000, 20000];
 
 /**
  * Si se muestran los botones de recarga de prueba. Solo se esconden cuando el servidor dice

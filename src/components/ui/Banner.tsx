@@ -2,15 +2,17 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/theme';
 
-type BannerVariant = 'error' | 'success';
+type BannerVariant = 'error' | 'success' | 'info';
 
 export function Banner({ message, variant = 'error' }: { message: string; variant?: BannerVariant }) {
   const { colors, typography } = useTheme();
-  const backgroundColor = variant === 'error' ? colors.error : colors.success;
+  const backgroundColor =
+    variant === 'error' ? colors.error : variant === 'info' ? colors.surfaceVariant : colors.success;
+  const textColor = variant === 'info' ? colors.onSurface : colors.onError;
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
-      <Text style={[typography.bodyMedium, { color: colors.onError }]}>{message}</Text>
+      <Text style={[typography.bodyMedium, { color: textColor }]}>{message}</Text>
     </View>
   );
 }

@@ -3,6 +3,16 @@ import { z } from 'zod';
 const emailField = z.string().min(1, 'El correo es obligatorio').email('Correo inválido');
 const passwordField = z.string().min(8, 'La contraseña debe tener al menos 8 caracteres');
 
+// Reglas para las cuentas nuevas. Solo se aplican al registro: las cuentas que ya existen
+// conservan su contraseña y siguen entrando con login (que no valida el formato).
+const newAccountPasswordField = z
+  .string()
+  .min(8, 'La contraseña debe tener al menos 8 caracteres')
+  .refine((value) => /[a-z]/.test(value) && /[A-Z]/.test(value), {
+    message: 'La contraseña debe tener al menos una letra mayúscula y una minúscula',
+  })
+  .refine((value) => /\d/.test(value), { message: 'La contraseña debe tener al menos un número' });
+
 export const loginSchema = z.object({
   email: emailField,
   password: z.string().min(1, 'La contraseña es obligatoria'),
@@ -15,11 +25,8 @@ export const registerSchema = z
     firstName: z.string().min(1, 'El nombre es obligatorio'),
     lastName: z.string().min(1, 'El apellido es obligatorio'),
     email: emailField,
-    password: passwordField,
+    password: newAccountPasswordField,
     confirmPassword: z.string().min(1, 'Confirma tu contraseña'),
-    acceptedTerms: z.boolean().refine((accepted) => accepted, {
-      message: 'Tenés que aceptar los términos y condiciones para crear tu cuenta',
-    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Las contraseñas no coinciden',

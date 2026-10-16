@@ -362,6 +362,8 @@ const styles = StyleSheet.create({
   },
   topUpRow: {
     flexDirection: 'row',
+    // Con cuatro botones, en pantallas angostas el último pasa a la línea de abajo.
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.sm,
     marginBottom: spacing.xl,

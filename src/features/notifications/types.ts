@@ -33,6 +33,7 @@ export type AppNotification = {
   id: string;
   userId: string;
   title: string;
+  subtitle: string | null;
   description: string | null;
   type: NotificationType;
   audience: NotificationAudience | null;

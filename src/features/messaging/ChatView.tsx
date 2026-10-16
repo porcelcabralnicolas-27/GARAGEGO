@@ -31,6 +31,8 @@ type ChatViewProps = {
   role: ThreadRole;
   userId: string;
   title: string;
+  /** Estacionamiento al que pertenece la conversación; se muestra debajo del nombre. */
+  lotName?: string;
   backHref: Href;
 };
 
@@ -63,7 +65,7 @@ function buildRows(messages: Message[]): ChatRow[] {
 
 type MessagePages = InfiniteData<Page<Message, MessageCursor>, MessageCursor | null>;
 
-export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }: ChatViewProps) {
+export function ChatView({ parkingLotId, peerId, role, userId, title, lotName, backHref }: ChatViewProps) {
   const { colors, typography } = useTheme();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
@@ -160,9 +162,17 @@ export function ChatView({ parkingLotId, peerId, role, userId, title, backHref }
   return (
     <Screen>
       <BackButton href={backHref} />
-      <Text style={[typography.titleLarge, { color: colors.onBackground, marginBottom: 12 }]} numberOfLines={1}>
+      <Text
+        style={[typography.titleLarge, { color: colors.onBackground, marginBottom: lotName ? 2 : 12 }]}
+        numberOfLines={1}
+      >
         {title}
       </Text>
+      {lotName ? (
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 12 }]} numberOfLines={1}>
+          {lotName}
+        </Text>
+      ) : null}
 
       {visibleError ? <Banner message={visibleError} /> : null}
       {data && !canWrite ? <Banner message="Esta conversación ya no tiene reservas asociadas." /> : null}

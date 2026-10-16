@@ -7,6 +7,7 @@ function mapNotificationRow(row: {
   id: string;
   user_id: string;
   title: string;
+  subtitle: string | null;
   description: string | null;
   type: string;
   audience: string | null;
@@ -19,6 +20,7 @@ function mapNotificationRow(row: {
     id: row.id,
     userId: row.user_id,
     title: row.title,
+    subtitle: row.subtitle ?? null,
     description: row.description,
     type: row.type,
     audience: (row.audience as NotificationAudience | null) ?? null,
@@ -96,6 +98,18 @@ export async function countUnreadMessageNotifications(
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('type', 'new_message')
+    .or(audienceFilter(audience))
+    .eq('read', false);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Cuántas notificaciones sin leer tiene el rol activo (todas las de la lista, de cualquier tipo). */
+export async function countUnreadNotifications(userId: string, audience: NotificationAudience): Promise<number> {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
     .or(audienceFilter(audience))
     .eq('read', false);
   if (error) throw error;
@@ -181,6 +195,37 @@ export function subscribeToNotifications(
         if (matchesAudience(notification, audience)) onInsert(notification);
       }
     )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/** Avisa cuando cambia el conteo de no leídas del rol: llega una nueva, se lee una o se borra alguna. */
+export function subscribeToUnreadChanges(
+  userId: string,
+  audience: NotificationAudience,
+  handlers: { onInsert: () => void; onChange: () => void }
+): () => void {
+  const channel = supabase
+    .channel(`unread-notifications:${userId}:${audience}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+      (payload) => {
+        if (matchesAudience(mapNotificationRow(payload.new as never), audience)) handlers.onInsert();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+      (payload) => {
+        if (matchesAudience(mapNotificationRow(payload.new as never), audience)) handlers.onChange();
+      }
+    )
+    // Un DELETE solo trae la clave primaria: no se puede saber si era no leída, así que se recuenta.
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notifications' }, () => handlers.onChange())
     .subscribe();
 
   return () => {

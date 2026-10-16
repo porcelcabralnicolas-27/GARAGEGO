@@ -50,7 +50,7 @@ export default function ClientMessagesScreen() {
             onPress={() =>
               router.push({
                 pathname: '/(client)/messages/[lotId]',
-                params: { lotId: item.parkingLotId, peerId: item.peerId, title: item.otherPartyName },
+                params: { lotId: item.parkingLotId, peerId: item.peerId, title: item.otherPartyName, lotName: item.parkingLotName },
               })
             }
           />

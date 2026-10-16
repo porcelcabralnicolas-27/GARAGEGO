@@ -38,6 +38,12 @@ export function NotificationListItem({
         />
       </View>
 
+      {notification.subtitle ? (
+        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginTop: spacing.xs }]} numberOfLines={1}>
+          {notification.subtitle}
+        </Text>
+      ) : null}
+
       {notification.description ? (
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: spacing.xs }]}>
           {notification.description}

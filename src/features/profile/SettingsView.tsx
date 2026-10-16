@@ -95,7 +95,9 @@ export function SettingsView({ backHref, role }: { backHref: Href; role: Role })
 
         {/* Todavía sin funcionalidad: solo el botón y el aviso. */}
         <View style={styles.deleteBlock}>
-          <Button label="Eliminar cuenta" variant="danger" onPress={() => {}} fullWidth />
+          {/* Chico y centrado, a propósito: tiene que costar más tocarlo que "Cerrar sesión". El
+              bloque se ajusta a su contenido más ancho (el aviso) y el botón lo ocupa entero. */}
+          <Button label="Eliminar cuenta" variant="danger" size="compact" onPress={() => {}} fullWidth />
           <Text style={[typography.label, styles.deleteNote, { color: colors.onSurfaceVariant }]}>
             Esta acción es irreversible
           </Text>
@@ -134,6 +136,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   deleteBlock: {
+    // `center` hace que el bloque mida lo que su hijo más ancho: el botón y el aviso quedan iguales.
+    alignSelf: 'center',
     marginTop: spacing.md,
     marginBottom: spacing.xl,
   },
