@@ -1,0 +1,11 @@
+{
+  // Despliegue de la versión web en Cloudflare (Workers con assets estáticos).
+  // `single-page-application`: cualquier ruta que no sea un archivo (/register, /messages/…)
+  // devuelve index.html y la app resuelve la ruta; sin esto, recargar la página da 404.
+  "name": "garagego",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
