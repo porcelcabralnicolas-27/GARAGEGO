@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
@@ -38,6 +39,13 @@ export function RequireAdmin() {
 function AdminLayout() {
   const { user, signOut } = useAuth();
   const location = useLocation();
+  // Solo se usa en pantallas angostas, donde la sidebar es un menú que se abre y se cierra.
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Al navegar a otra sección el menú se cierra solo.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   const counts = usePendingCounts();
   const title = TITLES[`/${location.pathname.split('/')[1]}`] ?? 'Panel';
@@ -48,7 +56,12 @@ function AdminLayout() {
   return (
     <>
       <div className="gg-shell">
-        <nav className="gg-sidebar">
+        <div
+          className={`gg-backdrop ${menuOpen ? 'is-open' : ''}`}
+          onClick={() => setMenuOpen(false)}
+          aria-hidden
+        />
+        <nav className={`gg-sidebar ${menuOpen ? 'is-open' : ''}`} aria-label="Navegación principal">
           <div className="gg-sidebar__brand">
             <span className="gg-sidebar__logo">GG</span>
             <div>
@@ -88,6 +101,15 @@ function AdminLayout() {
 
         <div className="gg-main">
           <header className="gg-topbar">
+            <button
+              type="button"
+              className="gg-menu-btn"
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+              aria-expanded={menuOpen}
+            >
+              ☰
+            </button>
             <span className="gg-topbar__title">{title}</span>
             <span className="gg-topbar__spacer" />
             <span className="gg-topbar__user">
@@ -101,18 +123,6 @@ function AdminLayout() {
           <main className="gg-content">
             <Outlet />
           </main>
-        </div>
-      </div>
-
-      {/* Se muestra solo por debajo de 1100px (ver layout.css). */}
-      <div className="gg-too-narrow">
-        <div>
-          <div className="gg-empty__icon">🖥</div>
-          <div className="gg-empty__title">Este panel es para pantalla de escritorio</div>
-          <p className="gg-empty__desc">
-            Las bandejas de revisión y las tablas necesitan al menos 1100 px de ancho. Abrilo en
-            una computadora o agrandá la ventana.
-          </p>
         </div>
       </div>
     </>

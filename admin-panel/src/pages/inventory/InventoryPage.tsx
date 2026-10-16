@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 
 import { formatMoney, formatRelative, fullName } from '../../lib/format';
+import { revealDetailOnNarrowScreens } from '../../lib/revealDetail';
 import { businessInstant } from '../../lib/time';
 import {
-  MODERATION_STATE_LABELS,
+  OPERATIONAL_STATE_LABELS,
+  operationalStateOf,
   slaLevel,
   type AdminParkingLot,
   type ApprovalStatus,
+  type ListingChangeField,
+  type LotOperationalState,
   type LotRow,
   type ModerationState,
 } from '../../domain';
@@ -115,12 +119,17 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
     lot: AdminParkingLot,
     decision: ReviewDecision,
     reason: string | null,
-    okMessage: string
+    okMessage: string,
+    fields?: ListingChangeField[]
   ) => {
     advance(lot.id);
     try {
-      await review(lot.id, decision, reason);
-      show(okMessage);
+      const { documentsPending } = await review(lot.id, decision, reason, fields);
+      show(
+        documentsPending
+          ? `${okMessage}. Ojo: los documentos de titularidad todavía no se pudieron borrar; se reintenta solo al recargar la cola.`
+          : okMessage
+      );
     } catch (err) {
       show(`Error: ${err instanceof Error ? err.message : 'no se pudo completar la acción'}`);
     }
@@ -167,7 +176,10 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
                 row={row}
                 now={now}
                 isSelected={selected?.lot.id === row.lot.id}
-                onSelect={() => setSelectedId(row.lot.id)}
+                onSelect={() => {
+                  setSelectedId(row.lot.id);
+                  revealDetailOnNarrowScreens();
+                }}
               />
             ))}
           </ul>
@@ -186,12 +198,13 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
             onReject={(reason) =>
               runReview(selected.lot, 'rejected', reason, `"${selected.lot.name}" rechazada`)
             }
-            onRequestChanges={(note) =>
+            onRequestChanges={(note, fields) =>
               runReview(
                 selected.lot,
                 'changes_requested',
                 note,
-                `Se pidieron cambios en "${selected.lot.name}"`
+                `Se pidieron cambios en "${selected.lot.name}"`,
+                fields
               )
             }
           />
@@ -323,7 +336,7 @@ function ApprovalListItem({
 
 /* ================================================================ Gestión forzada */
 
-type StateFilter = ModerationState | 'all';
+type StateFilter = LotOperationalState | 'all';
 
 function ActiveListings({ queue }: { queue: ModerationQueue }) {
   const { rows, setModeration } = queue;
@@ -341,7 +354,7 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
     const term = search.trim().toLowerCase();
     return rows
       .filter((r) => r.lot.approvalStatus === 'approved')
-      .filter((r) => stateFilter === 'all' || r.lot.moderationState === stateFilter)
+      .filter((r) => stateFilter === 'all' || operationalStateOf(r.lot) === stateFilter)
       .filter(
         (r) =>
           !term ||
@@ -431,17 +444,17 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
         ) : (
           <Badge
             tone={
-              r.lot.moderationState === 'live'
+              operationalStateOf(r.lot) === 'live'
                 ? 'ok'
-                : r.lot.moderationState === 'suspended'
+                : operationalStateOf(r.lot) === 'suspended'
                   ? 'danger'
                   : 'warn'
             }
           >
-            {MODERATION_STATE_LABELS[r.lot.moderationState]}
+            {OPERATIONAL_STATE_LABELS[operationalStateOf(r.lot)]}
           </Badge>
         ),
-      sortValue: (r) => (r.lot.archivedAt ? 'archived' : r.lot.moderationState),
+      sortValue: (r) => (r.lot.archivedAt ? 'archived' : operationalStateOf(r.lot)),
     },
     {
       key: 'actions',
@@ -449,8 +462,9 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
       render: (r) => (
         <div className="gg-row" onClick={(e) => e.stopPropagation()}>
           <Toggle
-            checked={r.lot.moderationState === 'live' && !r.lot.archivedAt}
-            disabled={r.lot.archivedAt !== null}
+            checked={operationalStateOf(r.lot) === 'live' && !r.lot.archivedAt}
+            // La pausa del propietario no se levanta desde el panel: la reactiva él desde la app.
+            disabled={r.lot.archivedAt !== null || operationalStateOf(r.lot) === 'paused_by_owner'}
             label={`Publicar ${r.lot.name}`}
             onChange={(next) => (next ? reactivate(r) : setPauseTarget(r))}
           />
@@ -470,6 +484,7 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
           options={[
             { value: 'all', label: 'Todos los estados' },
             { value: 'live', label: 'En vivo' },
+            { value: 'paused_by_owner', label: 'Pausadas por el propietario' },
             { value: 'paused_by_admin', label: 'Pausadas por admin' },
             { value: 'suspended', label: 'Suspendidas' },
           ]}

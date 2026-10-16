@@ -103,7 +103,7 @@ function OccupancyPanel({
           </div>
         </DonutGauge>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <div className="gg-row" style={{ gap: 'var(--gg-s4)', marginBottom: 'var(--gg-s3)' }}>
             <span className="gg-row">
               <span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--gg-accent-ink)' }} />

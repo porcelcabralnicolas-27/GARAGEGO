@@ -4,7 +4,6 @@
   display: grid;
   grid-template-columns: var(--gg-sidebar-w) 1fr;
   height: 100%;
-  min-width: var(--gg-min-w);
   /* Sin esto el contenido alto empuja la grilla y termina scrolleando el body en vez del panel:
    * los items de grid tienen `min-height: auto` y no pueden achicarse por debajo de su contenido. */
   overflow: hidden;
@@ -241,21 +240,126 @@
   position: relative;
 }
 
-/* Aviso cuando la ventana es más angosta que el mínimo de escritorio. */
-.gg-too-narrow {
+/* ---------- Responsive ----------
+ * Escritorio: sidebar fija. Hasta 900px (tablet y celular) la sidebar pasa a un menú lateral que
+ * se abre con el botón de la barra superior, y las columnas se apilan. */
+
+.gg-menu-btn {
   display: none;
 }
 
-@media (max-width: 1099px) {
+.gg-backdrop {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /* minmax(0, 1fr): sin el 0, la columna no se achica por debajo de su contenido y la página
+   * entera se ensancha más que la pantalla. */
   .gg-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gg-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: 1px solid var(--gg-border-strong);
+    border-radius: var(--gg-r2);
+    background: var(--gg-surface);
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .gg-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(var(--gg-sidebar-w), 82vw);
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--gg-shadow-3);
+  }
+
+  .gg-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .gg-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(16, 24, 40, 0.45);
+  }
+
+  .gg-topbar {
+    padding: 0 var(--gg-s3);
+    gap: var(--gg-s3);
+  }
+
+  .gg-topbar__title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .gg-topbar__user {
     display: none;
   }
 
-  .gg-too-narrow {
-    display: grid;
-    place-items: center;
-    height: 100%;
-    padding: var(--gg-s6);
-    text-align: center;
+  .gg-content {
+    padding: var(--gg-s4) var(--gg-s3);
+  }
+
+  .gg-page-header {
+    flex-wrap: wrap;
+    margin-bottom: var(--gg-s4);
+  }
+
+  .gg-page-header__title {
+    font-size: var(--gg-fs-lg);
+  }
+
+  .gg-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gg-s3);
+  }
+
+  .gg-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Filas de etiquetas, badges y botones: pasan a la línea de abajo en vez de desbordar. */
+  .gg-row {
+    flex-wrap: wrap;
+  }
+
+  /* Lista arriba y detalle abajo, cada uno con su alto natural (la lista con tope para que no
+   * empuje el detalle fuera de pantalla). */
+  .gg-split {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 0;
+  }
+
+  .gg-split__list {
+    height: auto;
+    max-height: 46vh;
+  }
+
+  .gg-split__detail {
+    height: auto;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 560px) {
+  .gg-grid-4 {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -11,14 +11,37 @@
 export type {
   Amenity,
   ApprovalStatus,
+  DocumentKind,
+  HolderRole,
+  ListingChangeField,
+  LotType,
   ModerationState,
   TicketCategory,
   TicketStatus,
   UserRole,
 } from '../../shared/domain';
-export { AMENITY_LABELS, TICKET_CATEGORY_LABELS } from '../../shared/domain';
+export {
+  AMENITY_LABELS,
+  DOCUMENT_KIND_LABELS,
+  HOLDER_ROLE_LABELS,
+  documentRequirements,
+  missingDocumentRequirements,
+  LISTING_CHANGE_FIELDS,
+  LISTING_CHANGE_FIELD_LABELS,
+  LOT_TYPE_LABELS,
+  TICKET_CATEGORY_LABELS,
+} from '../../shared/domain';
 
-import type { Amenity, ApprovalStatus, ModerationState, UserRole } from '../../shared/domain';
+import type {
+  Amenity,
+  ApprovalStatus,
+  DocumentKind,
+  HolderRole,
+  ListingChangeField,
+  LotType,
+  ModerationState,
+  UserRole,
+} from '../../shared/domain';
 
 /** Fila de `profiles` + el email resuelto por RPC. */
 export type AdminProfile = {
@@ -47,6 +70,12 @@ export type AdminParkingLot = {
   capacity: number;
   /** Servicios (0065). */
   amenities: Amenity[];
+  /** Cochera de casa o estacionamiento (0075). */
+  lotType: LotType;
+  /** Relación de quien publica con el lugar (0078): define qué documentos se le piden. */
+  holderRole: HolderRole;
+  /** Cuándo se verificó la titularidad (0079). Los documentos ya se borraron; queda este sello. */
+  ownershipVerifiedAt: string | null;
   ratingAvg: number;
   isActive: boolean;
   createdAt: string;
@@ -56,6 +85,8 @@ export type AdminParkingLot = {
   reviewedAt: string | null;
   reviewedBy: string | null;
   rejectionReason: string | null;
+  /** Qué se pidió cambiar en la última revisión (0072). Se conserva hasta aprobar o rechazar. */
+  requestedChanges: ListingChangeField[];
   moderationState: ModerationState;
   pauseReason: string | null;
   suspendedUntil: string | null;
@@ -96,6 +127,23 @@ export const MODERATION_STATE_LABELS: Record<ModerationState, string> = {
   suspended: 'Suspendida',
 };
 
+/**
+ * Estado operativo de una cochera aprobada, para "Cocheras publicadas". Suma a los estados de
+ * moderación el que el propietario pone desde la app: `is_active = false` con la cochera en vivo
+ * es "Pausada por el propietario", que el panel antes no distinguía de una publicada.
+ */
+export type LotOperationalState = ModerationState | 'paused_by_owner';
+
+export function operationalStateOf(lot: AdminParkingLot): LotOperationalState {
+  if (lot.moderationState !== 'live') return lot.moderationState;
+  return lot.isActive ? 'live' : 'paused_by_owner';
+}
+
+export const OPERATIONAL_STATE_LABELS: Record<LotOperationalState, string> = {
+  ...MODERATION_STATE_LABELS,
+  paused_by_owner: 'Pausada por el propietario',
+};
+
 // ---------------------------------------------------------------- inventario
 
 /** Una cochera con lo derivado que muestran las tablas de Inventario. */
@@ -103,6 +151,8 @@ export type LotRow = {
   lot: AdminParkingLot;
   owner: AdminProfile | undefined;
   images: string[];
+  /** Documentos de titularidad (migración 0078), con una URL firmada que vence. */
+  documents: Array<{ kind: DocumentKind; url: string }>;
   /** Horas desde que se envió a revisión. Alimenta el semáforo de SLA de la cola. */
   ageHours: number;
   hasActiveSession: boolean;

@@ -97,7 +97,4 @@
   --gg-topbar-h: 56px;
   --gg-list-col-w: 372px;
   --gg-drawer-w: 480px;
-
-  /* Por debajo de este ancho el panel avisa que es para escritorio */
-  --gg-min-w: 1100px;
 }

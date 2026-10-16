@@ -15,6 +15,7 @@ import {
   type TransactionStatus,
   type TransactionType,
 } from '../../domain';
+import { revealDetailOnNarrowScreens } from '../../lib/revealDetail';
 import { PageHeader } from '../../shell/PageHeader';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer, DrawerSection } from '../../ui/overlays';
@@ -393,7 +394,10 @@ function TicketsView({ counts }: { counts: TicketCounts }) {
               <li key={t.id}>
                 <button
                   type="button"
-                  onClick={() => setSelectedId(t.id)}
+                  onClick={() => {
+                    setSelectedId(t.id);
+                    revealDetailOnNarrowScreens();
+                  }}
                   style={{
                     display: 'block',
                     width: '100%',
@@ -470,12 +474,9 @@ function TicketsView({ counts }: { counts: TicketCounts }) {
                 </span>
                 <span>·</span>
                 <span>Creado {formatDate(selected.createdAt)}</span>
-                {selected.contextLabel ? (
-                  <>
-                    <span>·</span>
-                    <span>{selected.contextLabel}</span>
-                  </>
-                ) : null}
+                <span>·</span>
+                {/* Sin reserva ni cochera asociada: una consulta general (migración 0076). */}
+                <span>{selected.contextLabel ?? 'Consulta general'}</span>
               </div>
             </header>
 

@@ -220,7 +220,8 @@ button.gg-metric:hover {
   background: var(--gg-surface);
   border: 1px solid var(--gg-border);
   border-radius: var(--gg-r3);
-  overflow: hidden;
+  /* En pantallas angostas la tabla se desplaza de costado dentro de su contenedor. */
+  overflow-x: auto;
 }
 
 .gg-table {
@@ -792,4 +793,109 @@ button.gg-metric:hover {
 .gg-login__title {
   font-size: var(--gg-fs-lg);
   font-weight: 600;
+}
+
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .gg-table {
+    min-width: 640px;
+  }
+
+  /* Solo la primera columna (nombre) puede partirse en varias líneas; el resto se mantiene en una
+   * línea para que las filas no se vuelvan altísimas al desplazar de costado. */
+  .gg-table td:not(:first-child) {
+    white-space: nowrap;
+  }
+
+  .gg-card__head {
+    flex-wrap: wrap;
+  }
+
+  /* Los selectores de rango (30 días / 6 meses…) pasan a ocupar su propia línea. */
+  .gg-card__head-actions {
+    margin-left: 0;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .gg-card__head-actions .gg-tabs {
+    margin-bottom: 0;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .gg-search {
+    flex: 1 1 100%;
+  }
+
+  .gg-search .gg-input {
+    width: 100% !important;
+  }
+
+  .gg-toolbar .gg-select {
+    flex: 1 1 140px;
+  }
+
+  .gg-toolbar__count {
+    margin-left: 0;
+    flex: 1 1 100%;
+  }
+
+  .gg-tabs {
+    overflow-x: auto;
+  }
+
+  .gg-tab {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .gg-overlay {
+    padding: var(--gg-s2);
+  }
+
+  .gg-modal {
+    max-height: 94vh;
+  }
+
+  .gg-modal__foot {
+    flex-wrap: wrap;
+  }
+
+  .gg-modal__foot .gg-btn {
+    flex: 1 1 auto;
+  }
+
+  .gg-drawer {
+    max-width: 100vw;
+  }
+
+  .gg-kv {
+    grid-template-columns: 1fr;
+    gap: 0 var(--gg-s3);
+  }
+
+  .gg-kv__k {
+    font-size: var(--gg-fs-sm);
+    margin-top: var(--gg-s2);
+  }
+
+  .gg-toasts {
+    left: var(--gg-s3);
+    right: var(--gg-s3);
+    transform: none;
+  }
+
+  .gg-toast {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .gg-metric__value {
+    font-size: var(--gg-fs-xl);
+  }
 }

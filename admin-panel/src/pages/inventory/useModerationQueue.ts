@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { LotRow, ModerationState } from '../../domain';
+import type { ListingChangeField, LotRow, ModerationState } from '../../domain';
 import { useRealtimeRefresh } from '../../lib/useRealtimeRefresh';
 import {
   fetchModerationLots,
@@ -21,7 +21,12 @@ export type ModerationQueue = {
   error: string | null;
   refetch: () => void;
   /** Aprobar / rechazar / pedir cambios. Refresca la lista. Propaga el error al modal. */
-  review: (lotId: string, decision: ReviewDecision, reason: string | null) => Promise<void>;
+  review: (
+    lotId: string,
+    decision: ReviewDecision,
+    reason: string | null,
+    fields?: ListingChangeField[]
+  ) => Promise<{ documentsPending: boolean }>;
   /** Pausar / suspender / reactivar una cochera aprobada. Refresca la lista. */
   setModeration: (
     lotId: string,
@@ -56,9 +61,10 @@ export function useModerationQueue(): ModerationQueue {
   useRealtimeRefresh('admin-moderation-queue', ['parking_lots'], () => void load());
 
   const review = useCallback<ModerationQueue['review']>(
-    async (lotId, decision, reason) => {
-      await reviewLot(lotId, decision, reason);
+    async (lotId, decision, reason, fields) => {
+      const result = await reviewLot(lotId, decision, reason, fields ?? null);
       await load();
+      return result;
     },
     [load]
   );

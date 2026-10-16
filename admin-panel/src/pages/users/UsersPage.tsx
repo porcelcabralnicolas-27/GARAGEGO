@@ -379,7 +379,7 @@ function ReviewsAudit() {
                 </div>
               </div>
 
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                 <div className="gg-row">
                   <strong>{row.authorName}</strong>
                   <span style={{ color: 'var(--gg-text-soft)' }}>

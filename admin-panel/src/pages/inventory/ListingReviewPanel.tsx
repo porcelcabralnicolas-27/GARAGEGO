@@ -1,17 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { formatDate, formatMoney, formatRelative, fullName } from '../../lib/format';
-import { AMENITY_LABELS, APPROVAL_STATUS_LABELS, findContactInfo, type LotRow } from '../../domain';
+import {
+  AMENITY_LABELS,
+  APPROVAL_STATUS_LABELS,
+  DOCUMENT_KIND_LABELS,
+  HOLDER_ROLE_LABELS,
+  LISTING_CHANGE_FIELDS,
+  LISTING_CHANGE_FIELD_LABELS,
+  LOT_TYPE_LABELS,
+  OPERATIONAL_STATE_LABELS,
+  findContactInfo,
+  missingDocumentRequirements,
+  operationalStateOf,
+  type ListingChangeField,
+  type LotRow,
+} from '../../domain';
 import { Modal } from '../../ui/overlays';
 import { Badge, Button, Callout, KeyValue, StarRating } from '../../ui/primitives';
 
-/** Los cuatro puntos que el revisor tiene que chequear antes de publicar. Vacía el checklist
+/** Los cinco puntos que el revisor tiene que chequear antes de publicar. Vacía el checklist
  *  cada vez que cambia la publicación: son decisiones sobre ESA cochera, no un estado global. */
 const CHECKLIST = [
   'Las fotos muestran la cochera y son legibles',
   'La dirección es coherente con las coordenadas',
   'El precio está dentro de un rango razonable',
   'La descripción no incluye datos de contacto',
+  'El DNI coincide con el propietario y los documentos acreditan su vínculo con esta dirección',
 ] as const;
 
 type Props = {
@@ -21,7 +36,7 @@ type Props = {
   events: Array<{ id: string; label: string; detail: string | null; at: string }>;
   onApprove: () => void;
   onReject: (reason: string) => void;
-  onRequestChanges: (note: string) => void;
+  onRequestChanges: (note: string, fields: ListingChangeField[]) => void;
   /** En modo lectura (pestaña de cocheras activas) se ocultan las acciones de moderación. */
   readOnly?: boolean;
 };
@@ -35,10 +50,11 @@ export function ListingReviewPanel({
   onRequestChanges,
   readOnly,
 }: Props) {
-  const { lot, owner, images } = row;
+  const { lot, owner, images, documents } = row;
 
   const [checked, setChecked] = useState<boolean[]>(CHECKLIST.map(() => false));
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [docLightbox, setDocLightbox] = useState<number | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
 
@@ -47,11 +63,20 @@ export function ListingReviewPanel({
   useEffect(() => {
     setChecked(CHECKLIST.map(() => false));
     setLightbox(null);
+    setDocLightbox(null);
   }, [lot.id]);
 
   const contactHits = useMemo(() => findContactInfo(lot.description), [lot.description]);
   const allChecked = checked.every(Boolean);
   const isPending = lot.approvalStatus === 'pending' || lot.approvalStatus === 'changes_requested';
+  // Sin los documentos completos el servidor no deja aprobar (migración 0078): se avisa antes.
+  const missingDocs = missingDocumentRequirements(
+    lot.holderRole,
+    documents.map((d) => d.kind)
+  );
+  // Tampoco se aprueba sin ninguna foto: el servidor no lo deja (migración 0082).
+  const hasPhotos = images.length > 0;
+  const canApprove = allChecked && missingDocs.length === 0 && hasPhotos;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -81,6 +106,9 @@ export function ListingReviewPanel({
           >
             {APPROVAL_STATUS_LABELS[lot.approvalStatus]}
           </Badge>
+          {lot.approvalStatus === 'approved' && operationalStateOf(lot) === 'paused_by_owner' ? (
+            <Badge tone="warn">{OPERATIONAL_STATE_LABELS.paused_by_owner}</Badge>
+          ) : null}
         </div>
         <div style={{ color: 'var(--gg-text-soft)' }}>{lot.address}</div>
         <div style={{ color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)', marginTop: 2 }}>
@@ -156,6 +184,7 @@ export function ListingReviewPanel({
         <div style={{ marginBottom: 'var(--gg-s4)' }}>
           <KeyValue
             items={[
+              ['Tipo', LOT_TYPE_LABELS[lot.lotType]],
               ['Precio por hora', <strong key="p">{formatMoney(lot.pricePerHour)}</strong>],
               ['Capacidad', `${lot.capacity} ${lot.capacity === 1 ? 'auto' : 'autos'} a la vez`],
               [
@@ -234,6 +263,93 @@ export function ListingReviewPanel({
           </div>
         ) : null}
 
+        {/* Una pendiente con fecha de revisión es una publicación aprobada que el propietario editó */}
+        {lot.approvalStatus === 'pending' && lot.reviewedAt ? (
+          <div style={{ marginBottom: 'var(--gg-s4)' }}>
+            <Callout tone="info">
+              <div>
+                <strong>Edición de una publicación ya aprobada</strong>
+                <p style={{ marginTop: 4 }}>
+                  El propietario cambió los datos del lugar, la tarifa y los servicios o las fotos. Revisá lo
+                  que se modificó antes de volver a aprobarla. Los horarios no se revisan.
+                </p>
+              </div>
+            </Callout>
+          </div>
+        ) : null}
+
+        {/* Titularidad: lo que el propietario subió para acreditar que puede publicar este lugar */}
+        {isPending ? (
+          <div style={{ marginBottom: 'var(--gg-s4)' }}>
+            <h3 className="gg-drawer__section-title">Titularidad</h3>
+            <div className="gg-card" style={{ padding: 'var(--gg-s3)' }}>
+              <div>
+                <strong>{HOLDER_ROLE_LABELS[lot.holderRole]}</strong>
+              </div>
+              {lot.ownershipVerifiedAt ? (
+                <div style={{ marginTop: 'var(--gg-s2)', color: 'var(--gg-text-soft)' }}>
+                  La titularidad ya se verificó el {formatDate(lot.ownershipVerifiedAt)}.
+                </div>
+              ) : null}
+              {documents.length > 0 ? (
+                <div className="gg-row" style={{ marginTop: 'var(--gg-s2)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {documents.map((doc, i) => (
+                    <button
+                      key={doc.kind}
+                      type="button"
+                      onClick={() => setDocLightbox(i)}
+                      style={{
+                        width: 96,
+                        padding: 0,
+                        background: 'none',
+                        border: '1px solid var(--gg-border)',
+                        borderRadius: 'var(--gg-r2)',
+                        overflow: 'hidden',
+                        textAlign: 'left',
+                      }}
+                      aria-label={`Ver ${DOCUMENT_KIND_LABELS[doc.kind]}`}
+                    >
+                      <img
+                        src={doc.url}
+                        alt=""
+                        style={{ width: '100%', height: 64, objectFit: 'cover', display: 'block' }}
+                      />
+                      <span style={{ display: 'block', padding: 4, fontSize: 'var(--gg-fs-sm)' }}>
+                        {DOCUMENT_KIND_LABELS[doc.kind]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <p style={{ marginTop: 'var(--gg-s2)', color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)' }}>
+                Por seguridad, los documentos se borran solos cuando aprobás o rechazás. Con "Pedir
+                cambios" se conservan.
+              </p>
+              {missingDocs.length > 0 ? (
+                <div style={{ marginTop: 'var(--gg-s2)' }}>
+                  <Callout tone="warn">
+                    <div>
+                      <strong>Faltan documentos:</strong> {missingDocs.map((m) => m.label).join(', ')}.
+                      <div style={{ marginTop: 4 }}>
+                        No se puede aprobar hasta que estén. Usá "Pedir cambios" y marcá "Documentos de titularidad".
+                      </div>
+                    </div>
+                  </Callout>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Ya aprobada: queda el sello de quién verificó la titularidad y cuándo, sin los documentos */}
+        {!isPending && lot.approvalStatus === 'approved' && lot.ownershipVerifiedAt ? (
+          <div style={{ marginBottom: 'var(--gg-s4)' }}>
+            <Callout tone="info">
+              Titularidad verificada el {formatDate(lot.ownershipVerifiedAt)}. Los documentos ya se borraron.
+            </Callout>
+          </div>
+        ) : null}
+
         {/* Motivo previo, si ya fue revisada */}
         {lot.rejectionReason ? (
           <div style={{ marginBottom: 'var(--gg-s4)' }}>
@@ -243,6 +359,23 @@ export function ListingReviewPanel({
                   {lot.approvalStatus === 'rejected' ? 'Motivo del rechazo' : 'Cambios pedidos'}
                 </strong>
                 <p style={{ marginTop: 4 }}>{lot.rejectionReason}</p>
+              </div>
+            </Callout>
+          </div>
+        ) : null}
+
+        {/* Reenvío tras "Pedir cambios": qué se había pedido. El servidor ya verificó que cada
+            uno de esos campos se modificó antes de dejar reenviar (migración 0072). */}
+        {lot.approvalStatus === 'pending' && lot.requestedChanges.length > 0 ? (
+          <div style={{ marginBottom: 'var(--gg-s4)' }}>
+            <Callout tone="info">
+              <div>
+                <strong>Reenviada tras pedir cambios</strong>
+                <p style={{ marginTop: 4 }}>
+                  Se había pedido modificar:{' '}
+                  {lot.requestedChanges.map((f) => LISTING_CHANGE_FIELD_LABELS[f]).join(', ')}. El sistema
+                  verificó que el propietario modificó todo lo pedido antes de dejarla reenviar.
+                </p>
               </div>
             </Callout>
           </div>
@@ -311,14 +444,23 @@ export function ListingReviewPanel({
             borderTop: '1px solid var(--gg-border)',
             padding: 'var(--gg-s3) var(--gg-s4)',
             display: 'flex',
+            flexWrap: 'wrap',
             gap: 'var(--gg-s2)',
           }}
         >
           <Button
             variant="primary"
-            disabled={!allChecked}
+            disabled={!canApprove}
             onClick={onApprove}
-            title={allChecked ? undefined : 'Completá la checklist para poder aprobar'}
+            title={
+              canApprove
+                ? undefined
+                : !hasPhotos
+                  ? 'La publicación no tiene ninguna foto'
+                  : missingDocs.length > 0
+                    ? 'Faltan los documentos de titularidad'
+                    : 'Completá la checklist para poder aprobar'
+            }
           >
             Aprobar y publicar
           </Button>
@@ -326,7 +468,7 @@ export function ListingReviewPanel({
           <Button variant="danger" onClick={() => setRejectOpen(true)}>
             Rechazar
           </Button>
-          {!allChecked ? (
+          {!canApprove ? (
             <span
               style={{
                 alignSelf: 'center',
@@ -334,7 +476,11 @@ export function ListingReviewPanel({
                 fontSize: 'var(--gg-fs-sm)',
               }}
             >
-              Completá la checklist para habilitar la aprobación
+              {!hasPhotos
+                ? 'Sin ninguna foto no se puede aprobar'
+                : missingDocs.length > 0
+                  ? 'Faltan documentos de titularidad: no se puede aprobar'
+                  : 'Completá la checklist para habilitar la aprobación'}
             </span>
           ) : null}
         </footer>
@@ -346,6 +492,14 @@ export function ListingReviewPanel({
         name={lot.name}
         onClose={() => setLightbox(null)}
         onIndex={setLightbox}
+      />
+
+      <LightboxModal
+        images={documents.map((d) => d.url)}
+        index={docLightbox}
+        name="Documentos de titularidad"
+        onClose={() => setDocLightbox(null)}
+        onIndex={setDocLightbox}
       />
 
       <RejectDialog
@@ -362,9 +516,9 @@ export function ListingReviewPanel({
       <ChangesDialog
         open={changesOpen}
         onClose={() => setChangesOpen(false)}
-        onConfirm={(note) => {
+        onConfirm={(note, fields) => {
           setChangesOpen(false);
-          onRequestChanges(note);
+          onRequestChanges(note, fields);
         }}
       />
     </div>
@@ -416,6 +570,7 @@ function LightboxModal({
 const REJECT_REASONS = [
   'Fotos insuficientes o poco claras',
   'La dirección no se puede verificar',
+  'No se pudo verificar la titularidad',
   'Precio fuera de rango',
   'Incluye datos de contacto en la descripción',
   'Contenido inapropiado',
@@ -499,9 +654,13 @@ function ChangesDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onConfirm: (note: string) => void;
+  onConfirm: (note: string, fields: ListingChangeField[]) => void;
 }) {
   const [note, setNote] = useState('');
+  const [fields, setFields] = useState<ListingChangeField[]>([]);
+
+  const toggle = (field: ListingChangeField) =>
+    setFields((current) => (current.includes(field) ? current.filter((f) => f !== field) : [...current, field]));
 
   return (
     <Modal
@@ -513,8 +672,12 @@ function ChangesDialog({
           <Button onClick={onClose}>Cancelar</Button>
           <Button
             variant="primary"
-            disabled={note.trim().length < 10}
-            onClick={() => onConfirm(note.trim())}
+            disabled={note.trim().length < 10 || fields.length === 0}
+            onClick={() => {
+              onConfirm(note.trim(), fields);
+              setNote('');
+              setFields([]);
+            }}
           >
             Enviar pedido
           </Button>
@@ -525,6 +688,22 @@ function ChangesDialog({
         La publicación queda en espera y el propietario puede corregirla y volver a enviarla, sin
         tener que crearla de nuevo.
       </p>
+
+      <div className="gg-field">
+        <label className="gg-field__label">¿Qué tiene que modificar el propietario?</label>
+        <div className="gg-stack" style={{ gap: 'var(--gg-s2)' }}>
+          {LISTING_CHANGE_FIELDS.map((field) => (
+            <label key={field} className="gg-row" style={{ cursor: 'pointer' }}>
+              <input type="checkbox" checked={fields.includes(field)} onChange={() => toggle(field)} />
+              <span>{LISTING_CHANGE_FIELD_LABELS[field]}</span>
+            </label>
+          ))}
+        </div>
+        <p style={{ marginTop: 'var(--gg-s2)', color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)' }}>
+          No va a poder reenviarla a revisión hasta que haya modificado cada uno de los puntos marcados.
+        </p>
+      </div>
+
       <textarea
         className="gg-textarea"
         value={note}

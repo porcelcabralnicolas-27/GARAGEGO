@@ -1,0 +1,12 @@
+{
+  // Despliegue del panel de administración en Cloudflare (Workers con assets estáticos).
+  // Es un proyecto aparte de la app: otro nombre, otra URL (garagego-admin.<cuenta>.workers.dev).
+  // `single-page-application`: el panel usa rutas del navegador (/inventario, /usuarios…);
+  // sin esto, recargar la página en cualquier sección da 404.
+  "name": "garagego-admin",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
