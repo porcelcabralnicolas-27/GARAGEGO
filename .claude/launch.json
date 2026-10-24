@@ -3,9 +3,15 @@
   "configurations": [
     {
       "name": "garagego-web",
-      "runtimeExecutable": "C:\\Users\\NICO\\Desktop\\PROYECTO-GARAGEGO\\.claude\\start-web.bat",
-      "runtimeArgs": [],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start", "--web"],
       "port": 8081
+    },
+    {
+      "name": "admin-panel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "admin-panel"],
+      "port": 5180
     }
   ]
 }

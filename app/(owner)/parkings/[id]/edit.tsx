@@ -1,82 +1,37 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
-import { BackHeader } from '@/components/ui/BackHeader';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Screen } from '@/components/ui/Screen';
-import { AvailabilityEditor } from '@/features/parking/AvailabilityEditor';
-import {
-  deleteParkingLot,
-  getParkingLot,
-  setParkingLotActive,
-  updateParkingLot,
-  type ParkingLotInput,
-} from '@/features/parking/api';
-import { ImageManager } from '@/features/parking/ImageManager';
-import { ParkingForm } from '@/features/parking/ParkingForm';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { deleteParkingLot, getParkingErrorMessage, getParkingLot } from '@/features/parking/api';
+import { ParkingListingWizard } from '@/features/parking/ParkingListingWizard';
 import type { ParkingLot } from '@/features/parking/types';
-import { useAuthStore } from '@/store/useAuthStore';
-import { useTheme } from '@/theme';
+import { queryKeys } from '@/lib/queryKeys';
+import { spacing, useTheme } from '@/theme';
 
 export default function EditParkingScreen() {
-  const router = useRouter();
   const { colors, typography } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const profile = useAuthStore((s) => s.profile);
 
-  const [lot, setLot] = useState<ParkingLot | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isTogglingActive, setIsTogglingActive] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const { data: lot, isError } = useQuery({
+    queryKey: queryKeys.parkingLots.detail(id),
+    queryFn: () => getParkingLot(id),
+  });
 
-  useEffect(() => {
-    getParkingLot(id).then(setLot).catch(() => setErrorMessage('No se pudo cargar la publicación.'));
-  }, [id]);
-
-  const handleSubmit = async (input: ParkingLotInput) => {
-    const updated = await updateParkingLot(id, input);
-    setLot(updated);
-  };
-
-  const handleToggleActive = async () => {
-    if (!lot) return;
-    setIsTogglingActive(true);
-    try {
-      await setParkingLotActive(lot.id, !lot.isActive);
-      setLot({ ...lot, isActive: !lot.isActive });
-    } catch {
-      setErrorMessage('No se pudo cambiar el estado de la publicación.');
-    } finally {
-      setIsTogglingActive(false);
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    setIsDeleting(true);
-    try {
-      await deleteParkingLot(id);
-      setIsConfirmingDelete(false);
-      router.replace('/(owner)/parkings');
-    } catch {
-      setErrorMessage('No se pudo eliminar la publicación.');
-      setIsDeleting(false);
-      setIsConfirmingDelete(false);
-    }
-  };
-
-  if (errorMessage && !lot) {
+  if (isError) {
     return (
       <Screen>
-        <Banner message={errorMessage} />
+        <Banner message="No se pudo cargar la publicación." />
       </Screen>
     );
   }
 
-  if (!lot || !profile) {
+  if (!lot) {
     return (
       <Screen>
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
@@ -84,73 +39,84 @@ export default function EditParkingScreen() {
     );
   }
 
+  // Una publicación rechazada es definitiva: no se puede editar ni volver a enviar a revisión
+  // (el trigger `parking_lots_protect_moderation` lo garantiza del lado del servidor). Solo
+  // queda eliminarla y, si corresponde, crear una nueva.
+  if (lot.approvalStatus === 'rejected') {
+    return <RejectedListingNotice lot={lot} />;
+  }
+
+  return <ParkingListingWizard mode="edit" lot={lot} />;
+}
+
+function RejectedListingNotice({ lot }: { lot: ParkingLot }) {
+  const router = useRouter();
+  const { colors, typography } = useTheme();
+  const queryClient = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteParkingLot(lot.id);
+      queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
+      router.replace('/(owner)/parkings');
+    } catch (error) {
+      setErrorMessage(getParkingErrorMessage(error));
+      setIsDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   return (
     <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <BackHeader href="/(owner)/parkings" />
+      <ScreenHeader title="Publicación rechazada" onBack={() => router.replace('/(owner)/parkings')} />
 
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>{lot.name}</Text>
+      {errorMessage ? <Banner message={errorMessage} /> : null}
 
-        {errorMessage ? <Banner message={errorMessage} /> : null}
+      <Text style={[typography.titleMedium, { color: colors.onSurface, marginBottom: spacing.xs }]}>
+        {lot.name}
+      </Text>
+      <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: spacing.lg }]}>
+        {lot.address}
+      </Text>
 
-        <ImageManager ownerId={profile.id} parkingLotId={lot.id} />
+      <View style={[styles.reasonBox, { borderColor: colors.outline }]}>
+        <Text style={[typography.label, { color: colors.error, marginBottom: spacing.xs }]}>
+          MOTIVO DEL RECHAZO
+        </Text>
+        <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>
+          {lot.rejectionReason ?? 'El equipo no dejó un detalle.'}
+        </Text>
+      </View>
 
-        <View style={styles.sectionSpacer} />
+      <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: spacing.lg }]}>
+        Esta publicación no se puede modificar ni volver a enviar a revisión. Si querés intentarlo
+        de nuevo, eliminala y creá una nueva.
+      </Text>
 
-        <ParkingForm
-          submitLabel="Guardar cambios"
-          defaultValues={{
-            name: lot.name,
-            description: lot.description ?? '',
-            address: lot.address,
-            latitude: String(lot.latitude),
-            longitude: String(lot.longitude),
-            pricePerHour: String(lot.pricePerHour),
-          }}
-          onSubmit={handleSubmit}
-        />
-
-        <View style={styles.sectionSpacer} />
-
-        <AvailabilityEditor parkingLotId={lot.id} />
-
-        <View style={styles.sectionSpacer} />
-
-        <Button
-          label={lot.isActive ? 'Desactivar publicación' : 'Activar publicación'}
-          variant="outlined"
-          onPress={handleToggleActive}
-          loading={isTogglingActive}
-        />
-
-        <View style={styles.spacer} />
-
-        <Button
-          label="Eliminar publicación"
-          variant="text"
-          onPress={() => setIsConfirmingDelete(true)}
-          disabled={isDeleting}
-        />
-      </ScrollView>
+      <Button label="Eliminar publicación" variant="outlined" onPress={() => setConfirmDelete(true)} />
 
       <ConfirmDialog
-        visible={isConfirmingDelete}
+        visible={confirmDelete}
         title="Eliminar publicación"
-        message="¿Seguro que quieres eliminar este estacionamiento? Esta acción no se puede deshacer."
+        message="¿Seguro que querés eliminar este estacionamiento? Deja de publicarse y no se puede deshacer. Si ya tuvo reservas, su historial se conserva."
         confirmLabel="Eliminar"
         loading={isDeleting}
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setIsConfirmingDelete(false)}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
       />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionSpacer: {
-    height: 32,
-  },
-  spacer: {
-    height: 12,
+  reasonBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
   },
 });

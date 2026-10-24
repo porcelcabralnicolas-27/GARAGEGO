@@ -1,43 +1,44 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { formatMoney } from '@/lib/money';
 import { getOwnerStats } from '@/features/stats/api';
-import type { OwnerStats } from '@/features/stats/types';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD' }).format(amount);
-}
 
 export default function OwnerStatsScreen() {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const userId = profile?.id;
 
-  const [stats, setStats] = useState<OwnerStats | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (!profile) return;
-    setErrorMessage(null);
-    getOwnerStats(profile.id)
-      .then(setStats)
-      .catch(() => setErrorMessage('No se pudieron cargar las estadísticas.'));
-  }, [profile]);
+  const {
+    data: stats,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.stats.owner(userId ?? ''),
+    queryFn: () => getOwnerStats(userId as string),
+    enabled: Boolean(userId),
+  });
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      if (userId) refetch();
+    }, [userId, refetch])
   );
+
+  const errorMessage = isError ? 'No se pudieron cargar las estadísticas.' : null;
 
   return (
     <Screen>
       <ScrollView>
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>Estadísticas</Text>
+        <ScreenHeader title="Estadísticas" backHref="/(owner)/dashboard" />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
@@ -47,12 +48,12 @@ export default function OwnerStatsScreen() {
               Reservas por estado
             </Text>
             <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
-              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Pendientes</Text>
-              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{stats.pendingCount}</Text>
-            </View>
-            <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
               <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Confirmadas</Text>
               <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{stats.confirmedCount}</Text>
+            </View>
+            <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
+              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>En curso</Text>
+              <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{stats.activeSessionsCount}</Text>
             </View>
             <View style={[styles.summaryRow, { borderColor: colors.outline }]}>
               <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>Finalizadas</Text>
@@ -83,7 +84,7 @@ export default function OwnerStatsScreen() {
                       {lot.bookingsCount} {lot.bookingsCount === 1 ? 'reserva' : 'reservas'}
                     </Text>
                   </View>
-                  <Text style={[typography.titleMedium, { color: colors.accent }]}>{formatCurrency(lot.revenue)}</Text>
+                  <Text style={[typography.titleMedium, { color: colors.accent }]}>{formatMoney(lot.revenue)}</Text>
                 </View>
               ))
             )}

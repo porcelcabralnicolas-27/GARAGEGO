@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
 
@@ -12,6 +12,8 @@ type LocationPickerProps = {
   longitude: number | null;
   onChange: (latitude: number, longitude: number) => void;
   onAddressResolved?: (address: string) => void;
+  /** Cada vez que cambia, el mapa se centra en el marcador (por ejemplo, al ubicar una dirección escrita). */
+  recenterToken?: number;
 };
 
 function formatAddress(result: Location.LocationGeocodedAddress): string | null {
@@ -21,8 +23,9 @@ function formatAddress(result: Location.LocationGeocodedAddress): string | null 
   return formatted || result.name || null;
 }
 
-export function LocationPicker({ latitude, longitude, onChange, onAddressResolved }: LocationPickerProps) {
+export function LocationPicker({ latitude, longitude, onChange, onAddressResolved, recenterToken }: LocationPickerProps) {
   const { colors, typography } = useTheme();
+  const mapRef = useRef<MapView>(null);
   const [initialCenter] = useState<LatLng>(
     latitude !== null && longitude !== null ? { latitude, longitude } : DEFAULT_CENTER
   );
@@ -35,6 +38,14 @@ export function LocationPicker({ latitude, longitude, onChange, onAddressResolve
     // Solo al montar: si ya hay coordenadas (edición) no pisamos el valor existente.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Al ubicar una dirección escrita, el marcador cambia de lugar y el mapa lo acompaña.
+  useEffect(() => {
+    if (!recenterToken || latitude === null || longitude === null) return;
+    mapRef.current?.animateToRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
+    // Solo cuando cambia el token: mover el marcador a mano no tiene que mover el mapa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterToken]);
 
   const markerCoordinate: LatLng = latitude !== null && longitude !== null ? { latitude, longitude } : initialCenter;
 
@@ -58,6 +69,7 @@ export function LocationPicker({ latitude, longitude, onChange, onAddressResolve
       </Text>
       <View style={[styles.mapContainer, { borderColor: colors.outline }]}>
         <MapView
+          ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={styles.map}
           initialRegion={{ ...initialCenter, latitudeDelta: 0.02, longitudeDelta: 0.02 }}

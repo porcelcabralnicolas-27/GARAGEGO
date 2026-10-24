@@ -1,12 +1,12 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { FlatList, Text } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { ConversationListItem } from '@/features/messaging/ConversationListItem';
-import { listOwnerConversations } from '@/features/messaging/api';
-import type { ConversationThread } from '@/features/messaging/types';
+import { useConversations } from '@/features/messaging/useConversations';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
@@ -14,30 +14,16 @@ export default function OwnerMessagesScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
-
-  const [threads, setThreads] = useState<ConversationThread[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (!profile) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    listOwnerConversations(profile.id)
-      .then(setThreads)
-      .catch(() => setErrorMessage('No se pudieron cargar tus mensajes.'))
-      .finally(() => setIsLoading(false));
-  }, [profile]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
+  const { threads, unreadBookingIds, isLoading, isError, refetch, loadMore, isFetchingMore } = useConversations(
+    profile?.id,
+    'owner'
   );
+
+  const errorMessage = isError ? 'No se pudieron cargar tus mensajes.' : null;
 
   return (
     <Screen>
-      <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 16 }]}>Mensajes</Text>
+      <ScreenHeader title="Mensajes" />
 
       {errorMessage ? <Banner message={errorMessage} /> : null}
 
@@ -49,16 +35,21 @@ export default function OwnerMessagesScreen() {
 
       <FlatList
         data={threads}
-        keyExtractor={(item) => item.bookingId}
+        keyExtractor={(item) => item.threadKey}
         refreshing={isLoading}
-        onRefresh={load}
+        onRefresh={refetch}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={<LoadMoreFooter isFetching={isFetchingMore} />}
         renderItem={({ item }) => (
           <ConversationListItem
             thread={item}
+            // Un hilo agrupa varias reservas: alcanza con que cualquiera tenga mensajes sin leer.
+            hasUnread={item.bookingIds.some((id) => unreadBookingIds.has(id))}
             onPress={() =>
               router.push({
-                pathname: '/(owner)/messages/[bookingId]',
-                params: { bookingId: item.bookingId, title: item.otherPartyName },
+                pathname: '/(owner)/messages/[lotId]',
+                params: { lotId: item.parkingLotId, peerId: item.peerId, title: item.otherPartyName, lotName: item.parkingLotName },
               })
             }
           />

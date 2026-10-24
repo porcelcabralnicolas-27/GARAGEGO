@@ -1,11 +1,20 @@
 import type { AvailabilityException, RecurringAvailability } from '@/features/parking/types';
 
+import { addDays, businessDate, businessMinutesOfDay, weekdayOf } from '../../../shared/time';
 import type { BookedInterval } from './api';
+
+// Fechas y horas de este archivo son hora de la cochera (Buenos Aires), igual que en el servidor:
+// "hoy" y "ahora" salen de shared/time.ts y nunca de la zona del dispositivo.
 
 export type TimeWindow = { start: string; end: string };
 
 const STEP_MINUTES = 30;
 const MIN_DURATION_MINUTES = 30;
+/** Margen alrededor de cada reserva. Tiene que coincidir con `v_buffer` de
+ *  `_assert_slot_bookable` (migración 0064): si no, la app ofrece horarios que el servidor
+ *  rechaza con `buffer_conflict`. */
+const BUFFER_MINUTES = 15;
+const MINUTES_PER_DAY = 24 * 60;
 
 function toMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number);
@@ -22,14 +31,6 @@ function toTimeString(minutes: number): string {
 
 function normalizeTime(time: string): string {
   return time.slice(0, 5);
-}
-
-/** Formatea una fecha YYYY-MM-DD a un string local sin desfases de zona horaria. */
-export function toDateString(date: Date): string {
-  const y = date.getFullYear();
-  const m = (date.getMonth() + 1).toString().padStart(2, '0');
-  const d = date.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function subtractInterval(window: TimeWindow, booked: TimeWindow): TimeWindow[] {
@@ -50,6 +51,35 @@ function subtractAll(windows: TimeWindow[], booked: TimeWindow[]): TimeWindow[] 
   return booked.reduce((current, interval) => current.flatMap((w) => subtractInterval(w, interval)), windows);
 }
 
+/**
+ * Tramos donde la ocupación simultánea llega a `capacity`: ahí no entra otro auto. Con
+ * capacidad 1 es simplemente la unión de las reservas. Los intervalos son semiabiertos
+ * [inicio, fin), igual que los tsrange de `_assert_slot_bookable` (0064): uno que termina a las
+ * 11:00 no se suma a otro que empieza a las 11:00.
+ */
+function fullSegments(intervals: TimeWindow[], capacity: number): TimeWindow[] {
+  const events = intervals.flatMap((i) => [
+    { at: toMinutes(i.start), delta: 1 },
+    { at: toMinutes(i.end), delta: -1 },
+  ]);
+  // A igual minuto, primero los fines: así los intervalos que se tocan no se pisan.
+  events.sort((a, b) => a.at - b.at || a.delta - b.delta);
+
+  const result: TimeWindow[] = [];
+  let occupancy = 0;
+  let fullSince: number | null = null;
+  for (const event of events) {
+    occupancy += event.delta;
+    if (fullSince === null && occupancy >= capacity) {
+      fullSince = event.at;
+    } else if (fullSince !== null && occupancy < capacity) {
+      if (event.at > fullSince) result.push({ start: toTimeString(fullSince), end: toTimeString(event.at) });
+      fullSince = null;
+    }
+  }
+  return result;
+}
+
 /** Ventanas horarias configuradas para una fecha (excepción puntual si existe, si no la franja recurrente del día). */
 export function getConfiguredWindowsForDate(
   dateStr: string,
@@ -65,23 +95,57 @@ export function getConfiguredWindowsForDate(
     return [];
   }
 
-  const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
+  const dayOfWeek = weekdayOf(dateStr);
   return recurring
     .filter((r) => r.dayOfWeek === dayOfWeek)
     .map((r) => ({ start: normalizeTime(r.startTime), end: normalizeTime(r.endTime) }));
 }
 
-/** Ventanas realmente libres para una fecha: configuradas menos lo ya reservado ese día. */
+/**
+ * Recorta las ventanas de HOY que ya pasaron: no tiene sentido ofrecer las 09:00 si son las 18:00.
+ * El inicio se redondea hacia arriba al próximo múltiplo de STEP_MINUTES para que coincida
+ * con los horarios que después generan generateStartTimeOptions/generateEndTimeOptions.
+ * Para fechas futuras devuelve las ventanas intactas; para fechas pasadas, ninguna.
+ */
+function clipPastWindows(dateStr: string, windows: TimeWindow[], now: Date): TimeWindow[] {
+  const todayStr = businessDate(now);
+  if (dateStr > todayStr) return windows;
+  if (dateStr < todayStr) return [];
+
+  const nowMinutes = businessMinutesOfDay(now);
+  const earliest = Math.ceil(nowMinutes / STEP_MINUTES) * STEP_MINUTES;
+
+  return windows.flatMap((w) => {
+    const end = toMinutes(w.end);
+    if (end <= earliest) return [];
+    const start = Math.max(toMinutes(w.start), earliest);
+    if (start + MIN_DURATION_MINUTES > end) return [];
+    return [{ start: toTimeString(start), end: w.end }];
+  });
+}
+
+/**
+ * Ventanas realmente libres para una fecha: configuradas, menos los tramos donde la cochera ya
+ * está llena (`capacity` autos a la vez), menos lo ya pasado.
+ */
 export function getFreeWindowsForDate(
   dateStr: string,
   recurring: RecurringAvailability[],
   exceptions: AvailabilityException[],
-  booked: BookedInterval[]
+  booked: BookedInterval[],
+  capacity: number,
+  now: Date = new Date()
 ): TimeWindow[] {
   const configured = getConfiguredWindowsForDate(dateStr, recurring, exceptions);
   if (configured.length === 0) return [];
-  const bookedToday = booked.filter((b) => b.date === dateStr).map((b) => ({ start: normalizeTime(b.startTime), end: normalizeTime(b.endTime) }));
-  return subtractAll(configured, bookedToday);
+  // Cada reserva ocupa también el margen de antes y de después.
+  const bookedToday = booked
+    .filter((b) => b.date === dateStr)
+    .map((b) => ({
+      start: toTimeString(Math.max(0, toMinutes(normalizeTime(b.startTime)) - BUFFER_MINUTES)),
+      end: toTimeString(Math.min(MINUTES_PER_DAY, toMinutes(normalizeTime(b.endTime)) + BUFFER_MINUTES)),
+    }));
+  return clipPastWindows(dateStr, subtractAll(configured, fullSegments(bookedToday, capacity)), now);
 }
 
 /** Próximas fechas (YYYY-MM-DD) con al menos una ventana libre, dentro de los próximos `days` días. */
@@ -89,15 +153,15 @@ export function listAvailableDates(
   recurring: RecurringAvailability[],
   exceptions: AvailabilityException[],
   booked: BookedInterval[],
-  days = 30
+  capacity: number,
+  days = 30,
+  now: Date = new Date()
 ): string[] {
   const result: string[] = [];
-  const today = new Date();
+  const today = businessDate(now);
   for (let i = 0; i < days; i += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-    const dateStr = toDateString(date);
-    if (getFreeWindowsForDate(dateStr, recurring, exceptions, booked).length > 0) {
+    const dateStr = addDays(today, i);
+    if (getFreeWindowsForDate(dateStr, recurring, exceptions, booked, capacity, now).length > 0) {
       result.push(dateStr);
     }
   }

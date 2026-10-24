@@ -1,23 +1,23 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AuthHeading } from '@/components/ui/AuthHeading';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { GoogleButton } from '@/components/ui/GoogleButton';
-import { LinkText } from '@/components/ui/LinkText';
-import { Logo } from '@/components/ui/Logo';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { getAuthErrorMessage, signInWithGoogle, signInWithPassword } from '@/features/auth/api';
 import { loginSchema, type LoginFormValues } from '@/features/auth/schemas';
-import { useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
+  const { passwordChanged } = useLocalSearchParams<{ passwordChanged?: string }>();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const {
@@ -53,14 +53,11 @@ export default function LoginScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <View style={styles.logoWrapper}>
-          <Logo />
-        </View>
+        <AuthHeading title="Iniciar sesión" />
 
-        <Text style={[typography.displayLarge, { color: colors.onBackground, marginBottom: 24 }]}>
-          Iniciar sesión
-        </Text>
-
+        {passwordChanged && !errorMessage ? (
+          <Banner variant="success" message="Listo, ya podés entrar con tu contraseña nueva." />
+        ) : null}
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
         <Controller
@@ -93,7 +90,17 @@ export default function LoginScreen() {
           )}
         />
 
-        <LinkText label="¿Olvidaste tu contraseña?" onPress={() => router.push('/(auth)/forgot-password')} />
+        {/* Alineado a la derecha y en gris, como en el Figma (no el enlace verde centrado). */}
+        <Pressable
+          onPress={() => router.push('/(auth)/forgot-password')}
+          hitSlop={8}
+          style={styles.forgotLink}
+          accessibilityRole="button"
+        >
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
+            ¿Olvidaste tu contraseña?
+          </Text>
+        </Pressable>
 
         <View style={styles.spacer} />
 
@@ -120,20 +127,19 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  logoWrapper: {
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 32,
+  forgotLink: {
+    alignSelf: 'flex-end',
+    marginTop: spacing.xs,
   },
   footer: {
     textAlign: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
   },
   spacer: {
-    height: 12,
+    height: spacing.md,
   },
   divider: {
     textAlign: 'center',
-    marginVertical: 16,
+    marginVertical: spacing.lg,
   },
 });

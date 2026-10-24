@@ -67,7 +67,7 @@ export function RateBookingDialog({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <Text style={[typography.titleLarge, { color: colors.onSurface, marginBottom: 4 }]}>Calificar</Text>
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 16 }]}>
@@ -100,7 +100,6 @@ export function RateBookingDialog({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,

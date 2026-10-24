@@ -1,10 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
+import { useUnreadMessagesCount } from '@/features/notifications/useUnreadMessagesCount';
+import { useUnreadNotificationsCount } from '@/features/notifications/useUnreadNotificationsCount';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
 
 export default function ClientLayout() {
   const { colors } = useTheme();
+  const profile = useAuthStore((s) => s.profile);
+  const unreadMessages = useUnreadMessagesCount(profile?.id, 'client');
+  const unreadNotifications = useUnreadNotificationsCount(profile?.id, 'client');
 
   return (
     <Tabs
@@ -18,11 +24,27 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="index"
         options={{ title: 'Inicio', tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} /> }}
+        // Tocar Inicio vuelve al mapa con todos los estacionamientos: se borra lo que haya quedado de una
+        // búsqueda anterior (distancia, filtros o dirección). Sin esto la pestaña conservaba esos
+        // parámetros y el mapa seguía mostrando solo lo que entraba en el filtro.
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            navigation.setParams({
+              lat: undefined,
+              lng: undefined,
+              radiusKm: undefined,
+              maxPrice: undefined,
+              minRating: undefined,
+              place: undefined,
+              notice: undefined,
+            } as never);
+          },
+        })}
       />
       <Tabs.Screen
-        name="bookings/index"
+        name="bookings"
         options={{
-          title: 'Mis reservas',
+          title: 'Reservas',
           tabBarIcon: ({ color, size }) => <Ionicons name="calendar" color={color} size={size} />,
         }}
       />
@@ -31,6 +53,7 @@ export default function ClientLayout() {
         options={{
           title: 'Mensajes',
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" color={color} size={size} />,
+          tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
         }}
       />
       <Tabs.Screen
@@ -38,6 +61,7 @@ export default function ClientLayout() {
         options={{
           title: 'Notificaciones',
           tabBarIcon: ({ color, size }) => <Ionicons name="notifications" color={color} size={size} />,
+          tabBarBadge: unreadNotifications > 0 ? unreadNotifications : undefined,
         }}
       />
       <Tabs.Screen
@@ -45,6 +69,7 @@ export default function ClientLayout() {
         options={{ title: 'Perfil', tabBarIcon: ({ color, size }) => <Ionicons name="person" color={color} size={size} /> }}
       />
       <Tabs.Screen name="search" options={{ href: null }} />
+      <Tabs.Screen name="vehicles" options={{ href: null }} />
     </Tabs>
   );
 }

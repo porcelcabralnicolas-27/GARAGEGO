@@ -1,0 +1,54 @@
+name: CI
+
+# Corre en cada push a cualquier rama y en cada Pull Request. Es lo que pedía la auditoría
+# técnica (hallazgo 4.5): hasta ahora no había ninguna verificación automática — solo el
+# `tsc --noEmit` que se corría a mano.
+on:
+  push:
+  pull_request:
+
+jobs:
+  app:
+    name: App (Expo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # SDK 57 pide Node 22.13 o superior.
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verificación de tipos
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test -- --ci
+
+      # Los mismos tests de fechas con el "dispositivo" en seis zonas horarias: la app tiene que
+      # dar lo mismo esté donde esté el teléfono (shared/time.ts).
+      - name: Tests de zona horaria
+        run: npm run test:tz
+
+  admin-panel:
+    name: Panel de administración (Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-panel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin-panel/package-lock.json
+
+      - run: npm ci
+
+      - name: Verificación de tipos
+        run: npm run typecheck

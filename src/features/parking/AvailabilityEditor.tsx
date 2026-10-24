@@ -1,133 +1,186 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { TextField } from '@/components/ui/TextField';
+import { ChipSelect } from '@/components/ui/ChipSelect';
+import { DateSelect } from '@/components/ui/DateSelect';
+import { TimeSelect } from '@/components/ui/TimeSelect';
 import {
   addAvailabilityException,
-  addRecurringAvailability,
+  addRecurringAvailabilityBulk,
   getAvailabilityExceptions,
+  getParkingErrorMessage,
   getRecurringAvailability,
   removeAvailabilityException,
   removeRecurringAvailability,
 } from '@/features/parking/api';
 import { DAY_LABELS, type AvailabilityException, type RecurringAvailability } from '@/features/parking/types';
+import { queryKeys } from '@/lib/queryKeys';
+import { businessDate, formatCalendarDate } from '@/lib/time';
 import { useTheme } from '@/theme';
 
-const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+type AvailabilityData = {
+  recurring: RecurringAvailability[];
+  exceptions: AvailabilityException[];
+};
 
-function DayChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const { colors, typography } = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.dayChip,
-        { borderColor: colors.outline, backgroundColor: selected ? colors.primary : 'transparent' },
-      ]}
-    >
-      <Text style={[typography.label, { color: selected ? colors.onPrimary : colors.onSurfaceVariant }]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
+/** Disponibilidad cargada en el asistente antes de que la cochera exista (ids provisorios). */
+export type AvailabilityDraft = AvailabilityData;
+
+const EMPTY_DATA: AvailabilityData = { recurring: [], exceptions: [] };
+export const EMPTY_AVAILABILITY_DRAFT: AvailabilityDraft = EMPTY_DATA;
+
+// Con `parkingLotId` edita la disponibilidad de una cochera existente (cada cambio se guarda en el
+// momento). Con `draft` trabaja en memoria y avisa cada cambio con `onDraftChange`: lo usa el
+// asistente al crear, que recién guarda todo al terminar el último paso.
+type Props =
+  | { parkingLotId: string; draft?: undefined; onDraftChange?: undefined }
+  | { parkingLotId?: undefined; draft: AvailabilityDraft; onDraftChange: (next: AvailabilityDraft) => void };
+
+let draftIdCounter = 0;
+const nextDraftId = () => `draft-${(draftIdCounter += 1)}`;
+
+const DAY_OPTIONS = DAY_LABELS.map((label, index) => ({ value: String(index), label: label.slice(0, 2) }));
+
+/** ¿Se superponen [aStart,aEnd) y [bStart,bEnd)? Las horas son strings "HH:MM", comparables como texto. */
+function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
+  return aStart < bEnd && bStart < aEnd;
 }
 
-export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
+export function AvailabilityEditor({ parkingLotId, draft, onDraftChange }: Props) {
   const { colors, typography } = useTheme();
-  const [recurring, setRecurring] = useState<RecurringAvailability[]>([]);
-  const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const [selectedDay, setSelectedDay] = useState(1);
+  const queryKey = queryKeys.parkingLots.availability(parkingLotId ?? 'draft');
+  const { data: savedData = EMPTY_DATA, isError } = useQuery({
+    queryKey,
+    enabled: !draft,
+    queryFn: async (): Promise<AvailabilityData> => {
+      const [r, e] = await Promise.all([
+        getRecurringAvailability(parkingLotId as string),
+        getAvailabilityExceptions(parkingLotId as string),
+      ]);
+      // Los días bloqueados que ya pasaron no se muestran; el servidor los borra una vez por día
+      // (migración 0071) y acá se descartan para que no queden a la vista hasta esa limpieza.
+      const today = businessDate();
+      return { recurring: r, exceptions: e.filter((exception) => exception.date >= today) };
+    },
+  });
+
+  const { recurring, exceptions } = draft ?? savedData;
+
+  // La disponibilidad también la usan la ficha pública y la pantalla de reservar: se invalida
+  // todo el grupo para que un conductor no vea horarios que el propietario ya cambió.
+  const applyChange = (update: (current: AvailabilityData) => AvailabilityData) => {
+    if (draft) {
+      onDraftChange(update(draft));
+      return;
+    }
+    queryClient.setQueryData<AvailabilityData>(queryKey, (current = EMPTY_DATA) => update(current));
+    queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
+  };
+
+  const [selectedDays, setSelectedDays] = useState<string[]>(['1']);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [recurringError, setRecurringError] = useState<string | null>(null);
+  const [isAddingRecurring, setIsAddingRecurring] = useState(false);
 
   const [exceptionDate, setExceptionDate] = useState('');
-  const [exceptionMode, setExceptionMode] = useState<'blocked' | 'special'>('blocked');
-  const [exceptionStart, setExceptionStart] = useState('');
-  const [exceptionEnd, setExceptionEnd] = useState('');
   const [exceptionError, setExceptionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    Promise.all([getRecurringAvailability(parkingLotId), getAvailabilityExceptions(parkingLotId)])
-      .then(([r, e]) => {
-        setRecurring(r);
-        setExceptions(e);
-      })
-      .catch(() => setErrorMessage('No se pudo cargar la disponibilidad.'));
-  }, [parkingLotId]);
+  const [isAddingException, setIsAddingException] = useState(false);
 
   const handleAddRecurring = async () => {
     setRecurringError(null);
-    if (!TIME_REGEX.test(startTime) || !TIME_REGEX.test(endTime)) {
-      setRecurringError('Usa el formato HH:MM (ej. 08:00).');
+    if (selectedDays.length === 0) {
+      setRecurringError('Elegí al menos un día.');
+      return;
+    }
+    if (!startTime || !endTime) {
+      setRecurringError('Elegí la hora de inicio y de fin.');
       return;
     }
     if (startTime >= endTime) {
       setRecurringError('La hora de inicio debe ser menor a la de fin.');
       return;
     }
+
+    const days = selectedDays.map(Number);
+    for (const day of days) {
+      const conflict = recurring.find((r) => r.dayOfWeek === day && overlaps(startTime, endTime, r.startTime.slice(0, 5), r.endTime.slice(0, 5)));
+      if (conflict) {
+        setRecurringError(
+          `${DAY_LABELS[day]} ya tiene un horario que se superpone: ${conflict.startTime.slice(0, 5)} - ${conflict.endTime.slice(0, 5)}.`
+        );
+        return;
+      }
+    }
+
+    setIsAddingRecurring(true);
     try {
-      const entry = await addRecurringAvailability(parkingLotId, {
-        dayOfWeek: selectedDay,
-        startTime,
-        endTime,
-      });
-      setRecurring((prev) => [...prev, entry].sort((a, b) => a.dayOfWeek - b.dayOfWeek));
+      const newEntries = days.map((dayOfWeek) => ({ dayOfWeek, startTime, endTime }));
+      const entries = draft
+        ? newEntries.map((entry) => ({ id: nextDraftId(), ...entry }))
+        : await addRecurringAvailabilityBulk(parkingLotId, newEntries);
+      applyChange((current) => ({
+        ...current,
+        recurring: [...current.recurring, ...entries].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
+      }));
       setStartTime('');
       setEndTime('');
-    } catch {
-      setRecurringError('No se pudo agregar el horario.');
+    } catch (error) {
+      setRecurringError(getParkingErrorMessage(error));
+    } finally {
+      setIsAddingRecurring(false);
     }
   };
 
   const handleRemoveRecurring = async (id: string) => {
     try {
-      await removeRecurringAvailability(id);
-      setRecurring((prev) => prev.filter((r) => r.id !== id));
+      if (!draft) await removeRecurringAvailability(id);
+      applyChange((current) => ({ ...current, recurring: current.recurring.filter((r) => r.id !== id) }));
     } catch {
       setRecurringError('No se pudo eliminar el horario.');
     }
   };
 
+  // Solo se bloquean días: el "horario especial" se sacó. Las excepciones especiales que ya
+  // existían se siguen mostrando (y el servidor las sigue respetando) hasta que se borren.
   const handleAddException = async () => {
     setExceptionError(null);
-    if (!DATE_REGEX.test(exceptionDate)) {
-      setExceptionError('Usa el formato YYYY-MM-DD.');
+    if (!exceptionDate) {
+      setExceptionError('Elegí la fecha a bloquear.');
       return;
     }
-    if (exceptionMode === 'special') {
-      if (!TIME_REGEX.test(exceptionStart) || !TIME_REGEX.test(exceptionEnd) || exceptionStart >= exceptionEnd) {
-        setExceptionError('Ingresa un horario válido (HH:MM) con inicio menor a fin.');
-        return;
-      }
+    if (exceptions.some((e) => e.date === exceptionDate)) {
+      setExceptionError(`El ${formatCalendarDate(exceptionDate)} ya tiene una excepción. Borrala si querés cambiarla.`);
+      return;
     }
+    setIsAddingException(true);
     try {
-      const entry = await addAvailabilityException(parkingLotId, {
-        date: exceptionDate,
-        startTime: exceptionMode === 'special' ? exceptionStart : null,
-        endTime: exceptionMode === 'special' ? exceptionEnd : null,
-        isAvailable: exceptionMode === 'special',
-      });
-      setExceptions((prev) => [...prev, entry].sort((a, b) => a.date.localeCompare(b.date)));
+      const newException = { date: exceptionDate, startTime: null, endTime: null, isAvailable: false };
+      const entry = draft
+        ? { id: nextDraftId(), ...newException }
+        : await addAvailabilityException(parkingLotId, newException);
+      applyChange((current) => ({
+        ...current,
+        exceptions: [...current.exceptions, entry].sort((a, b) => a.date.localeCompare(b.date)),
+      }));
       setExceptionDate('');
-      setExceptionStart('');
-      setExceptionEnd('');
     } catch {
       setExceptionError('No se pudo agregar la excepción.');
+    } finally {
+      setIsAddingException(false);
     }
   };
 
   const handleRemoveException = async (id: string) => {
     try {
-      await removeAvailabilityException(id);
-      setExceptions((prev) => prev.filter((e) => e.id !== id));
+      if (!draft) await removeAvailabilityException(id);
+      applyChange((current) => ({ ...current, exceptions: current.exceptions.filter((e) => e.id !== id) }));
     } catch {
       setExceptionError('No se pudo eliminar la excepción.');
     }
@@ -135,7 +188,7 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
 
   return (
     <View>
-      {errorMessage ? <Banner message={errorMessage} /> : null}
+      {isError ? <Banner message="No se pudo cargar la disponibilidad." /> : null}
 
       <Text style={[typography.titleMedium, { color: colors.onBackground, marginBottom: 8 }]}>
         Horario recurrente
@@ -155,23 +208,22 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         </View>
       ))}
 
-      <View style={styles.dayRow}>
-        {DAY_LABELS.map((label, index) => (
-          <DayChip key={label} label={label.slice(0, 2)} selected={selectedDay === index} onPress={() => setSelectedDay(index)} />
-        ))}
-      </View>
+      <Text style={[typography.label, { color: colors.onSurfaceVariant, marginTop: 12, marginBottom: 8 }]}>
+        Días (podés elegir más de uno)
+      </Text>
+      <ChipSelect multiple options={DAY_OPTIONS} value={selectedDays} onChange={setSelectedDays} />
 
       <View style={styles.timeRow}>
         <View style={styles.timeField}>
-          <TextField label="Inicio (HH:MM)" placeholder="08:00" value={startTime} onChangeText={setStartTime} />
+          <TimeSelect label="Inicio" value={startTime} onChange={setStartTime} />
         </View>
         <View style={styles.timeField}>
-          <TextField label="Fin (HH:MM)" placeholder="18:00" value={endTime} onChangeText={setEndTime} />
+          <TimeSelect label="Fin" value={endTime} onChange={setEndTime} />
         </View>
       </View>
 
       {recurringError ? <Banner message={recurringError} /> : null}
-      <Button label="Agregar horario" variant="outlined" onPress={handleAddRecurring} />
+      <Button label="Agregar horario" variant="outlined" onPress={handleAddRecurring} loading={isAddingRecurring} />
 
       <View style={styles.sectionSpacer} />
 
@@ -179,13 +231,13 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         Excepciones por fecha
       </Text>
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 12 }]}>
-        Bloquea un día puntual o abre un horario especial fuera de lo recurrente.
+        Bloqueá un día puntual en el que la cochera no va a estar disponible.
       </Text>
 
       {exceptions.map((entry) => (
         <View key={entry.id} style={[styles.entryRow, { borderColor: colors.outline }]}>
           <Text style={[typography.bodyLarge, { color: colors.onSurface }]}>
-            {entry.date} ·{' '}
+            {formatCalendarDate(entry.date)} ·{' '}
             {entry.isAvailable && entry.startTime && entry.endTime
               ? `${entry.startTime.slice(0, 5)} - ${entry.endTime.slice(0, 5)}`
               : 'Bloqueado'}
@@ -196,32 +248,18 @@ export function AvailabilityEditor({ parkingLotId }: { parkingLotId: string }) {
         </View>
       ))}
 
-      <TextField label="Fecha (YYYY-MM-DD)" placeholder="2026-08-20" value={exceptionDate} onChangeText={setExceptionDate} />
-
-      <SegmentedControl
-        value={exceptionMode}
-        onChange={setExceptionMode}
-        options={[
-          { value: 'blocked', label: 'Bloquear día' },
-          { value: 'special', label: 'Horario especial' },
-        ]}
-      />
-
+      <View style={styles.sectionSpacerSmall} />
+      <DateSelect label="Fecha" value={exceptionDate} onChange={setExceptionDate} minDate={businessDate()} />
       <View style={styles.sectionSpacerSmall} />
 
-      {exceptionMode === 'special' ? (
-        <View style={styles.timeRow}>
-          <View style={styles.timeField}>
-            <TextField label="Inicio (HH:MM)" placeholder="09:00" value={exceptionStart} onChangeText={setExceptionStart} />
-          </View>
-          <View style={styles.timeField}>
-            <TextField label="Fin (HH:MM)" placeholder="14:00" value={exceptionEnd} onChangeText={setExceptionEnd} />
-          </View>
-        </View>
-      ) : null}
-
       {exceptionError ? <Banner message={exceptionError} /> : null}
-      <Button label="Agregar excepción" variant="outlined" onPress={handleAddException} />
+      <Button
+        label="Bloquear día"
+        variant="outlined"
+        onPress={handleAddException}
+        loading={isAddingException}
+        disabled={isAddingException}
+      />
     </View>
   );
 }
@@ -234,21 +272,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  dayRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  dayChip: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-  },
   timeRow: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 12,
+    marginBottom: 12,
   },
   timeField: {
     flex: 1,

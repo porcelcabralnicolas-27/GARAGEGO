@@ -9,6 +9,8 @@ type ConfirmDialogProps = {
   message: string;
   confirmLabel: string;
   cancelLabel?: string;
+  /** Oculta el botón de cancelar: convierte el diálogo en un cartel informativo de un solo botón. */
+  hideCancel?: boolean;
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -20,6 +22,7 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   cancelLabel = 'Cancelar',
+  hideCancel,
   loading,
   onConfirm,
   onCancel,
@@ -28,14 +31,18 @@ export function ConfirmDialog({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <Text style={[typography.titleLarge, { color: colors.onSurface, marginBottom: 8 }]}>{title}</Text>
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 20 }]}>{message}</Text>
 
           <Button label={confirmLabel} onPress={onConfirm} loading={loading} disabled={loading} />
-          <View style={styles.spacer} />
-          <Button label={cancelLabel} variant="text" onPress={onCancel} disabled={loading} />
+          {hideCancel ? null : (
+            <>
+              <View style={styles.spacer} />
+              <Button label={cancelLabel} variant="text" onPress={onCancel} disabled={loading} />
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -45,7 +52,6 @@ export function ConfirmDialog({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,

@@ -1,30 +1,44 @@
+import { Ionicons } from '@expo/vector-icons';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { LinkText } from '@/components/ui/LinkText';
 import { Screen } from '@/components/ui/Screen';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatsButton } from '@/components/ui/StatsButton';
 import { TextField } from '@/components/ui/TextField';
 import { signOut } from '@/features/auth/api';
-import { topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
+import { getTopupErrorMessage, topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
+import { DEMO_TOPUP_AMOUNTS, useDemoTopupEnabled } from '@/features/profile/useDemoTopup';
 import { editProfileSchema, type EditProfileFormValues } from '@/features/profile/schemas';
-import type { UserRole } from '@/features/profile/types';
+import { formatMoney } from '@/lib/money';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useTheme } from '@/theme';
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD' }).format(amount);
-}
+import { radius, shadows, spacing, useTheme } from '@/theme';
 
 function getInitials(firstName: string, lastName: string) {
   const first = firstName.trim().charAt(0);
   const last = lastName.trim().charAt(0);
   return (first + last).toUpperCase() || '?';
+}
+
+/** Dato de solo lectura: etiqueta en mayúsculas, valor debajo y una línea fina, como el Figma. */
+function InfoField({ label, value }: { label: string; value: string }) {
+  const { colors, typography } = useTheme();
+
+  return (
+    <View style={styles.infoField}>
+      <Text style={[typography.label, styles.infoLabel, { color: colors.onSurfaceVariant }]}>
+        {label.toUpperCase()}
+      </Text>
+      <Text style={[typography.bodyLarge, { color: colors.onSurface }]}>{value}</Text>
+      <View style={[styles.underline, { backgroundColor: colors.outline }]} />
+    </View>
+  );
 }
 
 export function ProfileView() {
@@ -36,11 +50,11 @@ export function ProfileView() {
   const walletBalance = useAuthStore((s) => s.walletBalance);
   const setProfile = useAuthStore((s) => s.setProfile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
+  const demoTopupEnabled = useDemoTopupEnabled();
 
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const [toppingUpAmount, setToppingUpAmount] = useState<number | null>(null);
 
   const {
@@ -97,14 +111,18 @@ export function ProfileView() {
     }
   };
 
-  const handleRoleChange = async (role: UserRole) => {
+  // El switch es binario, así que el destino se deduce del valor: encendido = propietario.
+  // Queda controlado por `profile.activeRole`, de modo que si la llamada falla vuelve solo
+  // a su posición anterior en vez de quedar mostrando un rol que no se aplicó.
+  const handleRoleToggle = async (isOwner: boolean) => {
+    const role = isOwner ? 'owner' : 'client';
     if (role === profile.activeRole || isSwitchingRole) return;
     setIsSwitchingRole(true);
     setErrorMessage(null);
     try {
       const updated = await switchActiveRole(profile.id, role);
       setProfile(updated);
-      router.replace(role === 'owner' ? '/(owner)/dashboard' : '/(client)');
+      router.replace(role === 'owner' ? '/(owner)/parkings' : '/(client)');
     } catch {
       setErrorMessage('No pudimos cambiar de rol. Intenta nuevamente.');
     } finally {
@@ -118,76 +136,57 @@ export function ProfileView() {
     try {
       await topupWallet(amount);
       reloadProfile();
-    } catch {
-      setErrorMessage('No se pudo recargar el saldo.');
+    } catch (error) {
+      setErrorMessage(getTopupErrorMessage(error));
     } finally {
       setToppingUpAmount(null);
     }
   };
 
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    try {
-      await signOut();
-    } finally {
-      setIsSigningOut(false);
-    }
-  };
+  const isOwnerActive = profile.activeRole === 'owner';
 
   return (
     <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScreenHeader
+          title="Perfil"
+          action={
+            <Pressable
+              onPress={() =>
+                router.push(isOwnerActive ? '/(owner)/profile/settings' : '/(client)/profile/settings')
+              }
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Ajustes"
+            >
+              <Ionicons name="settings-outline" size={24} color={colors.onSurfaceVariant} />
+            </Pressable>
+          }
+        />
+
+        <View style={styles.avatarBlock}>
           {profile.avatarUrl ? (
             <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
           ) : (
-            <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
+            <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: colors.primaryContainer }]}>
               <Text style={[typography.titleLarge, { color: colors.onPrimaryContainer }]}>
                 {getInitials(profile.firstName, profile.lastName)}
               </Text>
             </View>
           )}
-          <Text style={[typography.titleLarge, { color: colors.onBackground, marginTop: 12 }]}>
-            {profile.firstName} {profile.lastName}
-          </Text>
-          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{session.user.email}</Text>
+
+          {!isEditing ? (
+            <Pressable
+              onPress={startEditing}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Editar perfil"
+              style={styles.avatarEdit}
+            >
+              <Ionicons name="create-outline" size={26} color={colors.onSurfaceVariant} />
+            </Pressable>
+          ) : null}
         </View>
-
-        <View style={[styles.walletCard, { backgroundColor: colors.primaryContainer }]}>
-          <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>Saldo disponible</Text>
-          <Text style={[typography.displayLarge, { color: colors.onPrimaryContainer }]}>
-            {walletBalance !== null ? formatCurrency(walletBalance) : '—'}
-          </Text>
-          <Text style={[typography.label, { color: colors.onPrimaryContainer, marginTop: 8, opacity: 0.8 }]}>
-            Recarga de prueba (todavía no hay pasarela de pago real)
-          </Text>
-          <View style={styles.topUpRow}>
-            {[20, 50, 100].map((amount) => (
-              <Button
-                key={amount}
-                label={`+$${amount}`}
-                size="compact"
-                variant="outlined"
-                onPress={() => handleTopUp(amount)}
-                loading={toppingUpAmount === amount}
-                disabled={toppingUpAmount !== null}
-              />
-            ))}
-          </View>
-        </View>
-
-        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Modo activo</Text>
-        <SegmentedControl<UserRole>
-          value={profile.activeRole}
-          disabled={isSwitchingRole}
-          onChange={handleRoleChange}
-          options={[
-            { value: 'client', label: 'Cliente' },
-            { value: 'owner', label: 'Propietario' },
-          ]}
-        />
-
-        <View style={styles.spacerLarge} />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
@@ -231,57 +230,161 @@ export function ProfileView() {
               )}
             />
 
-            <Button label="Guardar cambios" onPress={handleSubmit(onSubmit)} loading={isSubmitting} disabled={isSubmitting} />
+            <Button label="Guardar" onPress={handleSubmit(onSubmit)} loading={isSubmitting} disabled={isSubmitting} />
             <View style={styles.spacer} />
             <LinkText label="Cancelar" onPress={() => setIsEditing(false)} />
           </>
         ) : (
           <>
-            <View style={styles.infoRow}>
-              <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>Teléfono</Text>
-              <Text style={[typography.bodyLarge, { color: colors.onSurface }]}>{profile.phone || 'No registrado'}</Text>
+            <InfoField label="Nombre completo" value={`${profile.firstName} ${profile.lastName}`} />
+            <InfoField label="Correo electrónico" value={session.user.email ?? '—'} />
+            <InfoField label="Teléfono" value={profile.phone || 'No registrado'} />
+
+            {/* El saldo y la recarga son del conductor. En modo propietario el saldo y el retiro
+                viven en su dashboard, que se abre desde acá. Vehículos, centro de ayuda y cierre
+                de sesión están en Ajustes (la tuerca). */}
+            {isOwnerActive ? (
+              <View style={styles.dashboardButton}>
+                <StatsButton label="Mis estadísticas" onPress={() => router.push('/(owner)/dashboard')} />
+              </View>
+            ) : (
+              <>
+                <Text style={[typography.titleLarge, styles.balanceHeading, { color: colors.onSurface }]}>Saldo:</Text>
+
+                <View style={[styles.balanceCard, shadows.card, { backgroundColor: colors.surface }]}>
+                  <Text style={[typography.displayLarge, { color: colors.accent }]}>
+                    {walletBalance !== null ? formatMoney(walletBalance) : '—'}
+                  </Text>
+                </View>
+
+                {demoTopupEnabled ? (
+                  <>
+                    <Text style={[typography.label, styles.topUpNote, { color: colors.onSurfaceVariant }]}>
+                      Recarga de prueba: saldo ficticio, sin valor en dinero (todavía no hay pasarela de
+                      pago real)
+                    </Text>
+
+                    <View style={styles.topUpRow}>
+                      {DEMO_TOPUP_AMOUNTS.map((amount) => (
+                        <Button
+                          key={amount}
+                          label={`+ ${formatMoney(amount)}`}
+                          size="compact"
+                          variant="outlined"
+                          onPress={() => handleTopUp(amount)}
+                          loading={toppingUpAmount === amount}
+                          disabled={toppingUpAmount !== null}
+                        />
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </>
+            )}
+
+            <View style={styles.roleBlock}>
+              <View style={styles.roleLabels}>
+                <Text
+                  style={[
+                    typography.titleMedium,
+                    { color: isOwnerActive ? colors.onSurfaceVariant : colors.onSurface },
+                  ]}
+                >
+                  CONDUCTOR
+                </Text>
+                <Text
+                  style={[
+                    typography.titleMedium,
+                    { color: isOwnerActive ? colors.onSurface : colors.onSurfaceVariant },
+                  ]}
+                >
+                  PROPIETARIO
+                </Text>
+              </View>
+
+              <Switch
+                value={isOwnerActive}
+                onValueChange={handleRoleToggle}
+                disabled={isSwitchingRole}
+                accessibilityLabel="Cambiar entre modo conductor y modo propietario"
+                trackColor={{ false: colors.track, true: colors.primary }}
+                thumbColor={colors.surface}
+              />
             </View>
-            <Button label="Editar perfil" variant="outlined" onPress={startEditing} />
           </>
         )}
-
-        <View style={styles.spacerLarge} />
-
-        <Button label="Cerrar sesión" variant="text" onPress={handleSignOut} loading={isSigningOut} disabled={isSigningOut} />
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
+  avatarBlock: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'center',
+    marginBottom: spacing.xl,
   },
   avatar: {
     width: 72,
     height: 72,
-    borderRadius: 36,
+    borderRadius: radius.pill,
+  },
+  avatarFallback: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  walletCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
+  avatarEdit: {
+    marginLeft: spacing.lg,
+  },
+  infoField: {
+    marginBottom: spacing.xl,
+  },
+  infoLabel: {
+    marginBottom: spacing.xs,
+    letterSpacing: 1,
+  },
+  underline: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: spacing.sm,
+  },
+  balanceHeading: {
+    marginBottom: spacing.md,
+  },
+  balanceCard: {
+    borderRadius: radius.xl,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+  },
+  topUpNote: {
+    marginTop: spacing.md,
   },
   topUpRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
+    // Con cuatro botones, en pantallas angostas el último pasa a la línea de abajo.
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
   },
-  infoRow: {
-    marginBottom: 20,
+  dashboardButton: {
+    marginBottom: spacing.xl,
+  },
+  roleBlock: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  roleLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    marginBottom: spacing.md,
   },
   spacer: {
-    height: 12,
+    height: spacing.md,
   },
   spacerLarge: {
-    height: 24,
+    height: spacing.xl,
   },
 });

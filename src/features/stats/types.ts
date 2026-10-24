@@ -7,7 +7,8 @@ export type LotRevenue = {
 
 export type OwnerStats = {
   totalEarnings: number;
-  pendingCount: number;
+  /** Reservas confirmadas que el conductor ya inició y todavía no finalizó. */
+  activeSessionsCount: number;
   confirmedCount: number;
   completedCount: number;
   cancelledCount: number;

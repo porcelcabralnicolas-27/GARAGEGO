@@ -1,141 +1,126 @@
-import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
 
-import { Banner } from '@/components/ui/Banner';
+import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
 import {
   deleteParkingImage,
+  getParkingErrorMessage,
   listParkingImages,
   uploadParkingImage,
 } from '@/features/parking/api';
-import type { ParkingImage } from '@/features/parking/types';
-import { useTheme } from '@/theme';
+import { MAX_PARKING_IMAGES, type ParkingImage } from '@/features/parking/types';
+import { DUPLICATE_PHOTO_MESSAGE, fingerprintImage } from '@/lib/imageFingerprint';
+import { assertImageUploadable } from '@/lib/imageMime';
+import { queryKeys } from '@/lib/queryKeys';
+
+const NO_IMAGES: ParkingImage[] = [];
 
 export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parkingLotId: string }) {
-  const { colors, typography } = useTheme();
-  const [images, setImages] = useState<ParkingImage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    listParkingImages(parkingLotId)
-      .then(setImages)
-      .catch(() => setErrorMessage('No se pudieron cargar las fotos.'))
-      .finally(() => setIsLoading(false));
-  }, [parkingLotId]);
+  const queryKey = queryKeys.parkingLots.images(parkingLotId);
+  const { data: images = NO_IMAGES, isLoading, isError } = useQuery({
+    queryKey,
+    queryFn: () => listParkingImages(parkingLotId),
+  });
+
+  // Las fotos también salen en la ficha pública y en la portada de la lista de cocheras: se
+  // invalida todo el grupo para que ninguna de esas pantallas siga mostrando las anteriores.
+  const applyChange = (update: (current: ParkingImage[]) => ParkingImage[]) => {
+    queryClient.setQueryData<ParkingImage[]>(queryKey, (current = []) => update(current));
+    queryClient.invalidateQueries({ queryKey: queryKeys.parkingLots.all });
+  };
+
+  // Huellas de las fotos ya subidas, para no volver a bajarlas cada vez que se agrega una.
+  const savedFingerprints = useRef(new Map<string, string>());
+
+  const isDuplicateOfExisting = async (localUri: string): Promise<boolean> => {
+    const candidate = await fingerprintImage(localUri);
+    for (const image of images) {
+      let known = savedFingerprints.current.get(image.id);
+      if (!known) {
+        try {
+          known = await fingerprintImage(image.publicUrl);
+        } catch {
+          // Si una foto ya guardada no se puede leer, no se frena la subida por eso.
+          continue;
+        }
+        savedFingerprints.current.set(image.id, known);
+      }
+      if (known === candidate) return true;
+    }
+    return false;
+  };
 
   const handleAddImage = async () => {
     setErrorMessage(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setErrorMessage('Necesitamos permiso para acceder a tus fotos.');
+    if (images.length >= MAX_PARKING_IMAGES) {
+      setErrorMessage(`Ya llegaste al máximo de ${MAX_PARKING_IMAGES} fotos.`);
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
-    if (result.canceled || !result.assets[0]) return;
-
-    setIsUploading(true);
     try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setErrorMessage('Necesitamos permiso para acceder a tus fotos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+      if (result.canceled || !result.assets[0]) return;
+
+      assertImageUploadable(result.assets[0].uri, result.assets[0].fileSize);
+
+      setIsUploading(true);
+      if (await isDuplicateOfExisting(result.assets[0].uri)) {
+        setErrorMessage(DUPLICATE_PHOTO_MESSAGE);
+        return;
+      }
       const image = await uploadParkingImage({
         ownerId,
         parkingLotId,
         localUri: result.assets[0].uri,
         position: images.length,
       });
-      setImages((prev) => [...prev, image]);
-    } catch {
-      setErrorMessage('No se pudo subir la foto. Intenta nuevamente.');
+      applyChange((current) => [...current, image]);
+    } catch (error) {
+      setErrorMessage(`No se pudo subir la foto: ${getParkingErrorMessage(error)}`);
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleRemoveImage = async (image: ParkingImage) => {
+  const handleRemoveImage = async (photo: UploadedPhoto) => {
+    const image = images.find((i) => i.id === photo.id);
+    if (!image) return;
+
     setErrorMessage(null);
     try {
       await deleteParkingImage(image);
-      setImages((prev) => prev.filter((i) => i.id !== image.id));
-    } catch {
-      setErrorMessage('No se pudo eliminar la foto.');
+      applyChange((current) => current.filter((i) => i.id !== image.id));
+    } catch (error) {
+      setErrorMessage(`No se pudo eliminar la foto: ${getParkingErrorMessage(error)}`);
     }
   };
 
   return (
-    <View>
-      <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Fotografías</Text>
-
-      {errorMessage ? <Banner message={errorMessage} /> : null}
-
-      {isLoading ? (
-        <ActivityIndicator color={colors.accent} />
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.row}>
-          {images.map((image) => (
-            <View key={image.id} style={styles.thumbWrapper}>
-              <Image source={{ uri: image.publicUrl }} style={styles.thumb} />
-              <Pressable
-                onPress={() => handleRemoveImage(image)}
-                style={[styles.removeButton, { backgroundColor: colors.error }]}
-              >
-                <Ionicons name="close" size={14} color={colors.onError} />
-              </Pressable>
-            </View>
-          ))}
-
-          <Pressable
-            onPress={handleAddImage}
-            disabled={isUploading}
-            style={[styles.addButton, { borderColor: colors.outline }]}
-          >
-            {isUploading ? (
-              <ActivityIndicator color={colors.accent} />
-            ) : (
-              <Ionicons name="add" size={28} color={colors.onSurfaceVariant} />
-            )}
-          </Pressable>
-        </ScrollView>
-      )}
-    </View>
+    <PhotoUploader
+      label="Fotografías"
+      photos={images}
+      onAdd={handleAddImage}
+      onRemove={handleRemoveImage}
+      max={MAX_PARKING_IMAGES}
+      isLoading={isLoading}
+      isUploading={isUploading}
+      errorMessage={errorMessage ?? (isError ? 'No se pudieron cargar las fotos.' : null)}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    marginBottom: 8,
-  },
-  thumbWrapper: {
-    marginRight: 10,
-  },
-  thumb: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-  },
-  removeButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButton: {
-    width: 88,
-    height: 88,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
