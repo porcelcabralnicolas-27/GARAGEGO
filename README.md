@@ -8,7 +8,11 @@ administración** web para el equipo.
 
 **Versión web publicada:** https://garagego.garagego2027.workers.dev
 
-**APK de Android:** https://expo.dev/artifacts/eas/eC6hujrfHuFduDvULk357acyMvGc_111Z11kradBdaE.apk
+**APK de Android:** https://expo.dev/artifacts/eas/S0mwvD0oJPwAdYCmIN4C8N3b3P3TFFLtxus1uOp43Ig.apk
+*(build del 24/10/2026 sobre `main`, con todas las migraciones hasta la 0083)*
+
+**Repositorio:** https://github.com/porcelcabralnicolas-27/GARAGEGO · versión **1.0.0** en la rama
+`main`
 
 ---
 
@@ -71,6 +75,8 @@ soporte, modera reseñas y consulta métricas, usuarios y transacciones.
 | Moderación con pedido de cambios validado | Publicación en Play Store y App Store |
 | Chat, notificaciones por rol y centro de ayuda | Prueba de la versión iOS en un dispositivo |
 | Panel de administración completo con datos reales | Correo propio (SMTP) para enviar el código de recuperación |
+| Inicio con todos los estacionamientos; Buscar limita por distancia | Buscador inteligente que recomiende cocheras según destino, horario, precio y reservas anteriores |
+| Textos de Legal, Información y Seguridad al día con el sistema | Sesión guardada de forma cifrada, servidor de rutas propio y pruebas automáticas de punta a punta |
 
 > **El saldo de la billetera es de prueba:** se carga con botones de recarga (hasta $ 50.000 por
 > recarga y $ 200.000 de saldo total) y no tiene valor en dinero.
@@ -91,9 +97,9 @@ soporte, modera reseñas y consulta métricas, usuarios y transacciones.
 | Tareas programadas | **pg_cron** | Cierre automático, avisos y limpieza, cada minuto |
 | Mapas | **Google Maps** (`react-native-maps` en nativo, `@react-google-maps/api` en web) | Cobertura y calidad en Argentina |
 | Rutas | **OSRM** (servidor demo público, OpenStreetMap) | Gratuito y sin clave |
-| Panel de administración | **React 19 + Vite 7**, TypeScript | Proyecto web independiente, solo escritorio |
+| Panel de administración | **React 19 + Vite 7**, TypeScript | Proyecto web independiente; pensado para escritorio y adaptado a pantallas chicas |
 | Pruebas | **Jest**, scripts SQL, **node-postgres** | Unitarias, de reglas y de concurrencia real |
-| CI | **GitHub Actions** | Tipos y tests en cada push |
+| CI | **GitHub Actions** | Tipos y tests en cada push y en cada pull request |
 | Distribución | **EAS Build** (APK) y **Cloudflare Workers** (web y panel) | Compilación en la nube y hosting gratuito |
 | Herramientas | **Claude Code** (desarrollo), **Codex** (auditoría y testeos), **Visual Studio Code** | Desarrollar con criterio, auditar el sistema completo y revisar el código |
 
@@ -115,12 +121,12 @@ soporte, modera reseñas y consulta métricas, usuarios y transacciones.
 ## Instalación
 
 ```bash
-git clone https://github.com/porcelcabralnicolas-27/GARAGEGO-2027-CLAUDE.git
-cd GARAGEGO-2027-CLAUDE
+git clone https://github.com/porcelcabralnicolas-27/GARAGEGO.git
+cd GARAGEGO
 npm install
 ```
 
-Crear un archivo `.env` en la raíz:
+Crear un archivo `.env` en la raíz (hay un modelo en [`.env.example`](.env.example)):
 
 ```bash
 EXPO_PUBLIC_SUPABASE_URL=https://<tu-proyecto>.supabase.co
@@ -185,7 +191,7 @@ Ver [admin-panel/README.md](admin-panel/README.md).
 | `supabase/tests/*.sql` | Reglas de negocio y permisos contra las políticas reales; revierten sus propios datos |
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) corre tipos, tests y tests
-de zona horaria de la app y del panel en cada push.
+de zona horaria de la app, y los tipos del panel, en cada push y en cada pull request.
 
 ---
 
@@ -258,7 +264,8 @@ GARAGEGO/
 | Gianluca Polizzi | QA, seguridad y documentación |
 
 **Metodología:** Scrum con sprints semanales y desarrollo guiado por especificaciones (SDD).
-Se trabajó con una rama por etapa y commits descriptivos para cada cambio.
+Se trabajó con una rama por etapa y commits descriptivos para cada cambio. Las ramas se unieron a
+`main` con el pull request #1 (24/10/2026); desde entonces el trabajo sigue directamente en `main`.
 
 Proyecto de **Prácticas Profesionalizantes III** · Tecnicatura en Análisis de Sistemas ·
 Instituto Tecnológico Beltrán · 2026.
@@ -278,6 +285,6 @@ Diseño de las pantallas en Figma:
 
 | Documento | Contenido |
 |---|---|
-| `Documentacion_Tecnica_GarageGo.docx` / `Documentacionfinal_Tecnica_GarageGo.pdf` | Documentación técnica completa: requerimientos, casos de uso, arquitectura, base de datos, seguridad, pruebas, instalación y despliegue |
+| `Documentacionfinal_Tecnica_GarageGo.pdf` | Documentación técnica completa: requerimientos, casos de uso, arquitectura, base de datos, seguridad, pruebas, instalación, despliegue y estado final |
 | `Manual_de_Usuario_GarageGo.docx` | Manual de usuario |
 | `diagramas/` | Arquitectura, casos de uso, modelo de datos, estados de la reserva y navegación |
