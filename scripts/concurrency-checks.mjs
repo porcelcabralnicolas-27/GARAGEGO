@@ -457,14 +457,14 @@ const scenarios = [
   },
   {
     name: 'Dos recargas simultáneas contra el tope de saldo',
-    // Saldo 40.000 y tope 50.000: entra una recarga de 6.000, no dos.
+    // Saldo 190.000 y tope 200.000 (0074): entra una recarga de 6.000, no dos.
     async run(admin) {
-      await setDriverBalance(admin, 40000);
+      await setDriverBalance(admin, 190000);
       try {
         const r = await race({ userA: DRIVER, first: topup(6000), userB: DRIVER, second: topup(6000) });
         const balance = await driverBalance(admin);
         return {
-          ok: r.waited && /topup_limit_reached/.test(r.error ?? '') && balance === 46000,
+          ok: r.waited && /topup_limit_reached/.test(r.error ?? '') && balance === 196000,
           detail: `B esperó: ${r.waited} · B: ${r.error ?? 'pasó'} · saldo final: ${balance}`,
         };
       } finally {
