@@ -24,6 +24,22 @@ export default function ClientLayout() {
       <Tabs.Screen
         name="index"
         options={{ title: 'Inicio', tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} /> }}
+        // Tocar Inicio vuelve al mapa con todos los estacionamientos: se borra lo que haya quedado de una
+        // búsqueda anterior (distancia, filtros o dirección). Sin esto la pestaña conservaba esos
+        // parámetros y el mapa seguía mostrando solo lo que entraba en el filtro.
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            navigation.setParams({
+              lat: undefined,
+              lng: undefined,
+              radiusKm: undefined,
+              maxPrice: undefined,
+              minRating: undefined,
+              place: undefined,
+              notice: undefined,
+            } as never);
+          },
+        })}
       />
       <Tabs.Screen
         name="bookings"

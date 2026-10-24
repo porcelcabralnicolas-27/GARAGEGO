@@ -12,7 +12,13 @@ import { SearchBar } from '@/components/ui/SearchBar';
 import { searchParkingLots } from '@/features/parking/api';
 import { buildParkingMarkerIcon, buildUserLocationIcon } from '@/features/parking/parkingMarkerIcon.web';
 import { useAvailableNow } from '@/features/parking/useAvailableNow';
-import { MAP_BROWSE_RADIUS_KM, lotsToFrame, nearbyOf, searchNotice } from '@/features/search/mapResults';
+import {
+  DEFAULT_SEARCH_RADIUS_KM,
+  MAP_BROWSE_RADIUS_KM,
+  lotsToFrame,
+  nearbyOf,
+  searchNotice,
+} from '@/features/search/mapResults';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { mapOrigin } from '@/hooks/useGoBack';
 import { queryKeys } from '@/lib/queryKeys';
@@ -69,13 +75,14 @@ export default function ClientHomeWebScreen() {
     googleMapsApiKey: GOOGLE_MAPS_WEB_API_KEY,
   });
 
-  // Radio que eligió la persona. Con una dirección buscada, el mapa trae además todo lo que hay en
-  // la zona (hasta el máximo del servidor): lo que quedó fuera del radio también se ve.
-  const searchRadiusKm = Number(params.radiusKm) || 5;
+  // Inicio (sin filtros) y la búsqueda por dirección muestran TODOS los estacionamientos. Solo
+  // cuando se eligió una distancia en Buscar ("Ver en mapa") el mapa se limita a ese radio.
+  const isRadiusSearch = Boolean(params.radiusKm) && !params.place;
+  const searchRadiusKm = Number(params.radiusKm) || DEFAULT_SEARCH_RADIUS_KM;
   const filters = {
     latitude: latitude ?? 0,
     longitude: longitude ?? 0,
-    radiusKm: params.place ? MAP_BROWSE_RADIUS_KM : searchRadiusKm,
+    radiusKm: isRadiusSearch ? searchRadiusKm : MAP_BROWSE_RADIUS_KM,
     maxPrice: params.maxPrice ? Number(params.maxPrice) : null,
     minRating: params.minRating ? Number(params.minRating) : null,
   };

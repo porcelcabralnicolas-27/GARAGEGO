@@ -12,7 +12,13 @@ import { Logo } from '@/components/ui/Logo';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { searchParkingLots } from '@/features/parking/api';
 import { useAvailableNow } from '@/features/parking/useAvailableNow';
-import { MAP_BROWSE_RADIUS_KM, lotsToFrame, nearbyOf, searchNotice } from '@/features/search/mapResults';
+import {
+  DEFAULT_SEARCH_RADIUS_KM,
+  MAP_BROWSE_RADIUS_KM,
+  lotsToFrame,
+  nearbyOf,
+  searchNotice,
+} from '@/features/search/mapResults';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { mapOrigin } from '@/hooks/useGoBack';
 import { formatPricePerHour } from '@/lib/money';
@@ -49,13 +55,14 @@ export default function ClientHomeScreen() {
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const mapRef = useRef<MapView>(null);
 
-  // Radio que eligió la persona. Con una dirección buscada, el mapa trae además todo lo que hay en
-  // la zona (hasta el máximo del servidor): lo que quedó fuera del radio también se ve.
-  const searchRadiusKm = Number(params.radiusKm) || 5;
+  // Inicio (sin filtros) y la búsqueda por dirección muestran TODOS los estacionamientos. Solo
+  // cuando se eligió una distancia en Buscar ("Ver en mapa") el mapa se limita a ese radio.
+  const isRadiusSearch = Boolean(params.radiusKm) && !params.place;
+  const searchRadiusKm = Number(params.radiusKm) || DEFAULT_SEARCH_RADIUS_KM;
   const filters = {
     latitude: latitude ?? 0,
     longitude: longitude ?? 0,
-    radiusKm: params.place ? MAP_BROWSE_RADIUS_KM : searchRadiusKm,
+    radiusKm: isRadiusSearch ? searchRadiusKm : MAP_BROWSE_RADIUS_KM,
     maxPrice: params.maxPrice ? Number(params.maxPrice) : null,
     minRating: params.minRating ? Number(params.minRating) : null,
   };
@@ -71,11 +78,12 @@ export default function ClientHomeScreen() {
   const showNotice = Boolean(params.place) && isSuccess && params.notice !== '0' && !noticeDismissed;
 
   // Sin nada dentro del radio, el mapa se encuadra para que se vean los estacionamientos más
-  // cercanos de afuera, en vez de quedarse sobre una zona vacía.
-  const framed = isSuccess && params.place ? lotsToFrame(results, searchRadiusKm) : [];
+  // cercanos de afuera, en vez de quedarse sobre una zona vacía. Solo cuando se ven todos: con una
+  // distancia elegida, el mapa muestra lo que entra en ese radio y nada más.
+  const framed = isSuccess && !isRadiusSearch ? lotsToFrame(results, searchRadiusKm) : [];
   const framedKey = framed.map((lot) => lot.id).join(',');
   useEffect(() => {
-    if (!params.place || nearbyCount > 0 || framed.length === 0 || latitude === null || longitude === null) return;
+    if (isRadiusSearch || nearbyCount > 0 || framed.length === 0 || latitude === null || longitude === null) return;
     mapRef.current?.fitToCoordinates(
       [{ latitude, longitude }, ...framed.map((lot) => ({ latitude: lot.latitude, longitude: lot.longitude }))],
       { edgePadding: { top: 60, right: 60, bottom: 60, left: 60 }, animated: true }

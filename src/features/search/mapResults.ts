@@ -1,11 +1,15 @@
 import type { ParkingLotWithDistance } from '@/features/parking/types';
 
 /**
- * Cuando se busca una dirección, el mapa muestra los estacionamientos de toda la zona y no solo los
- * del radio elegido. El servidor limita la búsqueda a 25 km (migración 0059), así que ese es el
- * máximo que se puede traer.
+ * El mapa de Inicio y la búsqueda por dirección muestran todos los estacionamientos, no solo los
+ * del radio de un filtro. Es el radio que se le pide al servidor en esos casos: el tope de la
+ * función `search_parking_lots` (1000 km desde la migración 0083; antes 25 km), que devuelve como
+ * mucho los 200 más cercanos.
  */
-export const MAP_BROWSE_RADIUS_KM = 25;
+export const MAP_BROWSE_RADIUS_KM = 1000;
+
+/** Distancia por defecto cuando no se eligió ninguna. */
+export const DEFAULT_SEARCH_RADIUS_KM = 5;
 
 /** Cuántos estacionamientos se incluyen en el encuadre cuando no hay ninguno dentro del radio. */
 const NEAREST_TO_FRAME = 3;

@@ -124,6 +124,9 @@ export default function SearchScreen() {
 
         <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Distancia</Text>
         <ChipSelect options={RADIUS_OPTIONS} value={radiusKm} onChange={setRadiusKm} />
+        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginTop: 8 }]}>
+          Se aplica a «Ver en mapa» y «Ver en lista». El mapa de Inicio muestra todos los estacionamientos.
+        </Text>
 
         <View style={styles.spacer} />
 
