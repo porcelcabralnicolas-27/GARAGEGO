@@ -1,9 +1,19 @@
 # GarageGo · Panel de administración
 
-Backoffice interno. Es un proyecto **web independiente** de la app Expo: tiene su propio
-`package.json`, su propio `node_modules` y su propio diseño. No comparte código con `src/`.
+Backoffice interno del equipo de GarageGo: aprueba publicaciones, modera cocheras y reseñas,
+atiende tickets de soporte, revisa movimientos de saldo y muestra métricas del sistema.
 
-Pensado para **escritorio**. Por debajo de 1100 px de ancho muestra un aviso en vez del panel.
+Es un proyecto **web independiente** de la app Expo: tiene su propio `package.json`, su propio
+`node_modules` y su propio diseño. No comparte código con `src/`; solo importa los tipos y las
+etiquetas de dominio de [`../shared/domain.ts`](../shared/domain.ts), que también usa la app, para
+que los estados (aprobación, moderación, tickets, documentos) no se desincronicen.
+
+Pensado para escritorio, pero se adapta a pantallas chicas: por debajo de 900 px la barra lateral
+pasa a un menú y la lista y el detalle se apilan (al elegir un elemento, la pantalla baja al detalle).
+
+**Tecnología:** React 19, React Router 7, Vite 7, TypeScript y `@supabase/supabase-js`. Sin
+librerías de interfaz ni de gráficos: el sistema de diseño (botones, tablas, modales, gráficos SVG)
+es propio, en `src/ui/` y `src/styles/`.
 
 ## Cómo correrlo
 
@@ -14,31 +24,31 @@ cp .env.example .env       # completar con los valores del .env de la raíz
 npm run dev                # http://localhost:5180
 ```
 
-Los puertos (5180 dev, 5181 preview) están elegidos para no chocar con Metro (8081). El
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Servidor de desarrollo en el puerto 5180 |
+| `npm run typecheck` | Verificación de tipos (`tsc --noEmit`); también corre en el CI de GitHub |
+| `npm run build` | Verifica los tipos y genera `dist/` |
+| `npm run preview` | Sirve `dist/` en el puerto 5181 |
+
+Los puertos (5180 dev, 5181 preview) están elegidos para no chocar con Metro (8081): el
 `expo start` de la raíz y este servidor pueden correr al mismo tiempo.
 
-## Qué lee cada pantalla
+### Variables de entorno
 
-Todo el panel funciona con datos reales de Supabase (migraciones **0033–0045**). No hay mock:
-cada pantalla tiene su par `xxxApi.ts` + `useXxx.ts` y todo lo derivado se calcula ahí.
+| Variable | Valor |
+|---|---|
+| `VITE_SUPABASE_URL` | La misma URL de Supabase que usa la app (`EXPO_PUBLIC_SUPABASE_URL`) |
+| `VITE_SUPABASE_ANON_KEY` | La misma clave anónima (`EXPO_PUBLIC_SUPABASE_ANON_KEY`) |
 
-| Sección | Cómo lee | Migraciones |
-|---|---|---|
-| Login | Supabase Auth + `profiles.is_admin` | 0033 |
-| Inventario (aprobaciones + pausar/suspender) | policy `is_admin()` sobre `parking_lots` + RPCs | 0034–0040 |
-| Soporte · Tickets | `support_tickets` / `_messages` por policy + RPCs | 0041 |
-| Soporte · Transacciones | `admin_transactions()` + `admin_transaction_summary()` | 0042, 0045 |
-| Dashboard | `admin_active_sessions()`, `admin_growth()`, `admin_transaction_summary()` | 0042 |
-| Usuarios · Conductores/Propietarios | `admin_user_directory()` + `admin_user_detail()` (incluye email de `auth.users`) | 0043 |
-| Usuarios · Reseñas | `ratings` por policy + `admin_set_rating_hidden()` | 0044 |
-| Badges de la sidebar | dos `count` (`src/shell/usePendingCounts.ts`) | — |
-
-Tipos y helpers de dominio compartidos: `src/domain.ts`.
+**Solo la clave anónima, nunca la `service_role`.** Este bundle se sirve al navegador y cualquiera
+podría leerla desde las herramientas de desarrollo. Lo que el panel puede hacer lo limitan las
+políticas de la base y las funciones que validan administrador (ver [Seguridad](#seguridad)).
 
 ## Habilitar un administrador
 
-La migración `supabase/migrations/0033_admin_flag.sql` (en la raíz del repo) agrega la columna.
-Para habilitar a alguien, desde el SQL Editor de Supabase:
+La migración `supabase/migrations/0033_admin_flag.sql` (en la raíz del repo) agrega la columna
+`profiles.is_admin`. Para habilitar a alguien, desde el SQL Editor de Supabase:
 
 ```sql
 update public.profiles set is_admin = true
@@ -46,103 +56,138 @@ where id = (select id from auth.users where email = 'tu-mail@ejemplo.com');
 ```
 
 Tiene que ser desde el SQL Editor: un trigger impide cambiar `is_admin` desde el cliente. Sin él,
-cualquier usuario podría auto-promoverse con un PATCH a PostgREST usando la anon key, porque la
-policy `profiles_update_own` no restringe columnas.
+cualquier usuario podría auto-promoverse con un PATCH a la API usando la clave anónima, porque la
+política `profiles_update_own` no restringe columnas.
+
+El panel valida el permiso al iniciar sesión (`src/auth/AuthProvider.tsx`): si la cuenta no tiene
+`is_admin`, no entra.
+
+## Secciones
+
+| Sección | Qué hace | De dónde lee |
+|---|---|---|
+| **Dashboard** | Ocupación ahora, sesiones en curso, publicaciones esperando aprobación, movimientos de los últimos 30 días y crecimiento de usuarios (30 días, 6 o 12 meses; nuevos o acumulado) | `admin_active_sessions()`, `admin_growth()`, `admin_transaction_summary()` |
+| **Usuarios** | Conductores y propietarios, con ficha completa (vehículos, reservas, cocheras, movimientos, correo); calificaciones y reseñas, que se pueden ocultar con motivo | `admin_user_directory()`, `admin_user_detail()`, `ratings`, `admin_set_rating_hidden()` |
+| **Inventario** | *Aprobaciones*: cola por estado (pendientes, cambios pedidos, aprobadas, rechazadas). *Cocheras publicadas*: pausar, suspender o reactivar | `parking_lots` y `parking_images`, `parking_lot_documents`, `admin_review_parking_lot()`, `admin_set_parking_lot_moderation()`, `admin_lot_stats()` |
+| **Soporte** | *Tickets*: lista paginada, filtros, respuesta y resolución. *Transacciones*: movimientos de saldo | `admin_tickets_page()`, `support_tickets` y `support_ticket_messages`, `admin_transactions()` |
+
+Los números de la barra lateral (publicaciones por aprobar, tickets abiertos) se actualizan solos.
+
+Cada pantalla tiene su par `xxxApi.ts` (llamadas a Supabase) y `useXxx.ts` (estado), y todo lo
+derivado se calcula ahí. No hay datos de ejemplo: todo viene de la base real.
+
+### Revisión de publicaciones
+
+La ficha de una publicación pendiente reúne lo que el revisor necesita:
+
+- **Datos y fotos** de la cochera, con el punto en el mapa y un aviso si tiene menos de 3 fotos o
+  ninguna.
+- **Datos de contacto** en la descripción (teléfonos, correos), resaltados: suele ser un intento de
+  cerrar el trato por fuera de la app.
+- **Titularidad:** la relación que declaró el propietario con el lugar (titular, inquilino o
+  administrador) y los documentos que subió (DNI y los que acreditan que es el dueño o tiene
+  permiso), con URLs firmadas que vencen.
+- **Edición de una publicación ya aprobada:** se marca como tal. Si el propietario cambió los datos
+  del lugar, la tarifa y servicios o las fotos, vuelve a la cola; los horarios no se revisan.
+- **Checklist:** "Aprobar y publicar" queda deshabilitado hasta tildar los cinco puntos (fotos,
+  dirección, precio, descripción y titularidad), y también si faltan documentos o fotos.
+- **Decisiones:** aprobar, pedir cambios (se marca qué campos hay que modificar) o rechazar con
+  motivo. Un rechazo es definitivo. El propietario recibe una notificación con el resultado.
+
+**Los documentos se borran al decidir.** Al aprobar o rechazar, el panel borra los archivos del
+bucket privado `ownership-docs` y sus filas (con "Pedir cambios" se conservan, porque el
+propietario tiene que reenviar). Queda en la cochera solo la fecha y el revisor de la verificación.
+Si el borrado falla, se reintenta solo la próxima vez que se carga la cola. Esto lo hace el panel
+porque los archivos de Storage no se pueden borrar con SQL.
 
 ## Estructura
 
 ```
 src/
-  auth/      Login real y guard de admin
-  shell/     Sidebar, topbar, layout, contadores de la sidebar
-  ui/        Sistema de diseño propio: botones, tabla, badges, modales, gráficos SVG
-  domain.ts  Tipos y helpers de dominio compartidos
-  pages/     Las 4 secciones — cada una con su xxxApi.ts + useXxx.ts
-  lib/       Cliente de Supabase, formateo
-  styles/    Tokens CSS y estilos
+  auth/      Inicio de sesión y guard de administrador
+  shell/     Barra lateral, barra superior, layout, contadores de pendientes
+  ui/        Sistema de diseño propio: botones, tablas, badges, modales, gráficos SVG
+  domain.ts  Tipos y helpers de dominio del panel (reexporta lo de shared/domain.ts)
+  pages/     dashboard, usuarios, inventario y soporte, cada una con su xxxApi.ts + useXxx.ts
+  lib/       Cliente de Supabase, formato, sondeo periódico y actualización en tiempo real
+  styles/    Tokens de diseño (CSS) y estilos
 ```
 
-## Historia: cómo se conectó cada sección
+## Base de datos
 
-### Inventario (moderación de publicaciones) — migraciones 0034–0040
+El panel depende de migraciones de la raíz del repo (`supabase/migrations/`). Se corren a mano,
+en orden, desde el SQL Editor de Supabase.
 
-`0034_listing_moderation.sql` agrega a `parking_lots` las columnas `approval_status`,
-`moderation_state` y compañía, hace el backfill (lo ya publicado se da por aprobado), suma el
-helper `is_admin()`, y ajusta la policy de lectura pública + `search_parking_lots` para que
-exijan `approval_status = 'approved' and moderation_state = 'live'`.
+| Migraciones | Qué aportan al panel |
+|---|---|
+| 0033 | `profiles.is_admin` y el trigger que lo protege |
+| 0034–0040 | Moderación de publicaciones: estados de aprobación y moderación, `is_admin()`, RPC de revisión y de pausa, aviso al propietario, protección de columnas, `admin_lot_stats()` |
+| 0041, 0054, 0063, 0076 | Tickets de soporte (por reserva, por cochera, por rol y generales) |
+| 0042, 0045, 0056 | Dashboard, transacciones y directorio de usuarios |
+| 0043, 0044 | Usuarios y ocultar reseñas |
+| 0053 | Cocheras archivadas al eliminarse |
+| 0059, 0060 | Listas paginadas del panel y actualización en tiempo real |
+| 0061 | Recarga de saldo de prueba: las transacciones muestran la marca "Demo" |
+| 0072 | "Pedir cambios" indica qué campos modificar y se valida el reenvío |
+| 0078, 0079 | Verificación de titularidad: documentos, bucket privado, sello de verificación, permiso del equipo para borrarlos |
+| 0081, 0082 | Edición de una aprobada vuelve a revisión; toda publicación necesita al menos una foto |
 
-`0035_listing_moderation_rpcs.sql` agrega las RPC `admin_review_parking_lot` y
-`admin_set_parking_lot_moderation`, ambas `security definer` y con validación de admin adentro.
+Verificaciones SQL de esas reglas: `supabase/tests/` (por ejemplo `ownership_checks.sql`,
+`cleanup_checks.sql` y `photo_address_checks.sql`).
 
-`0036_notify_owner_on_review.sql` reemplaza `admin_review_parking_lot` para que además le inserte
-una notificación al propietario (`audience = 'owner'`) con el resultado de la revisión.
+### Historia de las secciones más antiguas
 
-`0037_protect_parking_lot_moderation.sql` — trigger que congela esas columnas para el cliente
-(sin él, un propietario se auto-aprueba con un PATCH).
+- **Inventario (0034–0040).** `0034` agrega a `parking_lots` las columnas `approval_status` y
+  `moderation_state`, hace el relleno (lo ya publicado se da por aprobado) y ajusta la política de
+  lectura pública y `search_parking_lots` para exigir `approved` y `live`. `0035` suma las RPC de
+  revisión y de pausa, ambas `security definer` y con validación de administrador adentro. `0036`
+  hace que la revisión le inserte una notificación al propietario. `0037` y `0038` protegen esas
+  columnas con un trigger (sin él, un propietario se auto-aprueba con un PATCH): la única
+  transición permitida al propietario es `changes_requested` a `pending`. `0039` agrega
+  `admin_lot_stats()` (reservas de 30 días, sesión en curso, próximas 7 días) porque el panel no
+  puede leer `bookings` directo. `0040` deja que el conductor que ya reservó siga viendo el nombre
+  de la cochera aunque la pausen.
+- **Tickets (0041).** Crea `support_tickets` y `support_ticket_messages`. Un mensaje del usuario
+  reabre un ticket resuelto, y la respuesta o resolución del equipo le notifica al usuario.
+- **Dashboard (0042).** Tres RPC: sesiones activas, crecimiento y resumen de movimientos. El
+  gráfico de crecimiento es un embudo, no dos tipos disjuntos: "usuarios nuevos" y "publicaron su
+  primera cochera", que es un subconjunto.
+- **Usuarios (0043).** `admin_user_directory()` y `admin_user_detail()` leen el correo de
+  `auth.users` dentro de una función `security definer`, porque la clave anónima no puede.
+- **Reseñas (0044).** Ocultar una reseña la saca de la ficha pública pero **sigue contando para el
+  promedio**.
 
-`0038_rejection_is_terminal.sql` — ajusta ese trigger: la única transición que el propietario
-puede hacer es `changes_requested` → `pending` (reenvío tras "Pedir cambios"). Una publicación
-`rejected` es definitiva.
+## Seguridad
 
-`0039_admin_lot_stats.sql` — RPC `security definer` `admin_lot_stats()` con los agregados de
-`bookings` por cochera (reservas/30 d, sesión en curso, próximas 7 días), que el admin no puede
-leer directo. La usa la pestaña "Cocheras publicadas".
+Por política directa, un administrador lee `profiles`, `ratings` y `parking_lots` (con
+`is_admin()`, migración 0034), además de las tablas de soporte y los documentos de titularidad.
+Todo lo demás que el panel usa (`bookings`, `vehicles`, movimientos de billetera) entra por **RPC
+`security definer`** que validan administrador adentro y devuelven agregados o listas acotadas,
+nunca acceso libre. `wallets` y las notificaciones ajenas siguen sin ningún acceso.
 
-`0040_booked_lot_stays_visible.sql` — el conductor que ya reservó una cochera sigue viendo su
-nombre aunque el admin la pause/suspenda (`or public.user_has_booking_on_lot(id)` en la policy
-de lectura; el helper es `security definer` para no recursar con `bookings_select`).
+El camino descartado es un backend con clave de servicio: este bundle se sirve al navegador.
 
-Del lado de la app Expo, "Mis publicaciones" del propietario muestra el estado (En revisión /
-Corregir / Rechazada) y el reenvío.
+Los documentos de titularidad viven en un bucket **privado** y el panel los abre con URLs firmadas
+que vencen; ningún otro usuario puede verlos.
 
-### Tickets de soporte — migración 0041
+## Despliegue
 
-`0041_support_tickets.sql` crea `support_tickets` + `support_ticket_messages`. El conductor
-abre un ticket sobre una reserva suya, el propietario sobre una cochera suya (RLS lo obliga).
-Triggers `security definer`: un mensaje del usuario reabre un ticket resuelto; el equipo
-respondiendo o resolviendo le notifica al usuario (`notifications.related_ticket_id`, tipos
-`support_reply` / `support_resolved`). RPC `admin_ticket_context()` para el nombre de la
-cochera (el admin no lee `bookings`). Del lado de la app: `src/features/support/` +
-`app/(client|owner)/profile/support/`, entrada desde Perfil → "Centro de ayuda".
+Se publica en Cloudflare Workers como un proyecto aparte de la app web (otro nombre,
+`garagego-admin`, y otra URL). Desde esta carpeta:
 
-### Dashboard — migración 0042
+```bash
+npm run build
+npx wrangler deploy
+```
 
-`0042_admin_dashboard.sql` agrega tres RPCs `security definer`: `admin_active_sessions()`
-(sesiones en curso con cochera / propietario / conductor / patente), `admin_growth(days, buckets)`
-y `admin_transaction_summary(days)` (volumen y desglose de movimientos). La ocupación total sale
-de un `count` directo sobre `parking_lots`.
+La configuración está en [`wrangler.jsonc`](./wrangler.jsonc): sirve `dist/` como archivos
+estáticos y devuelve `index.html` para cualquier ruta (`/inventario`, `/usuarios`…), porque el
+panel usa rutas del navegador y, sin eso, recargar daría un 404. No usar un archivo `_redirects`:
+Cloudflare lo rechaza por posible bucle infinito.
 
-El gráfico de crecimiento es un **funnel, no dos tipos disjuntos**: "usuarios nuevos"
-(`profiles.created_at`) y "publicaron su 1ª cochera" (`min(parking_lots.created_at)` por owner),
-que es un subconjunto — en la app todo el que se registra es conductor y ser propietario es un
-flag sin fecha.
+Las migraciones no se despliegan con el panel: se corren aparte en Supabase.
 
-### Usuarios — migración 0043
-
-`0043_admin_users.sql` agrega `admin_user_directory()` (una fila por usuario: perfil + email de
-`auth.users` + agregados de vehículos / reservas / cocheras / plata) y `admin_user_detail(id)`
-(la ficha completa como `jsonb`). El email se lee dentro del RPC `security definer` (postgres
-sí puede leer `auth.users`).
-
-### Moderación de reseñas — migración 0044
-
-`0044_rating_moderation.sql` agrega `ratings.is_hidden` / `hidden_reason` / `hidden_at` /
-`hidden_by`, cambia la policy de lectura (el público no ve las ocultas; el autor sí ve la suya;
-el admin ve todo) y agrega `admin_set_rating_hidden(id, hidden, reason)`. Ocultar deja de
-mostrarla en la ficha pública **pero sigue contando para el promedio**. Del lado de la app:
-`listRatingsForParkingLot` filtra `is_hidden = false`.
-
-### Transacciones — migración 0045
-
-`0045_admin_transactions.sql` agrega `admin_transactions(limit)`: los N movimientos más
-recientes con el titular y (si aplica) la cochera. El resumen ya lo daba `admin_transaction_summary`.
-
-## Además: RLS
-
-Por policy directa, un admin lee `profiles`, `ratings` (ambas `using (true)`) y `parking_lots`
-(`... or public.is_admin(auth.uid())`, migración 0034). Todo lo demás que el panel usa —
-`bookings`, `vehicles`, `wallet_transactions`, `support_tickets`— entra por **RPCs
-`security definer`** que validan admin adentro y devuelven agregados o listas acotadas, nunca
-acceso libre. `wallets` y las notificaciones ajenas siguen sin ningún acceso (nadie los usa aún).
-
-El camino descartado es el backend con service key: este bundle se sirve al navegador.
+**Pendiente de seguridad:** hoy cualquiera que conozca la URL ve la pantalla de inicio de sesión
+(solo entran las cuentas con `is_admin`). Conviene activar Cloudflare Access sobre el Worker para
+que únicamente el equipo llegue a la página, y revisar que las cuentas administradoras tengan
+contraseñas fuertes.
