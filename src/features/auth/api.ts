@@ -55,9 +55,23 @@ export async function verifyRecoveryCode(email: string, code: string) {
   if (error) throw error;
 }
 
+/**
+ * Supabase manda el aviso "tu contraseña fue cambiada" dentro del mismo request: si el SMTP
+ * tarda, el gateway corta con 504 aunque la contraseña ya se guardó. Ante un 5xx se comprueba
+ * entrando con la clave nueva; si entra, el cambio se hizo y no se le muestra el error.
+ */
 export async function updatePassword(newPassword: string) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const email = sessionData.session?.user.email;
   const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) throw error;
+  if (!error) return;
+
+  const status = (error as { status?: number }).status;
+  if (email && typeof status === 'number' && status >= 500) {
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: newPassword });
+    if (!signInError) return;
+  }
+  throw error;
 }
 
 export async function signInWithGoogle() {
