@@ -8,8 +8,8 @@ administración** web para el equipo.
 
 **Versión web publicada:** https://garagego.garagego2027.workers.dev
 
-**APK de Android:** https://expo.dev/artifacts/eas/S0mwvD0oJPwAdYCmIN4C8N3b3P3TFFLtxus1uOp43Ig.apk
-*(build del 24/10/2026 sobre `main`, con todas las migraciones hasta la 0083)*
+**APK de Android:** https://expo.dev/artifacts/eas/CL-GNDoHBEXtN5IgUAh6nEvnSIYBr_pB4tpgiQhZ9pM.apk
+*(build del 26/10/2026 sobre `main`, commit `511af20`, con todas las migraciones hasta la 0083)*
 
 **Repositorio:** https://github.com/porcelcabralnicolas-27/GARAGEGO · versión **1.0.0** en la rama
 `main`
@@ -67,7 +67,7 @@ soporte, modera reseñas y consulta métricas, usuarios y transacciones.
 
 | Funciona hoy | Pendiente |
 |---|---|
-| Cuenta con correo o Google, recuperación de contraseña con código | Pagos con dinero real (Mercado Pago: diseño cerrado, sin implementar) |
+| Cuenta con correo o Google, recuperación de contraseña con código (tolera la demora del servidor de correo al guardar la clave nueva) | Pagos con dinero real (Mercado Pago: diseño cerrado, sin implementar) |
 | Búsqueda por ubicación y por dirección, «disponible ahora» | Retiro de fondos del propietario |
 | Reserva, pago con billetera, inicio, fin, excedente y cancelación | Notificaciones push remotas |
 | Cierre automático de reservas olvidadas y recordatorios | Eliminación de cuenta (el botón existe, sin función) |
