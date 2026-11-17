@@ -1,6 +1,6 @@
 import { GoogleMap, MarkerF, OverlayView, OverlayViewF, useJsApiLoader } from '@react-google-maps/api';
 import { useQuery } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -44,6 +44,7 @@ const GOOGLE_MAPS_WEB_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY 
 
 // Con una sola cochera cerca, fitBounds acercaría el mapa a nivel de calle: se limita el zoom.
 const MAX_FIT_ZOOM = 15;
+const INITIAL_ZOOM = 13;
 const MY_LOCATION_ZOOM = 16;
 const FIT_PADDING = 48;
 
@@ -69,6 +70,19 @@ export default function ClientHomeWebScreen() {
   // El aviso de la búsqueda se oculta apenas se elige un estacionamiento.
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const [map, setMap] = useState<google.maps.Map | null>(null);
+  // Cada vez que se toca la pestaña Inicio, el mapa vuelve a la vista con la que se abre la app:
+  // sin cartel ni hoja y encuadrando los estacionamientos (el layout borra además los filtros).
+  const [resetCount, setResetCount] = useState(0);
+  const navigation = useNavigation();
+  useEffect(
+    () =>
+      navigation.addListener('tabPress' as never, () => {
+        setCalloutId(null);
+        setSelectedId(null);
+        setResetCount((count) => count + 1);
+      }),
+    [navigation]
+  );
 
   // Objeto estable: GoogleMap vuelve a centrar el mapa cada vez que `center` cambia de identidad, y
   // un objeto nuevo en cada render lo recentraba con cada refresco de datos (la disponibilidad se
@@ -148,7 +162,15 @@ export default function ClientHomeWebScreen() {
   const framed = lotsToFrame(results, searchRadiusKm);
   const resultsKey = framed.map((r) => r.id).join(',');
   useEffect(() => {
-    if (!map || latitude === null || longitude === null || framed.length === 0) return;
+    if (!map || latitude === null || longitude === null) return;
+    if (framed.length === 0) {
+      // Sin estacionamientos que encuadrar: la vista de entrada es el centro con el zoom inicial.
+      if (resetCount > 0) {
+        map.setCenter({ lat: latitude, lng: longitude });
+        map.setZoom(INITIAL_ZOOM);
+      }
+      return;
+    }
     const bounds = new google.maps.LatLngBounds({ lat: latitude, lng: longitude });
     for (const lot of framed) bounds.extend({ lat: lot.latitude, lng: lot.longitude });
     map.fitBounds(bounds, FIT_PADDING);
@@ -158,7 +180,7 @@ export default function ClientHomeWebScreen() {
     return () => listener.remove();
     // `results`, `latitude` y `longitude` entran por resultsKey y por los params de la búsqueda.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, resultsKey, latitude, longitude]);
+  }, [map, resultsKey, latitude, longitude, resetCount]);
 
   if (!GOOGLE_MAPS_WEB_API_KEY) {
     return (
@@ -219,7 +241,7 @@ export default function ClientHomeWebScreen() {
           <GoogleMap
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={mapCenter ?? undefined}
-            zoom={13}
+            zoom={INITIAL_ZOOM}
             onLoad={setMap}
             onUnmount={() => setMap(null)}
             // Tocar el mapa fuera de un pin cierra el cartel y la hoja, como en el celular.

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, type LayoutRectangle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,6 +39,9 @@ type SearchParams = {
   notice?: string;
 };
 
+/** Zoom con el que se abre el mapa (y al que vuelve al tocar Inicio). */
+const INITIAL_DELTA = { latitudeDelta: 0.05, longitudeDelta: 0.05 };
+
 export default function ClientHomeScreen() {
   const router = useRouter();
   const { colors, typography } = useTheme();
@@ -56,6 +59,18 @@ export default function ClientHomeScreen() {
   // El aviso de la búsqueda se oculta apenas se elige un estacionamiento.
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const mapRef = useRef<MapView>(null);
+  // Cada vez que se toca la pestaña Inicio, el mapa vuelve a la vista con la que se abre la app:
+  // sin hoja y con la región inicial (el layout borra además los filtros de una búsqueda).
+  const [resetCount, setResetCount] = useState(0);
+  const navigation = useNavigation();
+  useEffect(
+    () =>
+      navigation.addListener('tabPress' as never, () => {
+        setSelectedId(null);
+        setResetCount((count) => count + 1);
+      }),
+    [navigation]
+  );
 
   // Al tocar el cartel, el mapa va directo a la cochera y la deja visible por encima de la hoja,
   // igual que en la web (src/features/search/mapCamera.ts). Para eso hace falta saber dónde está el
@@ -118,6 +133,21 @@ export default function ClientHomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [framedKey, nearbyCount]);
 
+  // La vuelta a la vista inicial (después de render, ya con los filtros borrados): la misma región
+  // con la que se arma el mapa y, si correspondía, el encuadre de los estacionamientos de afuera.
+  useEffect(() => {
+    if (resetCount === 0 || latitude === null || longitude === null) return;
+    mapRef.current?.animateToRegion({ latitude, longitude, ...INITIAL_DELTA }, 400);
+    if (!isRadiusSearch && nearbyCount === 0 && framed.length > 0) {
+      mapRef.current?.fitToCoordinates(
+        [{ latitude, longitude }, ...framed.map((lot) => ({ latitude: lot.latitude, longitude: lot.longitude }))],
+        { edgePadding: { top: 60, right: 60, bottom: 60, left: 60 }, animated: true }
+      );
+    }
+    // Solo cuando se toca Inicio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetCount]);
+
   // Verde = se puede usar ahora (en horario y con lugar); gris = cerrada o llena en este momento.
   const availableNow = useAvailableNow(results.map((r) => r.id));
 
@@ -172,12 +202,7 @@ export default function ClientHomeScreen() {
           // botón para volver a centrar el mapa en vos.
           showsUserLocation
           showsMyLocationButton
-          initialRegion={{
-            latitude,
-            longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
+          initialRegion={{ latitude, longitude, ...INITIAL_DELTA }}
           // Tocar el mapa fuera de un marcador cierra la tarjeta de vista previa.
           onPress={() => setSelectedId(null)}
         >

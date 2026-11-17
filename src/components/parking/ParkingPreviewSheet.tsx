@@ -21,13 +21,11 @@ type ParkingPreviewSheetProps = {
 
 // Hoja que aparece sobre el mapa al elegir un estacionamiento.
 //
-// Sigue la pantalla "Reserva tu lugar" del Figma: anclada al borde inferior a todo el ancho,
-// redondeada solo arriba, con el detalle del lugar en una tarjeta delineada y una única acción
-// principal. Se aparta del Figma en dos puntos, a propósito:
-//   - conserva rating y distancia, que el mockup no muestra pero son el criterio con el que se
-//     elige entre un estacionamiento y otro;
-//   - conserva "Ver detalle" como acción secundaria, porque es el único acceso a la ficha
-//     completa desde el mapa.
+// Sigue la pantalla "Reserva tu lugar" del Figma (anclada abajo a todo el ancho, redondeada solo
+// arriba), en una versión compacta: tiene que dejar ver el pin y su cartel en el mapa de arriba.
+// Por eso los datos van sin recuadro y las dos acciones comparten una fila. Conserva rating y
+// distancia (el criterio con el que se elige entre un estacionamiento y otro) y "Ver detalle", el
+// único acceso a la ficha completa desde el mapa.
 //
 // Vive acá y no dentro de la pantalla de Inicio porque la usan las dos versiones del mapa,
 // la nativa y la web, que son archivos separados.
@@ -50,60 +48,56 @@ export function ParkingPreviewSheet({
       style={[styles.sheet, shadows.raised, { backgroundColor: colors.surface }]}
     >
       <View style={styles.header}>
-        <Text style={[typography.displayLarge, styles.title, { color: colors.onSurface }]} numberOfLines={1}>
-          {t('Reserva tu lugar')}
+        <Text style={[typography.label, styles.title, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
+          {t('Reserva tu lugar').toUpperCase()}
         </Text>
         <IconButton name="close" size={18} onPress={onClose} accessibilityLabel={t('Cerrar')} />
       </View>
 
-      <View style={[styles.detail, { borderColor: colors.outline }]}>
-        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{LOT_TYPE_LABELS[lot.lotType]}</Text>
-        <Text style={[typography.titleLarge, { color: colors.onSurface }]} numberOfLines={1}>
+      <View style={styles.nameRow}>
+        <Text style={[typography.titleMedium, styles.name, { color: colors.onSurface }]} numberOfLines={1}>
           {lot.name}
         </Text>
-        <Text style={[typography.bodyMedium, styles.address, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
-          {lot.address}
-        </Text>
+        <Text style={[typography.titleMedium, { color: colors.accent }]}>{formatPricePerHour(lot.pricePerHour)}</Text>
+      </View>
+      <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
+        {lot.address}
+      </Text>
 
-        {isAvailableNow !== undefined ? (
-          <View style={styles.availability}>
-            <View
-              style={[
-                styles.availabilityDot,
-                { backgroundColor: isAvailableNow ? colors.success : colors.onSurfaceVariant },
-              ]}
-            />
-            <Text style={[typography.label, { color: isAvailableNow ? colors.accent : colors.onSurfaceVariant }]}>
-              {isAvailableNow ? t('Disponible ahora') : t('No disponible ahora · podés reservar para más tarde')}
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={[styles.divider, { backgroundColor: colors.outline }]} />
-
-        <View style={styles.metaRow}>
-          <View style={styles.meta}>
-            <Ionicons name="star" size={14} color={colors.onSurfaceVariant} />
-            <Text style={[typography.label, styles.metaText, { color: colors.onSurfaceVariant }]}>
-              {lot.ratingAvg.toFixed(1)}
-            </Text>
-          </View>
-
-          <View style={styles.meta}>
-            <Ionicons name="navigate-outline" size={14} color={colors.onSurfaceVariant} />
-            <Text style={[typography.label, styles.metaText, { color: colors.onSurfaceVariant }]}>
-              {lot.distanceKm.toFixed(1)} km
-            </Text>
-          </View>
-
-          <Text style={[typography.titleMedium, styles.price, { color: colors.accent }]}>
-            {formatPricePerHour(lot.pricePerHour)}
-          </Text>
+      <View style={styles.metaRow}>
+        <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{LOT_TYPE_LABELS[lot.lotType]}</Text>
+        <View style={styles.meta}>
+          <Ionicons name="star" size={13} color={colors.onSurfaceVariant} />
+          <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{lot.ratingAvg.toFixed(1)}</Text>
+        </View>
+        <View style={styles.meta}>
+          <Ionicons name="navigate-outline" size={13} color={colors.onSurfaceVariant} />
+          <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{lot.distanceKm.toFixed(1)} km</Text>
         </View>
       </View>
 
-      <Button label={t('Continuar')} onPress={onBook} fullWidth />
-      <Button label={t('Ver detalle')} variant="text" onPress={onViewDetail} fullWidth />
+      {isAvailableNow !== undefined ? (
+        <View style={styles.availability}>
+          <View
+            style={[styles.availabilityDot, { backgroundColor: isAvailableNow ? colors.success : colors.onSurfaceVariant }]}
+          />
+          <Text
+            style={[typography.label, styles.availabilityText, { color: isAvailableNow ? colors.accent : colors.onSurfaceVariant }]}
+            numberOfLines={1}
+          >
+            {isAvailableNow ? t('Disponible ahora') : t('No disponible ahora · podés reservar para más tarde')}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.actions}>
+        <View style={styles.action}>
+          <Button label={t('Ver detalle')} variant="outlined" onPress={onViewDetail} />
+        </View>
+        <View style={styles.action}>
+          <Button label={t('Continuar')} onPress={onBook} />
+        </View>
+      </View>
     </View>
   );
 }
@@ -117,30 +111,39 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
   },
   title: {
     flex: 1,
   },
-  detail: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
   },
-  address: {
+  name: {
+    flex: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     marginTop: spacing.xs,
+  },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   availability: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   availabilityDot: {
     width: 8,
@@ -148,23 +151,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: spacing.sm,
   },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: spacing.md,
+  availabilityText: {
+    flexShrink: 1,
   },
-  metaRow: {
+  actions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  meta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  metaText: {
-    marginLeft: spacing.xs,
-  },
-  price: {
-    marginLeft: 'auto',
+  action: {
+    flex: 1,
   },
 });
