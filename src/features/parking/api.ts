@@ -384,43 +384,27 @@ export async function uploadLotDocument(params: {
   const { error: uploadError } = await supabase.storage.from(DOCS_BUCKET).upload(path, arrayBuffer, { contentType });
   if (uploadError) throw uploadError;
 
-  // Se quita lo anterior del mismo requisito (la tabla tiene un documento por tipo).
-  const kindsToClear = [params.kind, ...(params.replacesKinds ?? [])];
-  const { data: previous, error: previousError } = await supabase
-    .from('parking_lot_documents')
-    .select('id, storage_path')
-    .eq('parking_lot_id', params.parkingLotId)
-    .in('kind', kindsToClear);
-  if (previousError) {
+  // Registrar el nuevo y quitar el anterior del mismo requisito pasa en una sola transacción
+  // (replace_lot_document, 0101): si falla, el documento anterior queda como estaba y se borra el
+  // archivo recién subido. Recién con el registro hecho se borran los archivos viejos.
+  const { data, error } = await supabase.rpc('replace_lot_document', {
+    p_lot_id: params.parkingLotId,
+    p_kind: params.kind,
+    p_storage_path: path,
+    p_replaces_kinds: params.replacesKinds ?? [],
+  });
+  if (error || !data) {
     await supabase.storage.from(DOCS_BUCKET).remove([path]).catch(() => {});
-    throw previousError;
+    throw error ?? new Error('No se pudo registrar el documento.');
   }
-  if (previous && previous.length > 0) {
-    const { error: clearError } = await supabase
-      .from('parking_lot_documents')
-      .delete()
-      .in('id', previous.map((row) => row.id));
-    if (clearError) {
-      await supabase.storage.from(DOCS_BUCKET).remove([path]).catch(() => {});
-      throw clearError;
-    }
-  }
+  const result = data as { id: string; kind: DocumentKind; storage_path: string; removed_paths: string[] | null };
 
-  const { data, error } = await supabase
-    .from('parking_lot_documents')
-    .insert({ parking_lot_id: params.parkingLotId, kind: params.kind, storage_path: path })
-    .select('id, kind, storage_path')
-    .single();
-  if (error) {
-    await supabase.storage.from(DOCS_BUCKET).remove([path]).catch(() => {});
-    throw error;
-  }
-
-  if (previous && previous.length > 0) {
+  const removed = result.removed_paths ?? [];
+  if (removed.length > 0) {
     // Mejor esfuerzo: si falla, queda un archivo suelto en el bucket privado.
-    await supabase.storage.from(DOCS_BUCKET).remove(previous.map((row) => row.storage_path)).catch(() => {});
+    await supabase.storage.from(DOCS_BUCKET).remove(removed).catch(() => {});
   }
-  return { id: data.id, kind: data.kind, storagePath: data.storage_path };
+  return { id: result.id, kind: result.kind, storagePath: result.storage_path };
 }
 
 export async function deleteLotDocument(doc: { id: string; storagePath: string }): Promise<void> {
@@ -569,6 +553,10 @@ export function getParkingErrorMessage(error: unknown): string {
       return 'Alguno de los servicios elegidos ya no se ofrece. Quitalo y volvé a guardar.';
     }
     if (message.includes('photo_required')) return 'Subí al menos una foto del lugar para publicarlo.';
+    // Una cochera aprobada (titularidad ya verificada) o archivada no acepta documentos (0101).
+    if (message.includes('documents_not_accepted') || message.includes('ownership-docs')) {
+      return 'Esta publicación ya no necesita documentos de titularidad.';
+    }
     if (message.includes('ownership_docs_required')) {
       return 'Faltan los documentos que acreditan que sos el dueño o que tenés permiso para publicar este lugar.';
     }

@@ -361,4 +361,22 @@ export const EN: Record<string, string> = {
     'You have active or upcoming bookings. Once they end or you cancel them, you will be able to delete your account.',
   'No se pudo eliminar la cuenta. Revisá tu conexión y volvé a intentar.':
     "Your account couldn't be deleted. Check your connection and try again.",
+  'Ese vehículo es de otro país. Elegí uno cargado en el país en el que estás usando la app.':
+    'That vehicle belongs to another country. Choose one added in the country where you are using the app.',
+  'Este estacionamiento es de otro país. Cambiá de país en Ajustes para reservarlo.':
+    'This parking lot is in another country. Switch countries in Settings to book it.',
+  'Tenés recargas esperando el pago que, sumadas a esta, pasarían el saldo máximo. Terminalas o esperá a que venzan.':
+    'You have top-ups awaiting payment that, together with this one, would exceed the maximum balance. Finish them or wait for them to expire.',
+  'Tenés recargas de Mercado Pago esperando el pago. Cuando se acrediten o venzan, vas a poder eliminar tu cuenta.':
+    'You have Mercado Pago top-ups awaiting payment. Once they are credited or expire, you will be able to delete your account.',
+  'Tenés devoluciones de Mercado Pago pendientes. Cuando se completen, vas a poder eliminar tu cuenta.':
+    'You have pending Mercado Pago refunds. Once they are completed, you will be able to delete your account.',
+  'Recargas de Mercado Pago esperando el pago: {count}.':
+    'Mercado Pago top-ups awaiting payment: {count}.',
+  'Devoluciones de Mercado Pago pendientes: {count}.':
+    'Pending Mercado Pago refunds: {count}.',
+  'Cuando terminen, se cancelen o se completen, vas a poder eliminarla.':
+    'Once they end, are cancelled or are completed, you will be able to delete it.',
+  'Tenés {count} reservas activas o próximas en {country}. Siguen vigentes: las vas a ver al volver a ese país.':
+    'You have {count} active or upcoming bookings in {country}. They are still valid: you will see them when you switch back to that country.',
 };

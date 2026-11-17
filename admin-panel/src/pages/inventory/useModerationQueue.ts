@@ -3,12 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ListingChangeField, LotRow, ModerationState } from '../../domain';
 import { useRealtimeRefresh } from '../../lib/useRealtimeRefresh';
 import { fetchChecklistItems, type ChecklistItem } from '../settings/checklistApi';
-import {
-  fetchModerationLots,
-  reviewLot,
-  setLotModeration,
-  type ReviewDecision,
-} from './moderationApi';
+import { REVIEW_STALE_MESSAGE, fetchModerationLots, reviewLot, setLotModeration, type ReviewDecision } from './moderationApi';
 
 /**
  * Estado de la sección Inventario con datos reales. Es deliberadamente simple: un `useEffect`
@@ -29,7 +24,8 @@ export type ModerationQueue = {
     decision: ReviewDecision,
     reason: string | null,
     fields?: ListingChangeField[],
-    checkedItems?: string[]
+    checkedItems?: string[],
+    expectedReviewVersion?: number | null
   ) => Promise<{ documentsPending: boolean }>;
   /** Pausar / suspender / reactivar una cochera aprobada. Refresca la lista. */
   setModeration: (
@@ -76,10 +72,23 @@ export function useModerationQueue(): ModerationQueue {
   useRealtimeRefresh('admin-moderation-queue', ['parking_lots', 'review_checklist_items'], () => void load());
 
   const review = useCallback<ModerationQueue['review']>(
-    async (lotId, decision, reason, fields, checkedItems) => {
-      const result = await reviewLot(lotId, decision, reason, fields ?? null, checkedItems ?? []);
-      await load();
-      return result;
+    async (lotId, decision, reason, fields, checkedItems, expectedReviewVersion) => {
+      try {
+        const result = await reviewLot(
+          lotId,
+          decision,
+          reason,
+          fields ?? null,
+          checkedItems ?? [],
+          expectedReviewVersion ?? null
+        );
+        await load();
+        return result;
+      } catch (err) {
+        // Si cambió mientras se revisaba, se recarga para mostrar la versión nueva.
+        if (err instanceof Error && err.message === REVIEW_STALE_MESSAGE) await load();
+        throw err;
+      }
     },
     [load]
   );

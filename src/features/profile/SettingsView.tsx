@@ -110,7 +110,8 @@ function RegionRow({ role }: { role: Role }) {
 
 /** Texto del diálogo de eliminar cuenta según lo que devolvió el chequeo previo. */
 function deletionDialogText(check: AccountDeletionCheck): { blocked: boolean; title: string; message: string } {
-  if (check.driverBookings + check.ownerBookings > 0) {
+  const pending = check.driverBookings + check.ownerBookings + check.pendingTopups + check.pendingRefunds;
+  if (pending > 0) {
     const parts: string[] = [];
     if (check.driverBookings > 0) {
       parts.push(t('Reservas tuyas activas o próximas: {count}.', { count: check.driverBookings }));
@@ -118,10 +119,16 @@ function deletionDialogText(check: AccountDeletionCheck): { blocked: boolean; ti
     if (check.ownerBookings > 0) {
       parts.push(t('Reservas activas o próximas en tus cocheras: {count}.', { count: check.ownerBookings }));
     }
+    if (check.pendingTopups > 0) {
+      parts.push(t('Recargas de Mercado Pago esperando el pago: {count}.', { count: check.pendingTopups }));
+    }
+    if (check.pendingRefunds > 0) {
+      parts.push(t('Devoluciones de Mercado Pago pendientes: {count}.', { count: check.pendingRefunds }));
+    }
     return {
       blocked: true,
       title: t('Todavía no podés eliminar tu cuenta'),
-      message: `${parts.join(' ')} ${t('Cuando terminen o se cancelen, vas a poder eliminarla.')}`,
+      message: `${parts.join(' ')} ${t('Cuando terminen, se cancelen o se completen, vas a poder eliminarla.')}`,
     };
   }
   const balance =

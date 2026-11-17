@@ -168,6 +168,10 @@ function paymentErrorMessage(error: unknown): string {
   if (message.includes('topup_limit_reached')) {
     return t('Con esa recarga pasarías el saldo máximo de {max}.', { max: formatMoney(appLimits().walletMaxBalance) });
   }
+  // El tope cuenta también las recargas que todavía esperan el pago (0099).
+  if (message.includes('topup_pending_limit')) {
+    return 'Tenés recargas esperando el pago que, sumadas a esta, pasarían el saldo máximo. Terminalas o esperá a que venzan.';
+  }
   if (message.includes('too_many_open_topups')) {
     return 'Tenés recargas sin terminar. Esperá unos minutos antes de iniciar otra.';
   }

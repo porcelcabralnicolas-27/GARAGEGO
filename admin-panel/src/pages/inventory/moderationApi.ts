@@ -59,6 +59,7 @@ type ParkingLotRow = {
   lot_type: LotType;
   holder_role: HolderRole;
   region: string | null;
+  review_version?: number | null;
   rating_avg: number;
   is_active: boolean;
   created_at: string;
@@ -103,6 +104,7 @@ function toAdminLot(row: ParkingLotRow): AdminParkingLot {
     lotType: row.lot_type ?? 'lot',
     holderRole: row.holder_role ?? 'owner',
     region: row.region ?? 'AR',
+    reviewVersion: row.review_version ?? null,
     ratingAvg: row.rating_avg,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -140,13 +142,21 @@ function toAdminProfile(row: ProfileRow): AdminProfile {
 export async function fetchModerationLots(): Promise<LotRow[]> {
   if (!supabase) throw new Error('Supabase no está configurado (falta el .env del panel).');
 
-  const { data: lots, error } = await supabase
+  const columns =
+    'id, owner_id, name, description, address, latitude, longitude, price_per_hour, capacity, amenities, lot_type, holder_role, region, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, requested_changes, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at, ownership_verified_at, approved_snapshot';
+  let { data: lots, error } = await supabase
     .from('parking_lots')
-    .select(
-      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, capacity, amenities, lot_type, holder_role, region, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, requested_changes, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at, ownership_verified_at, approved_snapshot'
-    )
+    .select(`${columns}, review_version`)
     .order('created_at', { ascending: true })
     .returns<ParkingLotRow[]>();
+  // Sin la 0102 no existe `review_version`: se lee sin ella y se aprueba como antes.
+  if (error && error.message.includes('review_version')) {
+    ({ data: lots, error } = await supabase
+      .from('parking_lots')
+      .select(columns)
+      .order('created_at', { ascending: true })
+      .returns<ParkingLotRow[]>());
+  }
   if (error) throw error;
   if (!lots || lots.length === 0) return [];
 
@@ -326,12 +336,17 @@ async function purgeLotDocuments(lotId: string): Promise<void> {
  * Devuelve `documentsPending: true` si la decisión se tomó pero el borrado falló: se reintenta
  * solo la próxima vez que se carga la cola.
  */
+/** Mensaje cuando la publicación cambió mientras se revisaba (0102). La pantalla lo reconoce. */
+export const REVIEW_STALE_MESSAGE =
+  'la publicación cambió mientras la revisabas. Ya se recargó con los datos nuevos: revisala de nuevo antes de aprobar.';
+
 export async function reviewLot(
   lotId: string,
   decision: ReviewDecision,
   reason: string | null,
   fields: ListingChangeField[] | null = null,
-  checkedItems: string[] = []
+  checkedItems: string[] = [],
+  expectedReviewVersion: number | null = null
 ): Promise<{ documentsPending: boolean }> {
   if (!supabase) throw new Error('Supabase no está configurado (falta el .env del panel).');
 
@@ -342,8 +357,14 @@ export async function reviewLot(
     p_fields: decision === 'changes_requested' ? fields : null,
     // Puntos del checklist tildados: el servidor exige los obligatorios para aprobar (0092).
     p_checked_items: decision === 'approved' ? checkedItems : null,
+    // Versión que se tenía en pantalla: si la publicación cambió, el servidor no aprueba (0102).
+    // Sin la migración (null) se aprueba como antes.
+    ...(decision === 'approved' && expectedReviewVersion !== null
+      ? { p_expected_review_version: expectedReviewVersion }
+      : {}),
   });
   if (error) {
+    if (error.message.includes('review_stale')) throw new Error(REVIEW_STALE_MESSAGE);
     const pending = /checklist_incomplete: (.*)/.exec(error.message);
     if (pending) {
       throw new Error(

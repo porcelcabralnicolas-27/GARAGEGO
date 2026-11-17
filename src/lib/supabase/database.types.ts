@@ -586,7 +586,20 @@ export type Database = {
       // Antes de eliminar la cuenta: reservas que la bloquean y saldo que se perdería (0088).
       account_deletion_check: {
         Args: Record<string, never>;
-        Returns: { driver_bookings: number; owner_bookings: number; wallet_balance: number }[];
+        // pending_* desde la 0100 (recargas, devoluciones y documentos pendientes).
+        Returns: {
+          driver_bookings: number;
+          owner_bookings: number;
+          wallet_balance: number;
+          pending_topups?: number;
+          pending_refunds?: number;
+          pending_documents?: number;
+        }[];
+      };
+      // Registra un documento de titularidad y quita el anterior del mismo requisito (0101).
+      replace_lot_document: {
+        Args: { p_lot_id: string; p_kind: string; p_storage_path: string; p_replaces_kinds?: string[] };
+        Returns: Record<string, unknown>;
       };
       // Listados paginados por cursor (0059).
       list_client_bookings: {

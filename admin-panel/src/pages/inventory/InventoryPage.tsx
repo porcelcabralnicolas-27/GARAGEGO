@@ -24,7 +24,7 @@ import { useToast } from '../../ui/Toast';
 import { SLA_COLORS, SLA_TEXT_COLORS, SlaBar } from '../settings/ModerationSettings';
 import { useModerationConfig } from '../settings/useModerationConfig';
 import { ListingReviewPanel } from './ListingReviewPanel';
-import { type ReviewDecision } from './moderationApi';
+import { REVIEW_STALE_MESSAGE, type ReviewDecision } from './moderationApi';
 import { useModerationQueue, type ModerationQueue } from './useModerationQueue';
 
 type MainTab = 'approvals' | 'active';
@@ -136,13 +136,15 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
   ) => {
     advance(lot.id);
     try {
-      const { documentsPending } = await review(lot.id, decision, reason, fields, checkedItems);
+      const { documentsPending } = await review(lot.id, decision, reason, fields, checkedItems, lot.reviewVersion);
       show(
         documentsPending
           ? `${okMessage}. Ojo: los documentos de titularidad todavía no se pudieron borrar; se reintenta solo al recargar la cola.`
           : okMessage
       );
     } catch (err) {
+      // Cambió mientras se revisaba (0102): se vuelve a esa publicación, ya recargada.
+      if (err instanceof Error && err.message === REVIEW_STALE_MESSAGE) setSelectedId(lot.id);
       show(`Error: ${err instanceof Error ? err.message : 'no se pudo completar la acción'}`);
     }
   };

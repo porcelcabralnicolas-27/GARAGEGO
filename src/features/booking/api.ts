@@ -243,6 +243,13 @@ function bookingErrorMessage(error: unknown): string {
       return 'No podés reservar tu propio estacionamiento.';
     }
     if (message.includes('vehicle_required')) return 'Elegí un vehículo para esta reserva.';
+    // Separación por país hecha en el servidor (0098).
+    if (message.includes('vehicle_region_mismatch')) {
+      return 'Ese vehículo es de otro país. Elegí uno cargado en el país en el que estás usando la app.';
+    }
+    if (message.includes('region_mismatch')) {
+      return 'Este estacionamiento es de otro país. Cambiá de país en Ajustes para reservarlo.';
+    }
     if (message.includes('vehicle_not_found')) return 'Ese vehículo ya no está disponible. Elegí otro.';
     if (message.includes('vehicle_busy')) {
       return 'Ese vehículo ya tiene otra reserva en ese horario. Elegí otro vehículo o cambiá el horario.';

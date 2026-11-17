@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -12,6 +12,7 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { updateRegion } from '@/features/profile/api';
 import { t } from '@/lib/i18n';
 import { REGIONS, type RegionCode } from '@/lib/region';
+import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -33,6 +34,21 @@ export function RegionView({ backHref, homeHref }: { backHref: Href; homeHref: H
   const current = profile?.region ?? 'AR';
 
   const [selected, setSelected] = useState<RegionCode>(current);
+  // Reservas activas o próximas en el país actual: siguen vigentes, pero dejan de verse al cambiar.
+  const { data: activeBookings = 0 } = useQuery({
+    queryKey: ['regionActiveBookings', profile?.id, current],
+    enabled: Boolean(profile),
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', profile!.id)
+        .eq('region', current)
+        .in('status', ['pending', 'confirmed']);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -75,6 +91,16 @@ export function RegionView({ backHref, homeHref }: { backHref: Href; homeHref: H
         <Text style={[typography.bodyMedium, styles.description, { color: colors.onSurfaceVariant }]}>
           {t('Cambia el idioma, la moneda, la hora y la ubicación. Las reservas, los mensajes y las notificaciones de cada país se ven por separado.')}
         </Text>
+
+        {selected !== current && activeBookings > 0 ? (
+          <Banner
+            variant="info"
+            message={t('Tenés {count} reservas activas o próximas en {country}. Siguen vigentes: las vas a ver al volver a ese país.', {
+              count: activeBookings,
+              country: t(REGIONS[current].label),
+            })}
+          />
+        ) : null}
 
         {(Object.keys(REGIONS) as RegionCode[]).map((code) => {
           const isSelected = selected === code;

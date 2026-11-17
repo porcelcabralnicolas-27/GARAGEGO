@@ -126,6 +126,12 @@ export type AccountDeletionCheck = {
   ownerBookings: number;
   /** Saldo de la billetera, que se pierde al eliminar la cuenta. */
   walletBalance: number;
+  /** Recargas de Mercado Pago que todavía esperan el pago (0100). */
+  pendingTopups: number;
+  /** Devoluciones de Mercado Pago pendientes (0100). */
+  pendingRefunds: number;
+  /** Documentos de titularidad sin revisar, que se borran con la cuenta (0100). */
+  pendingDocuments: number;
 };
 
 /** Lo que hay que saber antes de pedir la confirmación. El control de verdad lo hace el servidor. */
@@ -136,6 +142,10 @@ export async function getAccountDeletionCheck(): Promise<AccountDeletionCheck> {
     driverBookings: data.driver_bookings,
     ownerBookings: data.owner_bookings,
     walletBalance: Number(data.wallet_balance),
+    // Sin la 0100 no vienen: se toman como cero (el servidor igual controla al eliminar).
+    pendingTopups: Number(data.pending_topups ?? 0),
+    pendingRefunds: Number(data.pending_refunds ?? 0),
+    pendingDocuments: Number(data.pending_documents ?? 0),
   };
 }
 
@@ -158,6 +168,12 @@ export function getAccountDeletionErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message.includes('account_has_active_bookings')) {
     return t('Tenés reservas activas o próximas. Cuando terminen o las canceles, vas a poder eliminar tu cuenta.');
+  }
+  if (message.includes('account_has_pending_topups')) {
+    return t('Tenés recargas de Mercado Pago esperando el pago. Cuando se acrediten o venzan, vas a poder eliminar tu cuenta.');
+  }
+  if (message.includes('account_has_pending_refunds')) {
+    return t('Tenés devoluciones de Mercado Pago pendientes. Cuando se completen, vas a poder eliminar tu cuenta.');
   }
   return t('No se pudo eliminar la cuenta. Revisá tu conexión y volvé a intentar.');
 }

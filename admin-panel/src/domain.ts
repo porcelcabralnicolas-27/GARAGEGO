@@ -84,6 +84,8 @@ export type AdminParkingLot = {
   holderRole: HolderRole;
   /** País de la cochera (0087): 'AR' o 'US' (demo). */
   region: string;
+  /** Versión de lo que se revisa (0102): sube con cada cambio. Se manda al aprobar. null sin la migración. */
+  reviewVersion: number | null;
   /** Cuándo se verificó la titularidad (0079). Los documentos ya se borraron; queda este sello. */
   ownershipVerifiedAt: string | null;
   ratingAvg: number;

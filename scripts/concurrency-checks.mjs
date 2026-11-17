@@ -12,6 +12,10 @@
 // Sin los arreglos de la 0047/0048/0057, B no esperaría y pasaría: doble reembolso, doble cobro,
 // reservas pegadas sin el margen de 15 min, o saldo por encima del tope.
 //
+// Los últimos escenarios prueban las recargas de Mercado Pago en modo de prueba (0099), sin pagos
+// reales: llaman a begin_mp_topup como el usuario y a apply_mp_payment como el rol de servicio (lo
+// que hace la Edge Function con un pago aprobado).
+//
 // ── Uso (PowerShell) ─────────────────────────────────────────────────────────────────────────
 //   $env:DATABASE_URL = "<Session pooler URI de Supabase, con la contraseña>"
 //   $env:GG_DRIVER_ID = "<id de un conductor de prueba con al menos un vehículo>"
@@ -25,6 +29,8 @@
 // que no se pueden revertir como audit_checks.sql. Por eso:
 //   * crea dos cocheras de prueba propias (ids dddddddd-…) con reservas lejos en el futuro;
 //   * cambia el saldo de los dos usuarios de prueba durante la corrida;
+//   * vence las recargas de Mercado Pago abiertas del conductor y crea intentos y pagos de prueba
+//     (ids ggtest-cc-…), que borra al terminar;
 // y al final (también si algo falla) borra las cocheras con todas sus reservas, movimientos y
 // notificaciones, borra las recargas de prueba y restaura los saldos originales. Si se corta a
 // la mitad, volver a correrlo limpia lo que haya quedado antes de empezar.
@@ -64,6 +70,13 @@ async function beginAs(client, userId) {
   await client.query('set local role authenticated');
 }
 
+/** Abre una transacción como el rol de servicio (lo que usa la Edge Function de Mercado Pago). */
+async function beginAsService(client) {
+  await client.query('begin');
+  await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: 'service_role' })]);
+  await client.query('set local role service_role');
+}
+
 /** Envuelve una promesa para poder preguntar si ya terminó sin esperarla. */
 function track(promise) {
   const state = { settled: false, ok: false, value: undefined, error: undefined };
@@ -82,10 +95,11 @@ async function race({ userA, first, userB, second }) {
   const a = await connect();
   const b = await connect();
   try {
-    await beginAs(a, userA);
-    await a.query(first.sql, first.params);
+    // `userA` / `userB` = 'service' corre como el rol de servicio.
+    await (userA === 'service' ? beginAsService(a) : beginAs(a, userA));
+    const firstResult = await a.query(first.sql, first.params);
 
-    await beginAs(b, userB);
+    await (userB === 'service' ? beginAsService(b) : beginAs(b, userB));
     const call = track(b.query(second.sql, second.params));
     await sleep(BLOCK_WAIT_MS);
     const waited = !call.settled;
@@ -93,7 +107,13 @@ async function race({ userA, first, userB, second }) {
     await a.query('commit');
     await call.done;
     await b.query(call.ok ? 'commit' : 'rollback');
-    return { waited, ok: call.ok, error: call.error?.message ?? null };
+    return {
+      waited,
+      ok: call.ok,
+      error: call.error?.message ?? null,
+      firstValue: firstResult.rows[0] ? Object.values(firstResult.rows[0])[0] : null,
+      secondValue: call.ok && call.value.rows[0] ? Object.values(call.value.rows[0])[0] : null,
+    };
   } finally {
     await a.end().catch(() => {});
     await b.end().catch(() => {});
@@ -109,6 +129,11 @@ const createBooking = (lot, dayOffset, start, end, vehicleId) => ({
 const cancelBooking = (id) => ({ sql: 'select public.cancel_booking($1)', params: [id] });
 const completeBooking = (id) => ({ sql: 'select * from public.complete_booking($1)', params: [id] });
 const topup = (amount) => ({ sql: 'select public.topup_wallet($1)', params: [amount] });
+const beginMpTopup = (amount) => ({ sql: 'select attempt_id from public.begin_mp_topup($1)', params: [amount] });
+const applyMpPayment = (attemptId, paymentId, amount) => ({
+  sql: "select public.apply_mp_payment($1, $2, null, 'approved', 'accredited', $3, 'ARS')",
+  params: [attemptId, paymentId, amount],
+});
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────────────────────
 
@@ -123,13 +148,19 @@ async function cleanup(admin) {
   await admin.query('delete from public.parking_lots where id = any($1)', [lots]);
   // Vehículos de prueba que armó setup() para completar los 3 del conductor.
   await admin.query("delete from public.vehicles where user_id = $1 and plate like 'GGTEST%'", [DRIVER]);
+  // Recargas de Mercado Pago de prueba (0099): movimientos, pagos e intentos marcados ggtest-cc.
+  await admin.query("delete from public.wallet_transactions where payment_gateway_ref like 'mp:ggtest-cc-%'");
+  await admin.query("delete from public.mp_payments where mp_payment_id like 'ggtest-cc-%'");
+  await admin.query("delete from public.mp_checkout_attempts where mp_order_id = 'ggtest-cc'");
 }
 
 async function setup(admin) {
   await cleanup(admin);
 
+  // Desde la 0098 la cochera y el vehículo tienen que ser del país del conductor.
   const vehicle = await admin.query(
-    'select id from public.vehicles where user_id = $1 order by created_at limit 3',
+    `select v.id from public.vehicles v join public.profiles p on p.id = v.user_id
+     where v.user_id = $1 and v.region = p.region order by v.created_at limit 3`,
     [DRIVER]
   );
   if (vehicle.rowCount === 0) throw new Error('El conductor de prueba (GG_DRIVER_ID) no tiene ningún vehículo cargado.');
@@ -166,6 +197,11 @@ async function setup(admin) {
        select $1, d, '08:00', '20:00' from generate_series(0, 6) d`,
       [id]
     );
+    // La cochera toma la región del propietario; se la pone en la del conductor (0098).
+    await admin.query('update public.parking_lots set region = (select region from public.profiles where id = $2) where id = $1', [
+      id,
+      DRIVER,
+    ]);
   }
 
   const startedAt = (await admin.query('select now() as now')).rows[0].now;
@@ -185,6 +221,16 @@ async function teardown(admin, fixtures) {
      where wallet_id = $1 and type = 'topup' and payment_gateway_ref = 'dev-manual-topup' and created_at >= $2`,
     [fixtures.driverWalletId, fixtures.startedAt]
   );
+  // Intentos que creó begin_mp_topup durante la corrida y avisos de recarga acreditada.
+  await admin.query(
+    `delete from public.mp_checkout_attempts
+     where user_id = $1 and kind = 'topup' and mp_order_id is null and created_at >= $2`,
+    [DRIVER, fixtures.startedAt]
+  );
+  await admin.query(
+    "delete from public.notifications where user_id = $1 and type = 'topup_approved' and created_at >= $2",
+    [DRIVER, fixtures.startedAt]
+  );
   for (const { userId, balance } of fixtures.originalBalances) {
     await admin.query('update public.wallets set balance = $2 where user_id = $1', [userId, balance]);
   }
@@ -194,6 +240,40 @@ async function teardown(admin, fixtures) {
 
 async function setDriverBalance(admin, amount) {
   await admin.query('update public.wallets set balance = $2 where user_id = $1', [DRIVER, amount]);
+}
+
+/** Sin recargas de Mercado Pago abiertas del conductor (contarían para el tope). */
+async function closeOpenTopups(admin) {
+  await admin.query(
+    "update public.mp_checkout_attempts set status = 'expired' where user_id = $1 and kind = 'topup' and status = 'created'",
+    [DRIVER]
+  );
+}
+
+/** Intento de recarga abierto creado "antes" (como si se hubiera iniciado con menos saldo). */
+async function openTopupAttempt(admin, amount) {
+  const row = await admin.query(
+    `insert into public.mp_checkout_attempts (kind, user_id, amount, expires_at, mp_order_id)
+     values ('topup', $1, $2, now() + interval '30 minutes', 'ggtest-cc') returning id`,
+    [DRIVER, amount]
+  );
+  return row.rows[0].id;
+}
+
+async function openTopupCount(admin) {
+  const row = await admin.query(
+    "select count(*)::int as n from public.mp_checkout_attempts where user_id = $1 and kind = 'topup' and status = 'created'",
+    [DRIVER]
+  );
+  return row.rows[0].n;
+}
+
+async function mpMovements(admin, paymentIds) {
+  const row = await admin.query(
+    'select count(*)::int as n from public.wallet_transactions where payment_gateway_ref = any($1)',
+    [paymentIds.map((id) => `mp:${id}`)]
+  );
+  return row.rows[0].n;
 }
 
 async function driverBalance(admin) {
@@ -468,6 +548,97 @@ const scenarios = [
           detail: `B esperó: ${r.waited} · B: ${r.error ?? 'pasó'} · saldo final: ${balance}`,
         };
       } finally {
+        await setDriverBalance(admin, 100000);
+      }
+    },
+  },
+  {
+    name: 'Mercado Pago: dos recargas iniciadas a la vez contra el tope',
+    // Saldo 190.000 y tope 200.000: entra una recarga abierta de 6.000, no dos (0099).
+    async run(admin) {
+      await closeOpenTopups(admin);
+      await setDriverBalance(admin, 190000);
+      try {
+        const r = await race({ userA: DRIVER, first: beginMpTopup(6000), userB: DRIVER, second: beginMpTopup(6000) });
+        const open = await openTopupCount(admin);
+        return {
+          ok: r.waited && /topup_pending_limit/.test(r.error ?? '') && open === 1,
+          detail: `B esperó: ${r.waited} · B: ${r.error ?? 'pasó'} · recargas abiertas: ${open}`,
+        };
+      } finally {
+        await closeOpenTopups(admin);
+        await setDriverBalance(admin, 100000);
+      }
+    },
+  },
+  {
+    name: 'Mercado Pago: máximo de 3 recargas abiertas con dos pedidos a la vez',
+    async run(admin) {
+      await closeOpenTopups(admin);
+      await setDriverBalance(admin, 0);
+      try {
+        await openTopupAttempt(admin, 1000);
+        await openTopupAttempt(admin, 1000);
+        const r = await race({ userA: DRIVER, first: beginMpTopup(1000), userB: DRIVER, second: beginMpTopup(1000) });
+        const open = await openTopupCount(admin);
+        return {
+          ok: r.waited && /too_many_open_topups/.test(r.error ?? '') && open === 3,
+          detail: `B esperó: ${r.waited} · B: ${r.error ?? 'pasó'} · recargas abiertas: ${open}`,
+        };
+      } finally {
+        await closeOpenTopups(admin);
+        await setDriverBalance(admin, 100000);
+      }
+    },
+  },
+  {
+    name: 'Mercado Pago: dos pagos aprobados a la vez que juntos pasan el tope',
+    // Dos recargas de 6.000 abiertas desde antes; con saldo 190.000 solo una se puede acreditar.
+    async run(admin) {
+      await closeOpenTopups(admin);
+      await setDriverBalance(admin, 190000);
+      try {
+        const a = await openTopupAttempt(admin, 6000);
+        const b = await openTopupAttempt(admin, 6000);
+        const r = await race({
+          userA: 'service',
+          first: applyMpPayment(a, 'ggtest-cc-1', 6000),
+          userB: 'service',
+          second: applyMpPayment(b, 'ggtest-cc-2', 6000),
+        });
+        const balance = await driverBalance(admin);
+        const movements = await mpMovements(admin, ['ggtest-cc-1', 'ggtest-cc-2']);
+        return {
+          ok: r.waited && r.firstValue === 'credited' && r.secondValue === 'refund_required' && balance === 196000 && movements === 1,
+          detail: `B esperó: ${r.waited} · A: ${r.firstValue} · B: ${r.secondValue ?? r.error} · saldo: ${balance} · movimientos: ${movements}`,
+        };
+      } finally {
+        await closeOpenTopups(admin);
+        await setDriverBalance(admin, 100000);
+      }
+    },
+  },
+  {
+    name: 'Mercado Pago: el mismo pago aprobado llega dos veces a la vez',
+    async run(admin) {
+      await closeOpenTopups(admin);
+      await setDriverBalance(admin, 0);
+      try {
+        const a = await openTopupAttempt(admin, 5000);
+        const r = await race({
+          userA: 'service',
+          first: applyMpPayment(a, 'ggtest-cc-3', 5000),
+          userB: 'service',
+          second: applyMpPayment(a, 'ggtest-cc-3', 5000),
+        });
+        const balance = await driverBalance(admin);
+        const movements = await mpMovements(admin, ['ggtest-cc-3']);
+        return {
+          ok: r.waited && r.firstValue === 'credited' && r.secondValue === 'already_applied' && balance === 5000 && movements === 1,
+          detail: `B esperó: ${r.waited} · A: ${r.firstValue} · B: ${r.secondValue ?? r.error} · saldo: ${balance} · movimientos: ${movements}`,
+        };
+      } finally {
+        await closeOpenTopups(admin);
         await setDriverBalance(admin, 100000);
       }
     },
