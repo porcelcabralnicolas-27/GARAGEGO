@@ -8,8 +8,8 @@ administración** web para el equipo.
 
 **Versión web publicada:** https://garagego.garagego2027.workers.dev
 
-**APK de Android:** __APK_LINK__
-*(build del 17/11/2026 sobre `main`, con todas las migraciones hasta la 0097)*
+**APK de Android:** https://expo.dev/artifacts/eas/cJ_j5i4U-JQ47ntiOKtY-Dt5l0R2RdkEsqZYGrDG2l4.apk
+*(build del 17/11/2026 sobre `main`, commit `b47b7b2`, con todas las migraciones hasta la 0097)*
 
 **Repositorio:** https://github.com/porcelcabralnicolas-27/GARAGEGO · versión **1.0.0** en la rama
 `main`
