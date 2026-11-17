@@ -26,6 +26,15 @@ const TX_LABELS: Record<WalletTransaction['type'], string> = {
   earning: 'Cobro de reserva',
 };
 
+/** Los movimientos de Mercado Pago usan los tipos de siempre; se reconocen por la referencia. */
+function txLabel(tx: WalletTransaction): string {
+  if (tx.gatewayRef?.startsWith('mp:')) {
+    return tx.relatedBookingId ? 'Pago con Mercado Pago' : 'Recarga con Mercado Pago';
+  }
+  if (tx.gatewayRef?.startsWith('mp-refund:')) return 'Devolución a Mercado Pago';
+  return TX_LABELS[tx.type];
+}
+
 const TX_ICONS: Record<WalletTransaction['type'], keyof typeof Ionicons.glyphMap> = {
   topup: 'arrow-down-circle-outline',
   booking_payment: 'card-outline',
@@ -103,8 +112,8 @@ export default function OwnerDashboardScreen() {
             {walletBalance !== null ? formatMoney(walletBalance) : '—'}
           </Text>
           <View style={styles.withdrawWrap}>
-            {/* El retiro de fondos todavía no existe (no hay función de payout y la billetera
-                del propietario aún no se acredita — ver Q10 del documento de pagos). */}
+            {/* El retiro de fondos sigue fuera de alcance: los cobros se acreditan en la billetera
+                (earning, al finalizar cada reserva) pero no hay forma de sacarlos a una cuenta. */}
             <Button label="Retiro de fondos" onPress={() => {}} disabled fullWidth />
             <Text style={[typography.label, styles.withdrawNote, { color: colors.onSurfaceVariant }]}>
               Próximamente
@@ -164,7 +173,7 @@ export default function OwnerDashboardScreen() {
                   <Ionicons name={TX_ICONS[tx.type]} size={18} color={colors.onSurfaceVariant} />
                 </View>
                 <View style={styles.txBody}>
-                  <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{TX_LABELS[tx.type]}</Text>
+                  <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{txLabel(tx)}</Text>
                   <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{formatDateMonthName(tx.createdAt)}</Text>
                 </View>
                 <Text

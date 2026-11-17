@@ -1,4 +1,4 @@
-export const MAX_VEHICLES = 3;
+// El máximo de vehículos por país lo configura el equipo en el panel (0093): `useAppLimits()`.
 
 export type Vehicle = {
   id: string;

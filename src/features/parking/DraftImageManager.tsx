@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import { PhotoUploader, type UploadedPhoto } from '@/components/ui/PhotoUploader';
 import { getParkingErrorMessage } from '@/features/parking/api';
-import { MAX_PARKING_IMAGES } from '@/features/parking/types';
+import { useAppLimits } from '@/hooks/useAppLimits';
 import { DUPLICATE_PHOTO_MESSAGE, fingerprintImage } from '@/lib/imageFingerprint';
 import { assertImageUploadable } from '@/lib/imageMime';
 
@@ -23,11 +23,12 @@ type Props = {
 export function DraftImageManager({ photos, onChange }: Props) {
   const [isChecking, setIsChecking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { maxParkingImages } = useAppLimits();
 
   const handleAdd = async () => {
     setErrorMessage(null);
-    if (photos.length >= MAX_PARKING_IMAGES) {
-      setErrorMessage(`Ya llegaste al máximo de ${MAX_PARKING_IMAGES} fotos.`);
+    if (photos.length >= maxParkingImages) {
+      setErrorMessage(`Ya llegaste al máximo de ${maxParkingImages} fotos.`);
       return;
     }
 
@@ -69,7 +70,7 @@ export function DraftImageManager({ photos, onChange }: Props) {
       photos={photos}
       onAdd={handleAdd}
       onRemove={(photo) => onChange(photos.filter((p) => p.id !== photo.id))}
-      max={MAX_PARKING_IMAGES}
+      max={maxParkingImages}
       isUploading={isChecking}
       errorMessage={errorMessage}
     />

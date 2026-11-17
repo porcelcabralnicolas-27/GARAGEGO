@@ -11,6 +11,7 @@ import type {
   OwnerBookingDetail,
   OwnerBookingItem,
 } from './types';
+import { t } from '@/lib/i18n';
 
 /** Reservas por página del historial. */
 export const HISTORY_PAGE_SIZE = 20;
@@ -113,6 +114,10 @@ export async function completeBooking(bookingId: string): Promise<{ overtimeMinu
 export async function cancelBooking(bookingId: string): Promise<void> {
   const { error } = await supabase.rpc('cancel_booking', { p_booking_id: bookingId });
   if (error) throw error;
+  // Si la reserva se pagó con Mercado Pago, la base dejó el reembolso pendiente: mp-sync lo
+  // ejecuta ahora en vez de esperar al barrido de 5 minutos. Para las de billetera no hace nada.
+  // No se espera la respuesta: la cancelación ya está hecha y el barrido la reintenta si falla.
+  supabase.functions.invoke('mp-sync', { body: { booking_id: bookingId } }).catch(() => {});
 }
 
 /**
@@ -215,7 +220,12 @@ export async function hideBooking(bookingId: string, userId: string): Promise<vo
   if (error) throw error;
 }
 
+/** Mensaje para el usuario (traducido en la demo de Estados Unidos). */
 export function getBookingErrorMessage(error: unknown): string {
+  return t(bookingErrorMessage(error));
+}
+
+function bookingErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
     if (message.includes('insufficient_balance')) return 'No tenés saldo suficiente para esta reserva.';

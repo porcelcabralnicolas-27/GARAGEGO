@@ -24,6 +24,7 @@ import {
   type LotDocument,
   type LotType,
 } from '@/features/parking/types';
+import { useDocumentRules } from '@/hooks/useDocumentRules';
 import { assertImageUploadable } from '@/lib/imageMime';
 import { queryKeys } from '@/lib/queryKeys';
 import { radius, spacing, useTheme } from '@/theme';
@@ -83,7 +84,9 @@ export function OwnershipDocsStep({
   const have = new Set<DocumentKind>(
     draft ? (Object.keys(draft) as DocumentKind[]) : savedDocs.map((doc) => doc.kind)
   );
-  const requirements = documentRequirements(holderRole, lotType);
+  // Lo que pide el equipo para esa relación y ese tipo de lugar (Configuración del panel, 0097).
+  const rules = useDocumentRules();
+  const requirements = documentRequirements(holderRole, lotType, rules);
 
   const presentKindOf = (requirement: DocumentRequirement) => requirement.kinds.find((kind) => have.has(kind));
   // Lo que el usuario eligió gana; si no eligió nada, el que ya está cargado; y si no, el primero.
@@ -172,6 +175,12 @@ export function OwnershipDocsStep({
       <Text style={[typography.titleMedium, styles.sectionTitle, { color: colors.onBackground }]}>
         Documentos
       </Text>
+
+      {requirements.length === 0 ? (
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
+          No hace falta subir documentos para publicar: el equipo revisa la publicación igual.
+        </Text>
+      ) : null}
 
       {requirements.map((requirement) => {
         const presentKind = presentKindOf(requirement);

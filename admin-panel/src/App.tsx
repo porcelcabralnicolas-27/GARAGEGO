@@ -8,6 +8,7 @@ import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { UsersPage } from './pages/users/UsersPage';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { SupportPage } from './pages/support/SupportPage';
+import { SettingsPage } from './pages/settings/SettingsPage';
 
 export function App() {
   return (
@@ -21,6 +22,7 @@ export function App() {
               <Route path="/usuarios" element={<UsersPage />} />
               <Route path="/inventario" element={<InventoryPage />} />
               <Route path="/soporte" element={<SupportPage />} />
+              <Route path="/configuracion/:section?" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 
 import type { Profile } from '@/features/profile/types';
+import { setActiveRegion } from '@/lib/region';
 
 type AuthState = {
   session: Session | null;
@@ -31,7 +32,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   profileRefreshKey: 0,
   passwordRecoveryInProgress: false,
   setSession: (session) => set({ session }),
-  setProfile: (profile) => set({ profile }),
+  setProfile: (profile) => {
+    // La región del perfil decide moneda, idioma, hora y ubicación (src/lib/region.ts).
+    setActiveRegion(profile?.region);
+    set({ profile });
+  },
   setProfileError: (error) => set({ profileError: error }),
   setWalletBalance: (balance) => set({ walletBalance: balance }),
   setInitializing: (value) => set({ isInitializing: value }),

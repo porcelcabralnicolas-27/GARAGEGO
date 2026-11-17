@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { ListingChangeField, LotRow, ModerationState } from '../../domain';
 import { useRealtimeRefresh } from '../../lib/useRealtimeRefresh';
+import { fetchChecklistItems, type ChecklistItem } from '../settings/checklistApi';
 import {
   fetchModerationLots,
   reviewLot,
@@ -17,6 +18,8 @@ import {
  */
 export type ModerationQueue = {
   rows: LotRow[];
+  /** Puntos del checklist de aprobación (0092), activos e inactivos. */
+  checklist: ChecklistItem[];
   loading: boolean;
   error: string | null;
   refetch: () => void;
@@ -25,7 +28,8 @@ export type ModerationQueue = {
     lotId: string,
     decision: ReviewDecision,
     reason: string | null,
-    fields?: ListingChangeField[]
+    fields?: ListingChangeField[],
+    checkedItems?: string[]
   ) => Promise<{ documentsPending: boolean }>;
   /** Pausar / suspender / reactivar una cochera aprobada. Refresca la lista. */
   setModeration: (
@@ -38,6 +42,7 @@ export type ModerationQueue = {
 
 export function useModerationQueue(): ModerationQueue {
   const [rows, setRows] = useState<LotRow[]>([]);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +50,16 @@ export function useModerationQueue(): ModerationQueue {
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchModerationLots());
+      const [lots, items] = await Promise.all([
+        fetchModerationLots(),
+        // Sin la migración 0092 no hay checklist: el inventario igual se muestra.
+        fetchChecklistItems().catch((err: unknown) => {
+          console.warn('review_checklist_items no disponible:', err instanceof Error ? err.message : err);
+          return [] as ChecklistItem[];
+        }),
+      ]);
+      setRows(lots);
+      setChecklist(items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar el inventario.');
     } finally {
@@ -58,11 +72,12 @@ export function useModerationQueue(): ModerationQueue {
   }, [load]);
 
   // Una cochera nueva enviada a revisión (o cambiada por otro admin) aparece sola (0060).
-  useRealtimeRefresh('admin-moderation-queue', ['parking_lots'], () => void load());
+  // Lo mismo si otro admin cambia el checklist mientras se revisa.
+  useRealtimeRefresh('admin-moderation-queue', ['parking_lots', 'review_checklist_items'], () => void load());
 
   const review = useCallback<ModerationQueue['review']>(
-    async (lotId, decision, reason, fields) => {
-      const result = await reviewLot(lotId, decision, reason, fields ?? null);
+    async (lotId, decision, reason, fields, checkedItems) => {
+      const result = await reviewLot(lotId, decision, reason, fields ?? null, checkedItems ?? []);
       await load();
       return result;
     },
@@ -77,5 +92,5 @@ export function useModerationQueue(): ModerationQueue {
     [load]
   );
 
-  return { rows, loading, error, refetch: () => void load(), review, setModeration };
+  return { rows, checklist, loading, error, refetch: () => void load(), review, setModeration };
 }

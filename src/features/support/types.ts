@@ -8,11 +8,7 @@ import type { TicketCategory, TicketStatus } from '../../../shared/domain';
 /** Rol de quien abre el ticket. Define contra qué se vincula: reserva (conductor) o cochera. */
 export type ReporterRole = 'client' | 'owner';
 
-/** Categorías que tienen sentido para cada rol. */
-export const TICKET_CATEGORIES_BY_ROLE: Record<ReporterRole, TicketCategory[]> = {
-  client: ['access', 'payment', 'behavior', 'other'],
-  owner: ['listing', 'payment', 'behavior', 'other'],
-};
+// Qué categorías ve cada rol lo define el catálogo `ticket_categories` (0094): ver src/lib/catalogs.ts.
 
 export type SupportTicket = {
   id: string;

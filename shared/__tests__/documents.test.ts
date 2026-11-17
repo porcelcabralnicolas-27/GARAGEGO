@@ -1,7 +1,14 @@
-import { documentRequirements, missingDocumentRequirements } from '../domain';
+import {
+  DEFAULT_DOCUMENT_RULES,
+  documentRequirements,
+  missingDocumentRequirements,
+  parseDocumentRules,
+  type DocumentRule,
+} from '../domain';
 
-// Estas reglas se repiten en SQL (`lot_missing_documents`, migración 0078): si se cambia una, hay
-// que cambiar la otra. supabase/tests/ownership_checks.sql prueba la del servidor.
+// Sin reglas, se usan las de siempre (DEFAULT_DOCUMENT_RULES, las mismas que carga la 0097). La regla
+// se repite en SQL (`lot_missing_documents`): supabase/tests/document_requirements_checks.sql prueba
+// la del servidor.
 
 const ids = (role: Parameters<typeof missingDocumentRequirements>[0], have: Parameters<typeof missingDocumentRequirements>[1]) =>
   missingDocumentRequirements(role, have).map((requirement) => requirement.id);
@@ -56,5 +63,40 @@ describe('missingDocumentRequirements', () => {
 
   it('la habilitación opcional nunca bloquea', () => {
     expect(ids('owner', ['dni', 'tax_bill'])).toEqual([]);
+  });
+});
+
+describe('reglas configurables (0097)', () => {
+  const withPolicy = (code: string, policy: DocumentRule['policy']): DocumentRule[] =>
+    DEFAULT_DOCUMENT_RULES.map((rule) => (rule.code === code ? { ...rule, policy } : rule));
+
+  it('un requisito en "No se pide" no aparece ni se exige', () => {
+    const rules = withPolicy('property_proof', 'off');
+    expect(documentRequirements('owner', 'house', rules).map((r) => r.id)).toEqual(['dni']);
+    expect(missingDocumentRequirements('owner', ['dni'], 'house', rules)).toEqual([]);
+  });
+
+  it('la habilitación obligatoria se exige solo en estacionamientos', () => {
+    const rules = withPolicy('commercial_license', 'required');
+    expect(missingDocumentRequirements('owner', ['dni', 'tax_bill'], 'lot', rules).map((r) => r.id)).toEqual([
+      'commercial_license',
+    ]);
+    expect(missingDocumentRequirements('owner', ['dni', 'tax_bill'], 'house', rules)).toEqual([]);
+  });
+
+  it('un opcional se marca como opcional en el nombre', () => {
+    const optional = documentRequirements('owner', 'lot').find((r) => r.id === 'commercial_license');
+    expect(optional?.label).toBe('Habilitación municipal (opcional)');
+  });
+
+  it('lee lo que devuelve public_document_requirements y descarta lo raro', () => {
+    const rules = parseDocumentRules([
+      { code: 'dni', label: 'DNI', hint: '', kinds: ['dni'], for_owner: true, for_tenant: false, for_manager: false, applies_lot_type: 'all', policy: 'required' },
+      { code: 'raro', label: 'Sin tipos', kinds: ['pasaporte'] },
+    ]);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ code: 'dni', forOwner: true, forTenant: false, policy: 'required' });
+    expect(parseDocumentRules(null)).toBe(DEFAULT_DOCUMENT_RULES);
+    expect(parseDocumentRules([])).toBe(DEFAULT_DOCUMENT_RULES);
   });
 });

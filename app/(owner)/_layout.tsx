@@ -14,6 +14,10 @@ export default function OwnerLayout() {
 
   return (
     <Tabs
+      // Las pestañas quedan montadas al navegar: sin esta key, al cambiar de región (demo
+      // regional, 0086) seguirían mostrando el mapa, los textos y la ubicación de la anterior.
+      // Con la región como key se arman de nuevo y todo toma la región nueva.
+      key={profile?.region ?? 'AR'}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.accent,

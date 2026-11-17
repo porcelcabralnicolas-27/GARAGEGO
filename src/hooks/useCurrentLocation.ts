@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 
+import { activeRegion } from '@/lib/region';
+
 type LocationState = {
   latitude: number | null;
   longitude: number | null;
@@ -22,6 +24,13 @@ export function useCurrentLocation(_options: { fallback?: boolean } = {}) {
   });
 
   const request = () => {
+    // Demo de Estados Unidos: la ubicación es simulada (Midtown Manhattan), no la del GPS; si no,
+    // el mapa abriría en Buenos Aires, donde no hay cocheras de esa región.
+    const region = activeRegion();
+    if (region.simulatedLocation) {
+      setState({ ...region.center, isLoading: false, errorMessage: null, isApproximate: false });
+      return;
+    }
     setState((prev) => ({ ...prev, isLoading: true, errorMessage: null }));
     Location.requestForegroundPermissionsAsync()
       .then((permission) => {

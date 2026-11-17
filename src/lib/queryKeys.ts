@@ -13,6 +13,12 @@ import type { NotificationAudience } from '@/features/notifications/types';
  * pantalla se quede mostrando datos viejos sin que nadie se dé cuenta.
  */
 export const queryKeys = {
+  /** Límites configurados en el panel (0093). */
+  appLimits: ['appLimits'] as const,
+  /** Servicios y categorías de tickets configurados en el panel (0094). */
+  catalogs: ['catalogs'] as const,
+  /** Documentos de titularidad que se piden, configurados en el panel (0097). */
+  documentRules: ['documentRules'] as const,
   bookings: {
     all: ['bookings'] as const,
     myList: (userId: string) => ['bookings', 'myList', userId] as const,
@@ -63,8 +69,10 @@ export const queryKeys = {
     all: ['stats'] as const,
     owner: (ownerId: string) => ['stats', 'owner', ownerId] as const,
   },
-  settings: {
-    demoTopup: ['settings', 'demoTopup'] as const,
+  payments: {
+    all: ['payments'] as const,
+    booking: (bookingId: string) => ['payments', 'booking', bookingId] as const,
+    topup: (attemptId: string) => ['payments', 'topup', attemptId] as const,
   },
   wallet: {
     all: ['wallet'] as const,

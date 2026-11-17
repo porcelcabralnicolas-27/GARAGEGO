@@ -189,6 +189,12 @@ export function NotificationsView({ role }: { role: 'client' | 'owner' }) {
       return;
     }
 
+    // Recarga con Mercado Pago acreditada: el saldo está en el perfil.
+    if (notification.type === 'topup_approved') {
+      router.push('/(client)/profile');
+      return;
+    }
+
     // Las notificaciones de reserva (pago, inicio, finalización, excedente) llevan al detalle
     // de esa reserva, que es donde está la acción. El propietario no tiene pantalla de detalle,
     // así que para él sigue siendo la lista.

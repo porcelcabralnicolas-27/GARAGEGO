@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/client';
 
 import type { OwnerStats } from './types';
+import { activeRegion } from '@/lib/region';
 
 const EMPTY_STATS: OwnerStats = {
   totalEarnings: 0,
@@ -18,7 +19,9 @@ export async function getOwnerStats(ownerId: string): Promise<OwnerStats> {
   const { data: lots, error: lotsError } = await supabase
     .from('parking_lots')
     .select('id, name, is_active, rating_avg')
-    .eq('owner_id', ownerId);
+    .eq('owner_id', ownerId)
+    // Los contadores de publicaciones también son del país activo, como las reservas.
+    .eq('region', activeRegion().code);
   if (lotsError) throw lotsError;
   if (lots.length === 0) return EMPTY_STATS;
 
@@ -28,7 +31,8 @@ export async function getOwnerStats(ownerId: string): Promise<OwnerStats> {
   const { data: bookings, error: bookingsError } = await supabase
     .from('bookings')
     .select('parking_lot_id, status, total_price, actual_start_at')
-    .in('parking_lot_id', lotIds);
+    .in('parking_lot_id', lotIds)
+    .eq('region', activeRegion().code);
   if (bookingsError) throw bookingsError;
 
   let totalEarnings = 0;

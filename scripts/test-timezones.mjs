@@ -18,7 +18,11 @@ const ZONES = [
   'Pacific/Kiritimati', // UTC+14, el extremo
 ];
 
-const TIME_SENSITIVE_TESTS = ['shared/__tests__/time', 'src/features/booking/__tests__/availability'];
+const TIME_SENSITIVE_TESTS = [
+  'shared/__tests__/time',
+  'src/features/booking/__tests__/availability',
+  'src/features/booking/__tests__/availabilityRegion',
+];
 
 let failed = false;
 for (const tz of ZONES) {

@@ -846,6 +846,8 @@ button.gg-metric:hover {
 
   .gg-tabs {
     overflow-x: auto;
+    /* Sin esto, el subrayado de la pestaña activa desborda 1 px y aparece una barra vertical. */
+    overflow-y: hidden;
   }
 
   .gg-tab {

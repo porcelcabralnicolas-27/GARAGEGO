@@ -11,13 +11,9 @@ import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { createTicket, getSupportErrorMessage, listTicketTargets } from '@/features/support/api';
-import {
-  TICKET_CATEGORY_LABELS,
-  TICKET_CATEGORIES_BY_ROLE,
-  type ReporterRole,
-  type TicketCategory,
-  type TicketTargetOption,
-} from '@/features/support/types';
+import { type ReporterRole, type TicketCategory, type TicketTargetOption } from '@/features/support/types';
+import { useCatalogs } from '@/hooks/useCatalogs';
+import { ticketCategoriesFor } from '@/lib/catalogs';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
@@ -40,8 +36,12 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
 
-  const categories = TICKET_CATEGORIES_BY_ROLE[role];
-  const [category, setCategory] = useState<TicketCategory>(categories[0]);
+  // Categorías del catálogo (0094): las activas para este rol.
+  const { ticketCategories } = useCatalogs();
+  const categories = useMemo(() => ticketCategoriesFor(role, ticketCategories), [role, ticketCategories]);
+  const [chosenCategory, setCategory] = useState<TicketCategory | null>(null);
+  // Si el catálogo cambia y la elegida ya no está, se toma la primera.
+  const category = categories.some((c) => c.code === chosenCategory) ? chosenCategory! : (categories[0]?.code ?? 'other');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [targetKey, setTargetKey] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export function NewSupportTicketScreen({ role }: { role: ReporterRole }) {
         </Text>
         <View style={styles.chips}>
           <ChipSelect
-            options={categories.map((c) => ({ value: c, label: TICKET_CATEGORY_LABELS[c] }))}
+            options={categories.map((c) => ({ value: c.code, label: c.label }))}
             value={category}
             onChange={setCategory}
           />

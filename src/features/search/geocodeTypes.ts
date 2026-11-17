@@ -1,3 +1,5 @@
+import { activeRegion } from '@/lib/region';
+
 /** Resultado de buscar una dirección escrita a mano: el punto en el mapa y cómo se la mostramos. */
 export type GeocodeResult = {
   latitude: number;
@@ -13,8 +15,12 @@ export type Geocoder = {
   geocode: (query: string) => Promise<GeocodeResult | null>;
 };
 
-/** Las búsquedas son siempre de acá: sin esto "Mitre 1500" podría resolverse en otro país. */
+/**
+ * Las búsquedas son siempre del país de la región (Argentina, o Estados Unidos en la demo): sin
+ * esto "Mitre 1500" podría resolverse en otro país.
+ */
 export function withCountry(query: string): string {
   const trimmed = query.trim();
-  return /argentina/i.test(trimmed) ? trimmed : `${trimmed}, Argentina`;
+  const country = activeRegion().countryName;
+  return trimmed.toLowerCase().includes(country.toLowerCase()) ? trimmed : `${trimmed}, ${country}`;
 }

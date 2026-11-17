@@ -9,7 +9,8 @@ import {
   listParkingImages,
   uploadParkingImage,
 } from '@/features/parking/api';
-import { MAX_PARKING_IMAGES, type ParkingImage } from '@/features/parking/types';
+import type { ParkingImage } from '@/features/parking/types';
+import { useAppLimits } from '@/hooks/useAppLimits';
 import { DUPLICATE_PHOTO_MESSAGE, fingerprintImage } from '@/lib/imageFingerprint';
 import { assertImageUploadable } from '@/lib/imageMime';
 import { queryKeys } from '@/lib/queryKeys';
@@ -20,6 +21,7 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
   const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { maxParkingImages } = useAppLimits();
 
   const queryKey = queryKeys.parkingLots.images(parkingLotId);
   const { data: images = NO_IMAGES, isLoading, isError } = useQuery({
@@ -57,8 +59,8 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
 
   const handleAddImage = async () => {
     setErrorMessage(null);
-    if (images.length >= MAX_PARKING_IMAGES) {
-      setErrorMessage(`Ya llegaste al máximo de ${MAX_PARKING_IMAGES} fotos.`);
+    if (images.length >= maxParkingImages) {
+      setErrorMessage(`Ya llegaste al máximo de ${maxParkingImages} fotos.`);
       return;
     }
 
@@ -117,7 +119,7 @@ export function ImageManager({ ownerId, parkingLotId }: { ownerId: string; parki
       photos={images}
       onAdd={handleAddImage}
       onRemove={handleRemoveImage}
-      max={MAX_PARKING_IMAGES}
+      max={maxParkingImages}
       isLoading={isLoading}
       isUploading={isUploading}
       errorMessage={errorMessage ?? (isError ? 'No se pudieron cargar las fotos.' : null)}

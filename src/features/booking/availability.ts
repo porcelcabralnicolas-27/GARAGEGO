@@ -1,6 +1,15 @@
 import type { AvailabilityException, RecurringAvailability } from '@/features/parking/types';
 
-import { addDays, businessDate, businessMinutesOfDay, weekdayOf } from '../../../shared/time';
+import {
+  addDays,
+  businessDate,
+  businessMinutesOfDay,
+  businessToDisplay,
+  displayDate,
+  displaysBusinessTime,
+  displayToBusiness,
+  weekdayOf,
+} from '../../../shared/time';
 import type { BookedInterval } from './api';
 
 // Fechas y horas de este archivo son hora de la cochera (Buenos Aires), igual que en el servidor:
@@ -190,4 +199,82 @@ export function generateEndTimeOptions(windows: TimeWindow[], startTime: string)
     options.push(toTimeString(t));
   }
   return options;
+}
+
+// ── En la hora de la región (demo de presentación regional, 0086) ───────────────────────────
+// En Argentina son las mismas funciones de arriba. En la demo de Estados Unidos, el día que elige
+// el usuario es un día de Nueva York: puede abarcar dos fechas de la cochera (Buenos Aires va
+// 1 o 2 horas adelante), así que se calculan las ventanas libres de esas fechas y se convierten.
+// Cada ventana sale de una sola fecha de la cochera: una reserva elegida adentro de ella nunca
+// cruza la medianoche de Buenos Aires (la base guarda una sola fecha por reserva).
+
+/** Ventanas libres de un día en la hora de la región. */
+export function getDisplayWindowsForDate(
+  displayDateStr: string,
+  recurring: RecurringAvailability[],
+  exceptions: AvailabilityException[],
+  booked: BookedInterval[],
+  capacity: number,
+  now: Date = new Date()
+): TimeWindow[] {
+  if (displaysBusinessTime()) return getFreeWindowsForDate(displayDateStr, recurring, exceptions, booked, capacity, now);
+
+  const firstDate = displayToBusiness(displayDateStr, '00:00').date;
+  const lastDate = displayToBusiness(displayDateStr, '23:59').date;
+  const businessDates = firstDate === lastDate ? [firstDate] : [firstDate, lastDate];
+
+  const result: TimeWindow[] = [];
+  for (const date of businessDates) {
+    for (const w of getFreeWindowsForDate(date, recurring, exceptions, booked, capacity, now)) {
+      const start = businessToDisplay(date, w.start);
+      const end = businessToDisplay(date, w.end);
+      if (start.date > displayDateStr || end.date < displayDateStr) continue;
+      const window = {
+        start: start.date < displayDateStr ? '00:00' : start.time,
+        end: end.date > displayDateStr ? '24:00' : end.time,
+      };
+      if (toMinutes(window.end) - toMinutes(window.start) >= MIN_DURATION_MINUTES) result.push(window);
+    }
+  }
+  return result.sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+}
+
+/** Próximos días (en la hora de la región) con al menos una ventana libre. */
+export function listDisplayAvailableDates(
+  recurring: RecurringAvailability[],
+  exceptions: AvailabilityException[],
+  booked: BookedInterval[],
+  capacity: number,
+  days = 30,
+  now: Date = new Date()
+): string[] {
+  if (displaysBusinessTime()) return listAvailableDates(recurring, exceptions, booked, capacity, days, now);
+  const result: string[] = [];
+  const today = displayDate(now);
+  for (let i = 0; i < days; i += 1) {
+    const dateStr = addDays(today, i);
+    if (getDisplayWindowsForDate(dateStr, recurring, exceptions, booked, capacity, now).length > 0) {
+      result.push(dateStr);
+    }
+  }
+  return result;
+}
+
+/**
+ * Horario elegido en la región → como se guarda la reserva (fecha y horas de Buenos Aires).
+ * null si cruzara la medianoche de la cochera (no pasa con ventanas de getDisplayWindowsForDate).
+ */
+export function toBusinessBooking(
+  displayDateStr: string,
+  startTime: string,
+  endTime: string
+): { date: string; startTime: string; endTime: string } | null {
+  const start = displayToBusiness(displayDateStr, startTime);
+  const end = displayToBusiness(displayDateStr, endTime);
+  if (end.date === start.date) return { date: start.date, startTime: start.time, endTime: end.time };
+  // Termina justo a la medianoche de la cochera: es el mismo día hasta las 24:00.
+  if (end.date === addDays(start.date, 1) && end.time === '00:00') {
+    return { date: start.date, startTime: start.time, endTime: '24:00' };
+  }
+  return null;
 }

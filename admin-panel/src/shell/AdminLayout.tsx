@@ -10,6 +10,7 @@ const NAV = [
   { to: '/usuarios', icon: '☰', label: 'Usuarios' },
   { to: '/inventario', icon: '⛭', label: 'Inventario' },
   { to: '/soporte', icon: '✉', label: 'Soporte' },
+  { to: '/configuracion', icon: '⚙', label: 'Configuración' },
 ] as const;
 
 const TITLES: Record<string, string> = {

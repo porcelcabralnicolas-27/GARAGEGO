@@ -41,6 +41,8 @@ import {
   type HolderRole,
   type ParkingLot,
 } from '@/features/parking/types';
+import { useAppLimits } from '@/hooks/useAppLimits';
+import { useDocumentRules } from '@/hooks/useDocumentRules';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
@@ -147,6 +149,9 @@ export function ParkingListingWizard(props: WizardProps) {
   const router = useRouter();
   const { colors, typography } = useTheme();
   const profile = useAuthStore((s) => s.profile);
+  const { maxParkingImages } = useAppLimits();
+  // Qué documentos se piden (Configuración del panel, 0097).
+  const docRules = useDocumentRules();
   const queryClient = useQueryClient();
 
   // Sin esto, volver a abrir la edición dentro del staleTime mostraba el lote en cache de antes
@@ -169,12 +174,12 @@ export function ParkingListingWizard(props: WizardProps) {
   // terminal y ni siquiera llega hasta acá (lo corta `[id]/edit.tsx`).
   const needsResubmit = props.mode === 'edit' && props.lot.approvalStatus === 'changes_requested';
 
-  // La cochera tal como la dejó el servidor tras el último guardado (en edición). Importa porque
-  // guardar puede cambiarle el estado: cambiar la dirección de una cochera ya verificada le quita
-  // la verificación de titularidad (migración 0082) y hay que acreditarla de nuevo.
+  // La cochera tal como la dejó el servidor tras el último guardado (en edición): guardar puede
+  // cambiarle el estado (editar una aprobada la manda a revisión, 0081).
   const [currentLot, setCurrentLot] = useState<ParkingLot | null>(isEdit ? props.lot : null);
-  const mustReverify =
-    props.mode === 'edit' && props.lot.ownershipVerifiedAt !== null && currentLot?.ownershipVerifiedAt === null;
+  // La titularidad se verifica una sola vez (0089): con el sello puesto, ninguna edición vuelve a
+  // pedir documentos; el equipo solo revisa los cambios.
+  const ownershipVerifiedAt = currentLot?.ownershipVerifiedAt ?? null;
   const [resubmitted, setResubmitted] = useState(false);
 
   const maybeResubmit = async (id: string) => {
@@ -220,7 +225,7 @@ export function ParkingListingWizard(props: WizardProps) {
 
   /** Nombres de lo que todavía falta subir, o null si está completo. */
   const missingDocsMessage = (kinds: DocumentKind[]): string | null => {
-    const missing = missingDocumentRequirements(holderRole, kinds);
+    const missing = missingDocumentRequirements(holderRole, kinds, rates?.lotType ?? 'lot', docRules);
     if (missing.length === 0) return null;
     return `Faltan documentos de titularidad: ${missing.map((m) => m.label.toLowerCase()).join(', ')}.`;
   };
@@ -294,9 +299,9 @@ export function ParkingListingWizard(props: WizardProps) {
       setIsFinishing(true);
       setErrorMessage(null);
       try {
-        // Reenviar a revisión, o volver a acreditar la titularidad tras cambiar la dirección, exige
-        // los documentos completos; el resto de las ediciones no.
-        if ((needsResubmit && !resubmitted) || mustReverify) {
+        // Reenviar a revisión exige los documentos completos, salvo que la titularidad ya esté
+        // verificada (0089); el resto de las ediciones no.
+        if (needsResubmit && !resubmitted && !ownershipVerifiedAt) {
           const docs = await listLotDocuments(lotId);
           const message = missingDocsMessage(docs.map((doc) => doc.kind));
           if (message) {
@@ -501,8 +506,8 @@ export function ParkingListingWizard(props: WizardProps) {
           <View>
             <Text style={[typography.bodyMedium, styles.stepIntro, { color: colors.onSurfaceVariant }]}>
               {isEdit
-                ? 'Podés tener hasta 3 fotos del lugar. Tienen que ser todas distintas.'
-                : 'Subí al menos 1 foto del lugar (hasta 3). Tienen que ser todas distintas.'}
+                ? `Podés tener hasta ${maxParkingImages} fotos del lugar. Tienen que ser todas distintas.`
+                : `Subí al menos 1 foto del lugar (hasta ${maxParkingImages}). Tienen que ser todas distintas.`}
             </Text>
             {lotId ? (
               <ImageManager ownerId={profile.id} parkingLotId={lotId} />
@@ -529,17 +534,12 @@ export function ParkingListingWizard(props: WizardProps) {
 
         {step === 5 && profile ? (
           <View>
-            {mustReverify ? (
-              <Banner
-                variant="info"
-                message="Cambiaste la dirección o la ubicación del lugar: como puede ser otro lugar, hay que acreditar la titularidad de nuevo. Subí los documentos para que el equipo los revise."
-              />
-            ) : null}
-            {currentLot?.approvalStatus === 'approved' && currentLot.ownershipVerifiedAt ? (
-              // Los documentos se borran al verificar: queda solo la constancia.
+            {ownershipVerifiedAt ? (
+              // Los documentos se borran al verificar: queda solo la constancia, y no se vuelven a
+              // pedir aunque la publicación esté en revisión por una edición.
               <Banner
                 variant="success"
-                message={`El equipo verificó la titularidad de este lugar el ${new Date(currentLot.ownershipVerifiedAt).toLocaleDateString('es-AR')}. Por seguridad, borramos los documentos que subiste.`}
+                message={`El equipo verificó la titularidad de este lugar el ${new Date(ownershipVerifiedAt).toLocaleDateString('es-AR')}. Por seguridad, borramos los documentos que subiste. No hace falta volver a subirlos: si cambiaste algo, el equipo solo revisa esos cambios.`}
               />
             ) : lotId ? (
               <OwnershipDocsStep

@@ -26,9 +26,31 @@ const FALLBACK_OFFSET_MINUTES = -180;
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 
-const WEEKDAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-const WEEKDAYS_LONG = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
+const NAMES = {
+  es: {
+    weekdaysShort: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
+    weekdaysLong: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
+    monthsShort: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'],
+  },
+  // Demo de presentación regional (0086): en Estados Unidos, además, el mes va antes que el día.
+  en: {
+    weekdaysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    weekdaysLong: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  },
+};
+
+let displayLanguage: 'es' | 'en' = 'es';
+
+/** Idioma de los nombres de días y meses y del orden día/mes. Por defecto, español. */
+export function setDisplayLanguage(language: 'es' | 'en'): void {
+  displayLanguage = language;
+}
+
+const names = () => NAMES[displayLanguage];
+const isEnglish = () => displayLanguage === 'en';
+/** `21/09` en español, `09/21` en inglés. */
+const dayMonth = (day: string, month: string) => (isEnglish() ? `${month}/${day}` : `${day}/${month}`);
 
 let partsFormatter: Intl.DateTimeFormat | null | undefined;
 
@@ -170,33 +192,34 @@ export function deviceUsesBusinessTime(instant: Date | number = Date.now()): boo
 /** `lun 21/09` */
 export function formatCalendarDayShort(date: string): string {
   const [, month, day] = date.split('-');
-  return `${WEEKDAYS_SHORT[weekdayOf(date)]} ${day}/${month}`;
+  return `${names().weekdaysShort[weekdayOf(date)]} ${dayMonth(day, month)}`;
 }
 
 /** `lunes 21/09` */
 export function formatCalendarDayLong(date: string): string {
   const [, month, day] = date.split('-');
-  return `${WEEKDAYS_LONG[weekdayOf(date)]} ${day}/${month}`;
+  return `${names().weekdaysLong[weekdayOf(date)]} ${dayMonth(day, month)}`;
 }
 
 /** `21/09/2026` */
 export function formatCalendarDate(date: string): string {
   const [year, month, day] = date.split('-');
-  return `${day}/${month}/${year}`;
+  return `${dayMonth(day, month)}/${year}`;
 }
 
-// Instantes (ISO con hora): se convierten a Buenos Aires.
+// Instantes (ISO con hora): se convierten a la zona de visualización (Buenos Aires, salvo en la
+// demo de Estados Unidos).
 
 /** `14:05` */
 export function formatTime(instant: Date | number | string): string {
-  const wall = toBusinessWallClock(instant);
+  const wall = toDisplayWallClock(instant);
   return `${pad(wall.hour)}:${pad(wall.minute)}`;
 }
 
 /** `21/09` */
 export function formatDayMonth(instant: Date | number | string): string {
-  const wall = toBusinessWallClock(instant);
-  return `${pad(wall.day)}/${pad(wall.month)}`;
+  const wall = toDisplayWallClock(instant);
+  return dayMonth(pad(wall.day), pad(wall.month));
 }
 
 /** `21/09 14:05` */
@@ -206,8 +229,8 @@ export function formatDayMonthTime(instant: Date | number | string): string {
 
 /** `21/09/2026` */
 export function formatDate(instant: Date | number | string): string {
-  const wall = toBusinessWallClock(instant);
-  return `${pad(wall.day)}/${pad(wall.month)}/${wall.year}`;
+  const wall = toDisplayWallClock(instant);
+  return `${dayMonth(pad(wall.day), pad(wall.month))}/${wall.year}`;
 }
 
 /** `21/09/2026 14:05` */
@@ -217,11 +240,125 @@ export function formatDateTime(instant: Date | number | string): string {
 
 /** `05 sept 2026` */
 export function formatDateMonthName(instant: Date | number | string): string {
-  const wall = toBusinessWallClock(instant);
-  return `${pad(wall.day)} ${MONTHS_SHORT[wall.month - 1]} ${wall.year}`;
+  const wall = toDisplayWallClock(instant);
+  const month = names().monthsShort[wall.month - 1];
+  return isEnglish() ? `${month} ${pad(wall.day)}, ${wall.year}` : `${pad(wall.day)} ${month} ${wall.year}`;
 }
 
 /** `sept` */
 export function formatMonthName(instant: Date | number | string): string {
-  return MONTHS_SHORT[toBusinessWallClock(instant).month - 1];
+  return names().monthsShort[toDisplayWallClock(instant).month - 1];
+}
+
+// ── Zona de visualización (demo de presentación regional, 0086) ─────────────────────────────
+// La base y la lógica siguen en hora de Buenos Aires. En la demo de Estados Unidos la app MUESTRA
+// e INGRESA los horarios en hora de Nueva York: estas funciones convierten en los dos sentidos
+// pasando por el instante real, así respetan el horario de verano de EE. UU. Por defecto la zona
+// de visualización es Buenos Aires, así el panel (que nunca la cambia) y los tests no cambian.
+
+let displayZone = BUSINESS_TIME_ZONE;
+
+export function setDisplayTimeZone(timeZone: string): void {
+  displayZone = timeZone;
+}
+
+export function displayTimeZone(): string {
+  return displayZone;
+}
+
+/** true si se muestran los horarios tal como están guardados (hora de Buenos Aires). */
+export function displaysBusinessTime(): boolean {
+  return displayZone === BUSINESS_TIME_ZONE;
+}
+
+const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function zoneFormatter(timeZone: string): Intl.DateTimeFormat {
+  let formatter = zoneFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    zoneFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+/** Día y hora de un instante en cualquier zona. */
+export function toWallClockIn(instant: Date | number | string, timeZone: string): WallClock {
+  if (timeZone === BUSINESS_TIME_ZONE) return toBusinessWallClock(instant);
+  const parts: Record<string, number> = {};
+  for (const part of zoneFormatter(timeZone).formatToParts(toMs(instant))) {
+    if (part.type !== 'literal') parts[part.type] = Number(part.value);
+  }
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: parts.hour % 24,
+    minute: parts.minute,
+    second: parts.second,
+    weekday: new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay(),
+  };
+}
+
+function offsetMinutesIn(timeZone: string, instantMs: number): number {
+  const wall = toWallClockIn(instantMs, timeZone);
+  const wallAsUtc = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
+  return Math.round((wallAsUtc - Math.floor(instantMs / 1000) * 1000) / MINUTE_MS);
+}
+
+/** Instante de `date` + `time` en una zona (como businessInstant, para cualquier zona). */
+export function instantIn(date: string, time: string, timeZone: string): Date {
+  if (timeZone === BUSINESS_TIME_ZONE) return businessInstant(date, time);
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute, second = 0] = time.split(':').map(Number);
+  const wallAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  const firstGuess = wallAsUtc - offsetMinutesIn(timeZone, wallAsUtc) * MINUTE_MS;
+  return new Date(wallAsUtc - offsetMinutesIn(timeZone, firstGuess) * MINUTE_MS);
+}
+
+/** Día y hora de un instante en la zona de visualización. */
+export function toDisplayWallClock(instant: Date | number | string): WallClock {
+  return toWallClockIn(instant, displayZone);
+}
+
+/** Fecha (YYYY-MM-DD) de ese instante en la zona de visualización. Sin argumento, la de hoy. */
+export function displayDate(instant: Date | number | string = Date.now()): string {
+  return dateKey(toDisplayWallClock(instant));
+}
+
+export type CalendarSlot = { date: string; time: string };
+
+/** Fecha y hora guardadas (Buenos Aires) → como se muestran en la región. */
+export function businessToDisplay(date: string, time: string): CalendarSlot {
+  if (displaysBusinessTime()) return { date, time: time.slice(0, 5) };
+  const wall = toDisplayWallClock(businessInstant(date, time));
+  return { date: dateKey(wall), time: `${pad(wall.hour)}:${pad(wall.minute)}` };
+}
+
+/** Fecha y hora elegidas en la región → como se guardan (Buenos Aires). */
+export function displayToBusiness(date: string, time: string): CalendarSlot {
+  if (displaysBusinessTime()) return { date, time: time.slice(0, 5) };
+  const wall = toBusinessWallClock(instantIn(date, time, displayZone));
+  return { date: dateKey(wall), time: `${pad(wall.hour)}:${pad(wall.minute)}` };
+}
+
+/**
+ * Un horario semanal de la cochera (día 0-6 + hora, en Buenos Aires) como se ve en la región.
+ * Se calcula sobre la próxima fecha de ese día, así toma el desfasaje vigente.
+ */
+export function businessWeeklyToDisplay(dayOfWeek: number, time: string): { dayOfWeek: number; time: string } {
+  if (displaysBusinessTime()) return { dayOfWeek, time: time.slice(0, 5) };
+  const today = businessDate();
+  const date = addDays(today, (dayOfWeek - weekdayOf(today) + 7) % 7);
+  const shown = businessToDisplay(date, time);
+  return { dayOfWeek: weekdayOf(shown.date), time: shown.time };
 }

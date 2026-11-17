@@ -2,6 +2,7 @@ import { Modal, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 type ConfirmDialogProps = {
   visible: boolean;
@@ -21,7 +22,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel,
-  cancelLabel = 'Cancelar',
+  cancelLabel = t('Cancelar'),
   hideCancel,
   loading,
   onConfirm,

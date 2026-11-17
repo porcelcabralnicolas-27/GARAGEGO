@@ -38,15 +38,19 @@ export type ModerationState = 'live' | 'paused_by_admin' | 'suspended';
 /** `support_tickets.status` (migración 0041). */
 export type TicketStatus = 'open' | 'resolved';
 
-/** `support_tickets.category` (migración 0041). */
-export type TicketCategory = 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+/** Código de `support_tickets.category`. Desde la 0094 las categorías son un catálogo que edita el
+ *  equipo (`ticket_categories`): puede haber otras además de las de TICKET_CATEGORY_LABELS. */
+export type TicketCategory = string;
 
-/** Servicios de una cochera. `parking_lots.amenities` (migración 0065), en este orden. */
+/** Servicios de una cochera (`parking_lots.amenities`). Desde la 0094 son un catálogo que edita el
+ *  equipo (`parking_amenities`); estas son las de siempre, que quedan como respaldo si no se puede
+ *  leer el catálogo. */
 export const AMENITIES = ['cameras', 'security_staff', 'lighting', 'ev_charger', 'restrooms'] as const;
 
-export type Amenity = (typeof AMENITIES)[number];
+/** Código de un servicio: los de AMENITIES o cualquiera que agregue el equipo. */
+export type Amenity = string;
 
-export const AMENITY_LABELS: Record<Amenity, string> = {
+export const AMENITY_LABELS: Record<string, string> = {
   cameras: 'Cámaras de seguridad',
   security_staff: 'Personal de vigilancia',
   lighting: 'Iluminación y señalización',
@@ -54,7 +58,8 @@ export const AMENITY_LABELS: Record<Amenity, string> = {
   restrooms: 'Sanitarios',
 };
 
-export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
+/** Las categorías de siempre (respaldo si no se puede leer `ticket_categories`, 0094). */
+export const TICKET_CATEGORY_LABELS: Record<string, string> = {
   access: 'Acceso a la cochera',
   payment: 'Pagos y saldo',
   listing: 'Publicación',
@@ -117,9 +122,10 @@ export const LOT_TYPE_DESCRIPTIONS: Record<LotType, string> = {
 
 // ── Verificación de titularidad (migración 0078) ──────────────────────────────────────────────
 // Para publicar, el propietario sube documentos que acreditan que es el dueño del lugar o que
-// tiene permiso para ofrecerlo. El equipo los revisa antes de aprobar. Las reglas de abajo se
-// repiten en SQL (`lot_missing_documents`, 0078): el servidor es el que las hace cumplir, esto
-// solo le dice a la pantalla qué pedir y qué falta.
+// tiene permiso para ofrecerlo. El equipo los revisa antes de aprobar. Desde la 0097 qué se pide
+// lo configura el equipo (`document_requirements`); las reglas de abajo son el respaldo. El
+// servidor (`lot_missing_documents`) es el que las hace cumplir; esto le dice a la pantalla qué
+// pedir y qué falta.
 
 /** Relación de quien publica con el lugar. `parking_lots.holder_role` (migración 0078). */
 export const HOLDER_ROLES = ['owner', 'tenant', 'manager'] as const;
@@ -163,63 +169,234 @@ export type DocumentRequirement = {
   optional?: boolean;
 };
 
-const DNI_REQUIREMENT: DocumentRequirement = {
-  id: 'dni',
-  label: 'DNI (frente)',
-  hint: 'Tiene que coincidir con el nombre de tu cuenta. Tapá el número de trámite.',
-  kinds: ['dni'],
+/** Obligatorio, opcional o "no se pide" (Configuración → Aprobación y titularidad, 0097). */
+export type DocumentPolicy = 'required' | 'optional' | 'off';
+
+/** Una regla de `document_requirements` (0097): qué se pide, a quién y para qué tipo de lugar. */
+export type DocumentRule = {
+  code: string;
+  label: string;
+  hint: string;
+  kinds: DocumentKind[];
+  forOwner: boolean;
+  forTenant: boolean;
+  forManager: boolean;
+  appliesLotType: 'all' | LotType;
+  policy: DocumentPolicy;
 };
 
-const OWNER_AUTHORIZATION_REQUIREMENT: DocumentRequirement = {
-  id: 'owner_authorization',
-  label: 'Autorización firmada del dueño',
-  hint: 'Con su firma, la fecha y una copia de su DNI, para que ofrezcas el lugar.',
-  kinds: ['owner_authorization'],
-};
+/** Las reglas de antes de la 0097 (las mismas que carga la migración). Respaldo si no se puede
+ *  leer la tabla. */
+export const DEFAULT_DOCUMENT_RULES: DocumentRule[] = [
+  {
+    code: 'dni',
+    label: 'DNI (frente)',
+    hint: 'Tiene que coincidir con el nombre de tu cuenta. Tapá el número de trámite.',
+    kinds: ['dni'],
+    forOwner: true,
+    forTenant: true,
+    forManager: true,
+    appliesLotType: 'all',
+    policy: 'required',
+  },
+  {
+    code: 'property_proof',
+    label: 'Documento que acredite que sos el dueño',
+    hint: 'Escritura, título de propiedad o una boleta reciente (últimos 6 meses) del impuesto inmobiliario o ABL, a tu nombre y con la dirección del lugar.',
+    kinds: ['ownership_deed', 'tax_bill'],
+    forOwner: true,
+    forTenant: false,
+    forManager: false,
+    appliesLotType: 'all',
+    policy: 'required',
+  },
+  {
+    code: 'rental_contract',
+    label: 'Contrato de alquiler',
+    hint: 'Vigente y con la dirección del lugar.',
+    kinds: ['rental_contract'],
+    forOwner: false,
+    forTenant: true,
+    forManager: false,
+    appliesLotType: 'all',
+    policy: 'required',
+  },
+  {
+    code: 'owner_authorization',
+    label: 'Autorización firmada del dueño',
+    hint: 'Con su firma, la fecha y una copia de su DNI, para que ofrezcas el lugar.',
+    kinds: ['owner_authorization'],
+    forOwner: false,
+    forTenant: true,
+    forManager: true,
+    appliesLotType: 'all',
+    policy: 'required',
+  },
+  {
+    code: 'commercial_license',
+    label: 'Habilitación municipal',
+    hint: 'Si el predio tiene habilitación como estacionamiento, sumala: acelera la revisión.',
+    kinds: ['commercial_license'],
+    forOwner: true,
+    forTenant: true,
+    forManager: true,
+    appliesLotType: 'lot',
+    policy: 'optional',
+  },
+];
 
-/** Qué documentos pide cada relación con el lugar. */
-export function documentRequirements(role: HolderRole, lotType?: 'house' | 'lot'): DocumentRequirement[] {
-  const requirements: DocumentRequirement[] = [DNI_REQUIREMENT];
+const ruleAppliesTo = (rule: DocumentRule, role: HolderRole) =>
+  role === 'owner' ? rule.forOwner : role === 'tenant' ? rule.forTenant : rule.forManager;
 
-  if (role === 'owner') {
-    requirements.push({
-      id: 'property_proof',
-      label: 'Documento que acredite que sos el dueño',
-      hint: 'Escritura, título de propiedad o una boleta reciente (últimos 6 meses) del impuesto inmobiliario o ABL, a tu nombre y con la dirección del lugar.',
-      kinds: ['ownership_deed', 'tax_bill'],
-    });
-  } else if (role === 'tenant') {
-    requirements.push({
-      id: 'rental_contract',
-      label: 'Contrato de alquiler',
-      hint: 'Vigente y con la dirección del lugar.',
-      kinds: ['rental_contract'],
-    });
-    requirements.push(OWNER_AUTHORIZATION_REQUIREMENT);
-  } else {
-    requirements.push(OWNER_AUTHORIZATION_REQUIREMENT);
-  }
-
-  if (lotType === 'lot') {
-    requirements.push({
-      id: 'commercial_license',
-      label: 'Habilitación municipal (opcional)',
-      hint: 'Si el predio tiene habilitación como estacionamiento, sumala: acelera la revisión.',
-      kinds: ['commercial_license'],
-      optional: true,
-    });
-  }
-
-  return requirements;
+/**
+ * Qué documentos se le piden a esa relación con el lugar y ese tipo de lugar, según las reglas
+ * (0097; por defecto, las de siempre). Sin tipo de lugar, solo las que valen para todos.
+ * MISMA regla que `lot_missing_documents` en SQL: el servidor es el que la hace cumplir.
+ */
+export function documentRequirements(
+  role: HolderRole,
+  lotType?: LotType,
+  rules: readonly DocumentRule[] = DEFAULT_DOCUMENT_RULES
+): DocumentRequirement[] {
+  return rules
+    .filter(
+      (rule) =>
+        rule.policy !== 'off' &&
+        ruleAppliesTo(rule, role) &&
+        (rule.appliesLotType === 'all' || rule.appliesLotType === lotType)
+    )
+    .map((rule) => ({
+      id: rule.code,
+      label: rule.policy === 'optional' ? `${rule.label} (opcional)` : rule.label,
+      hint: rule.hint,
+      kinds: rule.kinds,
+      ...(rule.policy === 'optional' ? { optional: true } : {}),
+    }));
 }
 
 /** Los requisitos obligatorios que todavía no se cumplen con los documentos cargados. */
 export function missingDocumentRequirements(
   role: HolderRole,
-  have: Iterable<DocumentKind>
+  have: Iterable<DocumentKind>,
+  lotType?: LotType,
+  rules: readonly DocumentRule[] = DEFAULT_DOCUMENT_RULES
 ): DocumentRequirement[] {
   const owned = new Set(have);
-  return documentRequirements(role).filter(
+  return documentRequirements(role, lotType, rules).filter(
     (requirement) => !requirement.optional && !requirement.kinds.some((kind) => owned.has(kind))
   );
+}
+
+/** Convierte lo que devuelve `public_document_requirements()` (0097). Filas raras se descartan;
+ *  si no queda ninguna, las reglas de siempre. */
+export function parseDocumentRules(raw: unknown): DocumentRule[] {
+  if (!Array.isArray(raw)) return DEFAULT_DOCUMENT_RULES;
+  const rules: DocumentRule[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const kinds = Array.isArray(r.kinds)
+      ? (r.kinds.filter((k) => (DOCUMENT_KINDS as readonly string[]).includes(k as string)) as DocumentKind[])
+      : [];
+    if (typeof r.code !== 'string' || typeof r.label !== 'string' || kinds.length === 0) continue;
+    rules.push({
+      code: r.code,
+      label: r.label,
+      hint: typeof r.hint === 'string' ? r.hint : '',
+      kinds,
+      forOwner: r.for_owner === true,
+      forTenant: r.for_tenant === true,
+      forManager: r.for_manager === true,
+      appliesLotType: r.applies_lot_type === 'house' || r.applies_lot_type === 'lot' ? r.applies_lot_type : 'all',
+      policy: r.policy === 'optional' || r.policy === 'off' ? r.policy : 'required',
+    });
+  }
+  return rules.length > 0 ? rules : DEFAULT_DOCUMENT_RULES;
+}
+
+// ── Qué cambió desde la última aprobación (migración 0089) ────────────────────────────────────
+// Al aprobar, la base guarda una foto de la publicación (`parking_lots.approved_snapshot`). Si el
+// propietario la edita, el panel la compara con el estado actual y muestra solo lo que cambió.
+// Los horarios no se comparan: no pasan por revisión (0081).
+
+/** Lo que guarda `approved_snapshot`: `lot_review_snapshot` más el tipo de lugar y el punto. */
+export type ApprovedSnapshot = {
+  name?: string;
+  description?: string;
+  address?: { address?: string; lat?: number; lng?: number };
+  price?: number;
+  capacity?: number;
+  amenities?: string[];
+  photos?: string[];
+  lot_type?: LotType;
+};
+
+export type ListingCurrentState = {
+  name: string;
+  description: string | null;
+  address: string;
+  latitude: number;
+  longitude: number;
+  pricePerHour: number;
+  capacity: number;
+  amenities: string[];
+  lotType: LotType;
+  /** Rutas en el bucket de las fotos actuales (no URLs). */
+  photoPaths: string[];
+};
+
+export type ListingChange =
+  | { field: 'name' | 'description' | 'address'; before: string; after: string }
+  | { field: 'location'; before: { lat: number; lng: number }; after: { lat: number; lng: number } }
+  | { field: 'price' | 'capacity'; before: number; after: number }
+  | { field: 'lot_type'; before: LotType; after: LotType }
+  | { field: 'amenities'; added: string[]; removed: string[] }
+  | { field: 'photos'; added: number; removed: number };
+
+/** Diferencias entre lo aprobado y lo actual, en el orden en que se muestran. Vacío = sin cambios. */
+export function listingChangesSince(snapshot: ApprovedSnapshot, current: ListingCurrentState): ListingChange[] {
+  const changes: ListingChange[] = [];
+  const text = (value: string | null | undefined) => (value ?? '').trim();
+
+  const name = { before: text(snapshot.name), after: text(current.name) };
+  if (name.before !== name.after) changes.push({ field: 'name', ...name });
+
+  const description = { before: text(snapshot.description), after: text(current.description) };
+  if (description.before !== description.after) changes.push({ field: 'description', ...description });
+
+  const address = { before: text(snapshot.address?.address), after: text(current.address) };
+  if (address.before !== address.after) changes.push({ field: 'address', ...address });
+
+  const before = { lat: Number(snapshot.address?.lat), lng: Number(snapshot.address?.lng) };
+  if (before.lat !== current.latitude || before.lng !== current.longitude) {
+    changes.push({ field: 'location', before, after: { lat: current.latitude, lng: current.longitude } });
+  }
+
+  if (snapshot.lot_type && snapshot.lot_type !== current.lotType) {
+    changes.push({ field: 'lot_type', before: snapshot.lot_type, after: current.lotType });
+  }
+
+  if (Number(snapshot.price) !== Number(current.pricePerHour)) {
+    changes.push({ field: 'price', before: Number(snapshot.price), after: Number(current.pricePerHour) });
+  }
+
+  if (Number(snapshot.capacity) !== Number(current.capacity)) {
+    changes.push({ field: 'capacity', before: Number(snapshot.capacity), after: Number(current.capacity) });
+  }
+
+  const approvedAmenities = snapshot.amenities ?? [];
+  const addedAmenities = current.amenities.filter((a) => !approvedAmenities.includes(a));
+  const removedAmenities = approvedAmenities.filter((a) => !current.amenities.includes(a));
+  if (addedAmenities.length > 0 || removedAmenities.length > 0) {
+    changes.push({ field: 'amenities', added: addedAmenities, removed: removedAmenities });
+  }
+
+  const approvedPhotos = snapshot.photos ?? [];
+  const addedPhotos = current.photoPaths.filter((p) => !approvedPhotos.includes(p)).length;
+  const removedPhotos = approvedPhotos.filter((p) => !current.photoPaths.includes(p)).length;
+  if (addedPhotos > 0 || removedPhotos > 0) {
+    changes.push({ field: 'photos', added: addedPhotos, removed: removedPhotos });
+  }
+
+  return changes;
 }

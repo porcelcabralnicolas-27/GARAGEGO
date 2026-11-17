@@ -18,6 +18,7 @@ import { queryKeys } from '@/lib/queryKeys';
 import { businessInstant } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 /** Ventana mínima de antelación para que el cliente pueda cancelar una reserva ya aprobada. */
 const CANCEL_LOCK_MS = 60 * 60 * 1000;
@@ -68,7 +69,7 @@ const SECTION_DEFS = [
   },
   {
     key: 'pending',
-    title: 'Pendientes',
+    title: 'Esperando pago',
     highlight: false,
     match: (b: ClientBookingItem) => b.status === 'pending',
   },
@@ -168,7 +169,7 @@ export default function MyBookingsScreen() {
   // Un solo lugar para el mensaje de error, sea de la carga o de cancelar: como en el resto de
   // las pantallas ya migradas, no hace falta duplicar el estado de React Query en uno propio.
   const [mutationErrorMessage, setMutationError] = useState<string | null>(null);
-  const errorMessage = mutationErrorMessage ?? (isError ? 'No se pudieron cargar tus reservas.' : null);
+  const errorMessage = mutationErrorMessage ?? (isError ? t('No se pudieron cargar tus reservas.') : null);
 
   const cancel = useMutation({
     mutationFn: (booking: ClientBookingItem) => cancelBooking(booking.id),
@@ -186,11 +187,11 @@ export default function MyBookingsScreen() {
   return (
     <Screen>
       <ScreenHeader
-        title="Mis reservas"
+        title={t('Mis reservas')}
         action={
           <IconButton
             name="time-outline"
-            accessibilityLabel="Ver historial de reservas"
+            accessibilityLabel={t('Ver historial de reservas')}
             onPress={() => router.push('/(client)/bookings/history')}
           />
         }
@@ -201,9 +202,9 @@ export default function MyBookingsScreen() {
       {!isLoading && sections.length === 0 && !errorMessage ? (
         <EmptyState
           icon="calendar-outline"
-          title="No tenés reservas activas"
-          description="Acá vas a ver tu sesión en curso y los lugares que tengas reservados. Las finalizadas están en el historial."
-          actionLabel="Buscar estacionamientos"
+          title={t('No tenés reservas activas')}
+          description={t('Acá vas a ver tu sesión en curso y los lugares que tengas reservados. Las finalizadas están en el historial.')}
+          actionLabel={t('Buscar estacionamientos')}
           onAction={() => router.push('/(client)/search')}
         />
       ) : null}
@@ -228,7 +229,7 @@ export default function MyBookingsScreen() {
                 { color: section.highlight ? colors.accent : colors.onSurfaceVariant },
               ]}
             >
-              {section.title.toUpperCase()}
+              {t(section.title).toUpperCase()}
             </Text>
 
             {section.totalCount > COLLAPSED_LIMIT ? (
@@ -238,12 +239,12 @@ export default function MyBookingsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={
                   section.isExpanded
-                    ? `Ver menos de ${section.title}`
-                    : `Ver las ${section.totalCount} reservas de ${section.title}`
+                    ? t('Ver menos de {section}', { section: t(section.title) })
+                    : t('Ver las {count} reservas de {section}', { count: section.totalCount, section: t(section.title) })
                 }
               >
                 <Text style={[typography.label, { color: colors.accent }]}>
-                  {section.isExpanded ? 'VER MENOS' : 'VER TODO'}
+                  {section.isExpanded ? t('VER MENOS') : t('VER TODO')}
                 </Text>
               </Pressable>
             ) : null}
@@ -269,7 +270,7 @@ export default function MyBookingsScreen() {
               actions={
                 canCancel ? (
                   <Button
-                    label="Cancelar"
+                    label={t('Cancelar')}
                     size="compact"
                     variant="outlined"
                     // El botón sigue visible aunque ya no se pueda cancelar: al tocarlo
@@ -287,14 +288,14 @@ export default function MyBookingsScreen() {
 
       <ConfirmDialog
         visible={cancelTarget !== null}
-        title="Cancelar reserva"
+        title={t('Cancelar reserva')}
         message={
           cancelTarget?.status === 'confirmed'
-            ? '¿Seguro que querés cancelar esta reserva? El monto pagado se te reintegrará a tu saldo. Tené en cuenta que vas a poder cancelarla hasta 1 hora antes del inicio.'
-            : '¿Seguro que querés cancelar esta reserva? El monto pagado se te reintegrará a tu saldo.'
+            ? t('¿Seguro que querés cancelar esta reserva? El monto pagado se te reintegrará a tu saldo. Tené en cuenta que vas a poder cancelarla hasta 1 hora antes del inicio.')
+            : t('¿Seguro que querés cancelar esta reserva? El monto pagado se te reintegrará a tu saldo.')
         }
-        confirmLabel="Cancelar reserva"
-        cancelLabel="Volver"
+        confirmLabel={t('Cancelar reserva')}
+        cancelLabel={t('Volver')}
         loading={cancel.isPending}
         onConfirm={() => {
           if (!cancelTarget) return;
@@ -306,9 +307,9 @@ export default function MyBookingsScreen() {
 
       <ConfirmDialog
         visible={lockedCancelTarget !== null}
-        title="Ya no se puede cancelar"
-        message="Falta menos de 1 hora para que empiece esta reserva, así que ya no se puede cancelar. Si no vas a poder ir, escribile al propietario por el chat."
-        confirmLabel="Entendido"
+        title={t('Ya no se puede cancelar')}
+        message={t('Falta menos de 1 hora para que empiece esta reserva, así que ya no se puede cancelar. Si no vas a poder ir, escribile al propietario por el chat.')}
+        confirmLabel={t('Entendido')}
         hideCancel
         onConfirm={() => setLockedCancelTarget(null)}
         onCancel={() => setLockedCancelTarget(null)}

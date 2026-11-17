@@ -1,0 +1,26 @@
+# Configuración del Supabase CLI. Solo se usa para desplegar las Edge Functions (Mercado Pago y
+# delete-account; las migraciones se siguen corriendo a mano en el SQL Editor).
+#
+#   npx supabase@latest functions deploy --project-ref rkrbjcchttidfppttrdq --use-api
+#
+# verify_jwt = false en las que llaman Mercado Pago o el navegador sin sesión: se autentican
+# solas (firma del webhook, secreto del cron o el JWT revisado adentro). Dejarlo acá evita que un
+# redeploy sin flags las vuelva a cerrar por accidente.
+
+project_id = "rkrbjcchttidfppttrdq"
+
+[functions.mp-create-order]
+verify_jwt = true
+
+[functions.mp-webhook]
+verify_jwt = false
+
+[functions.mp-sync]
+verify_jwt = false
+
+[functions.mp-return]
+verify_jwt = false
+
+# Baja de la cuenta (0088): exige sesión, el id sale del JWT.
+[functions.delete-account]
+verify_jwt = true

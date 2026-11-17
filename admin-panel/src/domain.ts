@@ -11,8 +11,12 @@
 export type {
   Amenity,
   ApprovalStatus,
+  ApprovedSnapshot,
   DocumentKind,
+  DocumentPolicy,
+  DocumentRule,
   HolderRole,
+  ListingChange,
   ListingChangeField,
   LotType,
   ModerationState,
@@ -21,7 +25,10 @@ export type {
   UserRole,
 } from '../../shared/domain';
 export {
+  listingChangesSince,
   AMENITY_LABELS,
+  DEFAULT_DOCUMENT_RULES,
+  DOCUMENT_KINDS,
   DOCUMENT_KIND_LABELS,
   HOLDER_ROLE_LABELS,
   documentRequirements,
@@ -37,6 +44,7 @@ import type {
   ApprovalStatus,
   DocumentKind,
   HolderRole,
+  ListingChange,
   ListingChangeField,
   LotType,
   ModerationState,
@@ -74,6 +82,8 @@ export type AdminParkingLot = {
   lotType: LotType;
   /** Relación de quien publica con el lugar (0078): define qué documentos se le piden. */
   holderRole: HolderRole;
+  /** País de la cochera (0087): 'AR' o 'US' (demo). */
+  region: string;
   /** Cuándo se verificó la titularidad (0079). Los documentos ya se borraron; queda este sello. */
   ownershipVerifiedAt: string | null;
   ratingAvg: number;
@@ -153,6 +163,12 @@ export type LotRow = {
   images: string[];
   /** Documentos de titularidad (migración 0078), con una URL firmada que vence. */
   documents: Array<{ kind: DocumentKind; url: string }>;
+  /** Qué cambió desde la última aprobación (0089). null = no hay foto de lo aprobado. */
+  approvedChanges: ListingChange[] | null;
+  /** Ya fue aprobada alguna vez (tiene foto de lo aprobado, 0089): define qué puntos del checklist van. */
+  wasApproved: boolean;
+  /** Constancias de aprobación con el checklist tildado (0092), más nuevas primero. */
+  reviewChecks: Array<{ at: string; items: Array<{ id: string; label: string; required: boolean; checked: boolean }> }>;
   /** Horas desde que se envió a revisión. Alimenta el semáforo de SLA de la cola. */
   ageHours: number;
   hasActiveSession: boolean;
@@ -160,11 +176,19 @@ export type LotRow = {
   bookings30d: number;
 };
 
+/** Horas a partir de las cuales la cola pasa a azul, amarillo y rojo (Configuración → Moderación, 0095). */
+export type SlaThresholds = { info: number; warn: number; danger: number };
+
+export const DEFAULT_SLA_THRESHOLDS: SlaThresholds = { info: 24, warn: 48, danger: 72 };
+
 /** Nivel de urgencia de una publicación en la cola, según cuánto lleva esperando. */
-export function slaLevel(ageHours: number): 'ok' | 'info' | 'warn' | 'danger' {
-  if (ageHours < 24) return 'ok';
-  if (ageHours < 48) return 'info';
-  if (ageHours < 72) return 'warn';
+export function slaLevel(
+  ageHours: number,
+  thresholds: SlaThresholds = DEFAULT_SLA_THRESHOLDS
+): 'ok' | 'info' | 'warn' | 'danger' {
+  if (ageHours < thresholds.info) return 'ok';
+  if (ageHours < thresholds.warn) return 'info';
+  if (ageHours < thresholds.danger) return 'warn';
   return 'danger';
 }
 

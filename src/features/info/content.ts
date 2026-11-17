@@ -1,6 +1,10 @@
 // Texto de las pantallas Legal, Información y Seguridad de Ajustes. Sale de la documentación del
 // proyecto (docs/01 a docs/07) y de lo que el sistema hace hoy: si cambia una regla de negocio
-// (plazos, tarifas, límites), hay que actualizarla acá también.
+// (plazos, tarifas, límites), hay que actualizarla acá también. Los límites configurables (0093)
+// llegan como parámetro a infoContent().
+
+import type { AppLimits } from '@/lib/appLimits';
+import { formatMoney } from '@/lib/money';
 
 export type InfoSection = {
   heading: string;
@@ -45,7 +49,7 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
       {
         heading: '3. Si sos conductor',
         bullets: [
-          'Reservás un horario concreto de una cochera disponible, indicando con qué vehículo vas a llegar. Podés tener hasta 3 vehículos cargados.',
+          'Reservás un horario concreto de una cochera disponible, indicando con qué vehículo vas a llegar. Podés tener varios vehículos cargados, hasta el máximo que indica la app.',
           'El importe se paga por adelantado con el saldo de tu billetera. La reserva queda confirmada al pagar, sin que el propietario tenga que aprobarla.',
           'Podés iniciar tu estacionamiento desde 15 minutos antes del horario reservado y hasta el horario de fin. Al retirarte, tenés que finalizarlo.',
           'Un mismo vehículo no puede estar en dos reservas al mismo tiempo, ni iniciar una reserva mientras está en otra sesión en curso.',
@@ -55,10 +59,10 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
       {
         heading: '4. Si sos propietario',
         bullets: [
-          'Solo podés publicar cocheras que tenés derecho a ofrecer. La descripción, las fotos, los servicios, la capacidad y los horarios tienen que ser verdaderos. Cada publicación lleva al menos 1 foto y hasta 3, y no pueden repetirse.',
+          'Solo podés publicar cocheras que tenés derecho a ofrecer. La descripción, las fotos, los servicios, la capacidad y los horarios tienen que ser verdaderos. Cada publicación lleva al menos 1 foto, hasta el máximo que indica la app, y no pueden repetirse.',
           'Para publicar tenés que acreditar que sos el dueño del lugar o que tenés permiso para ofrecerlo: subís tu DNI y un documento que lo respalde (escritura, boleta del impuesto inmobiliario o ABL, o un contrato de alquiler con autorización firmada del dueño). Si el lugar está en un edificio, tenés que verificar que el reglamento de copropiedad lo permita.',
           'Sos responsable de que lo que declarás y los documentos que subís sean verdaderos. Un documento falso o ajeno es motivo de rechazo y de suspensión de la cuenta.',
-          'Si cambiás la dirección o la ubicación de una publicación ya verificada, tenés que acreditar la titularidad de nuevo, porque podría ser otro lugar.',
+          'La titularidad se acredita una sola vez por publicación: una vez aprobada, no te volvemos a pedir los documentos aunque la edites. Los cambios (también los de dirección) los revisa el equipo como cualquier otra edición.',
           'Toda publicación pasa por una revisión del equipo antes de aparecer en las búsquedas. El equipo puede aprobarla, pedirte cambios o rechazarla; un rechazo es definitivo.',
           'Si después de aprobada cambiás los datos del lugar, la tarifa y los servicios o las fotos, el equipo los revisa de nuevo y, hasta que los apruebe, la publicación no aparece en las búsquedas. Los horarios los podés cambiar cuando quieras, sin revisión.',
           'Si eliminás una publicación, se cierran los chats de esa cochera y ya no se pueden hacer reportes sobre ella. El historial de reservas y los movimientos de tu billetera se conservan.',
@@ -170,13 +174,13 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
           'Guardamos tus datos mientras tu cuenta esté activa. Las reservas y los movimientos de dinero se conservan como registro de las operaciones, porque la otra parte también los necesita.',
           'Los documentos de titularidad (tu DNI y los que acreditan que podés publicar el lugar) los borramos apenas el equipo termina de revisar tu publicación, ya sea que la apruebe o la rechace. Mientras te pida cambios, se conservan para que puedas reenviarla. De la verificación queda solo la fecha en que se hizo.',
           'Si un propietario elimina una publicación, los mensajes de sus chats se borran. El historial de reservas y los movimientos de billetera se conservan.',
-          'El botón "Eliminar cuenta" de Ajustes todavía no funciona. Si querés que eliminemos tu cuenta y tus datos, pedilo desde Soporte y ayuda.',
+          'Podés eliminar tu cuenta desde Ajustes, siempre que no tengas reservas activas o próximas (como conductor o en tus cocheras). Al eliminarla borramos tus datos personales y tus vehículos, y tus publicaciones dejan de aparecer; las reservas pasadas y los movimientos de dinero se conservan sin tu nombre. El saldo que quede en la billetera se pierde.',
         ],
       },
       {
         heading: 'Tus derechos',
         paragraphs: [
-          'Podés acceder a tus datos y corregirlos desde tu perfil, y solicitar su supresión por Soporte y ayuda. La Ley 25.326 de Protección de los Datos Personales te reconoce estos derechos; la Agencia de Acceso a la Información Pública (AAIP) es el órgano de control de esa ley y atiende denuncias y reclamos.',
+          'Podés acceder a tus datos y corregirlos desde tu perfil, y eliminar tu cuenta desde Ajustes. La Ley 25.326 de Protección de los Datos Personales te reconoce estos derechos; la Agencia de Acceso a la Información Pública (AAIP) es el órgano de control de esa ley y atiende denuncias y reclamos.',
         ],
       },
     ],
@@ -230,76 +234,82 @@ export const LEGAL_CONTENT: Record<LegalTab, { title: string; intro: string; sec
 
 // ── Información ───────────────────────────────────────────────────────────────────────────────
 
-export const INFO_CONTENT: { intro: string; sections: InfoSection[] } = {
-  intro:
-    'GarageGo conecta a personas que necesitan estacionar con personas que tienen una cochera libre y quieren alquilarla por horas.',
-  sections: [
-    {
-      heading: 'Qué problema resuelve',
-      paragraphs: [
-        'En las zonas urbanas densas estacionar es caro, lento e incierto: no se sabe si va a haber lugar hasta llegar. Al mismo tiempo, muchas cocheras particulares quedan vacías gran parte del día.',
-        'El conductor reserva y paga por adelantado un lugar concreto para un horario concreto, y el propietario le saca provecho a un espacio que de otra forma estaría ocioso.',
-      ],
-    },
-    {
-      heading: 'Cómo funciona si sos conductor',
-      bullets: [
-        'Buscá cocheras cerca tuyo, en el mapa o en la lista, y filtrá por distancia, precio y calificación.',
-        'También podés buscar por dirección: el mapa te muestra los estacionamientos cercanos a ese lugar y, además, los demás de la zona.',
-        'Elegí fecha y horario: solo se puede reservar lo que está realmente libre.',
-        'Reservá con el vehículo con el que vas a llegar y pagá con el saldo de tu billetera.',
-        'Al llegar, iniciá tu estacionamiento. Al irte, finalizalo.',
-        'Chateá con el propietario, calificá la cochera y consultá tu historial.',
-      ],
-    },
-    {
-      heading: 'Cómo funciona si sos propietario',
-      bullets: [
-        'Publicá tu cochera en 5 pasos: datos del lugar (escribís la dirección y se ubica sola en el mapa), tarifa y servicios, disponibilidad, fotos (al menos 1, hasta 3) y titularidad. La publicación se crea recién cuando terminás el último paso.',
-        'En el paso de titularidad subís tu DNI y un documento que acredite que sos el dueño del lugar o que tenés permiso para ofrecerlo. Los borramos apenas el equipo termina la revisión.',
-        'El equipo revisa la publicación antes de que aparezca en las búsquedas.',
-        'Si después cambiás los datos del lugar, la tarifa y los servicios o las fotos, el equipo los revisa de nuevo. Los horarios los cambiás cuando quieras, sin revisión.',
-        'Recibís las reservas y ves quién llega y con qué vehículo.',
-        'Cobrás en tu billetera cuando cada reserva finaliza.',
-      ],
-    },
-    {
-      heading: 'Una cuenta, dos roles',
-      paragraphs: [
-        'Podés ser conductor y propietario con la misma cuenta y cambiar entre los dos modos desde tu perfil. Cada modo tiene sus propias reservas, notificaciones y consultas de soporte.',
-      ],
-    },
-    {
-      heading: 'Plazos y reglas que conviene conocer',
-      bullets: [
-        'Entre dos reservas de una misma cochera se deja un margen de 15 minutos.',
-        'Podés iniciar tu estacionamiento desde 15 minutos antes del horario reservado.',
-        'Podés cancelar hasta 1 hora antes del inicio, con reembolso completo.',
-        'Si te pasás de hora, hay 5 minutos de tolerancia; después se cobra el excedente a 1,5 veces el precio por hora.',
-        'La reserva se cierra sola 15 minutos después de su horario de fin.',
-        'Te avisamos un día antes de una reserva futura y 15 minutos antes de que termine una reserva en curso.',
-        'Cada cuenta puede tener hasta 3 vehículos, y cada cochera entre 1 y 3 fotos, todas distintas.',
-        'La recarga de saldo de prueba permite hasta $50.000 por vez y $200.000 de saldo en total.',
-        'Un vehículo no puede estar en dos reservas al mismo tiempo.',
-        'Todos los horarios son de Argentina (Buenos Aires) y los importes están en pesos argentinos.',
-      ],
-    },
-    {
-      heading: 'Preguntas frecuentes',
-      bullets: [
-        '¿Puedo reservar mi propia cochera? No: tus cocheras no aparecen en tus búsquedas.',
-        '¿Qué pasa si llego tarde? Podés iniciar hasta el horario de fin de tu reserva. Después ya no se puede iniciar.',
-        '¿Qué pasa si no llego? La reserva se cierra a los 15 minutos del final y el importe se acredita al propietario.',
-        '¿Cuántos autos entran en una cochera? Lo define el propietario: figura como Capacidad en la ficha.',
-        '¿Olvidé mi contraseña? En el inicio de sesión tocá "Olvidé mi contraseña": te enviamos un código por correo.',
-        '¿Cómo hablo con el equipo? Desde Ajustes, en Soporte y ayuda, abrí una consulta: podés vincularla a una reserva (conductor) o a una cochera (propietario), o hacer una consulta general. Sobre una publicación que se eliminó ya no se pueden hacer reportes.',
-        '¿Puedo cambiar los horarios de mi cochera cuando quiera? Sí, los horarios no pasan por revisión. Si cambiás los datos del lugar, la tarifa y los servicios o las fotos, la publicación se revisa de nuevo y mientras tanto no aparece en las búsquedas.',
-        '¿Por qué me piden documentos para publicar? Para comprobar que sos el dueño del lugar o que tenés permiso para ofrecerlo. Solo los ve el equipo y se borran cuando termina la revisión.',
-        '¿Qué pasa con los chats si elimino mi publicación? Se cierran y se borran sus mensajes. El historial de reservas y de billetera se conserva.',
-      ],
-    },
-  ],
-};
+/** Los límites (fotos, vehículos, recargas) salen de lo que configuró el equipo en el panel (0093). */
+export function infoContent(limits: AppLimits): {
+  intro: string;
+  sections: InfoSection[];
+} {
+  return {
+    intro:
+      'GarageGo conecta a personas que necesitan estacionar con personas que tienen una cochera libre y quieren alquilarla por horas.',
+    sections: [
+      {
+        heading: 'Qué problema resuelve',
+        paragraphs: [
+          'En las zonas urbanas densas estacionar es caro, lento e incierto: no se sabe si va a haber lugar hasta llegar. Al mismo tiempo, muchas cocheras particulares quedan vacías gran parte del día.',
+          'El conductor reserva y paga por adelantado un lugar concreto para un horario concreto, y el propietario le saca provecho a un espacio que de otra forma estaría ocioso.',
+        ],
+      },
+      {
+        heading: 'Cómo funciona si sos conductor',
+        bullets: [
+          'Buscá cocheras cerca tuyo, en el mapa o en la lista, y filtrá por distancia, precio y calificación.',
+          'También podés buscar por dirección: el mapa te muestra los estacionamientos cercanos a ese lugar y, además, los demás de la zona.',
+          'Elegí fecha y horario: solo se puede reservar lo que está realmente libre.',
+          'Reservá con el vehículo con el que vas a llegar y pagá con el saldo de tu billetera.',
+          'Al llegar, iniciá tu estacionamiento. Al irte, finalizalo.',
+          'Chateá con el propietario, calificá la cochera y consultá tu historial.',
+        ],
+      },
+      {
+        heading: 'Cómo funciona si sos propietario',
+        bullets: [
+          `Publicá tu cochera en 5 pasos: datos del lugar (escribís la dirección y se ubica sola en el mapa), tarifa y servicios, disponibilidad, fotos (al menos 1, hasta ${limits.maxParkingImages}) y titularidad. La publicación se crea recién cuando terminás el último paso.`,
+          'En el paso de titularidad subís tu DNI y un documento que acredite que sos el dueño del lugar o que tenés permiso para ofrecerlo. Los borramos apenas el equipo termina la revisión.',
+          'El equipo revisa la publicación antes de que aparezca en las búsquedas.',
+          'Si después cambiás los datos del lugar, la tarifa y los servicios o las fotos, el equipo los revisa de nuevo. Los horarios los cambiás cuando quieras, sin revisión.',
+          'Recibís las reservas y ves quién llega y con qué vehículo.',
+          'Cobrás en tu billetera cuando cada reserva finaliza.',
+        ],
+      },
+      {
+        heading: 'Una cuenta, dos roles',
+        paragraphs: [
+          'Podés ser conductor y propietario con la misma cuenta y cambiar entre los dos modos desde tu perfil. Cada modo tiene sus propias reservas, notificaciones y consultas de soporte.',
+        ],
+      },
+      {
+        heading: 'Plazos y reglas que conviene conocer',
+        bullets: [
+          'Entre dos reservas de una misma cochera se deja un margen de 15 minutos.',
+          'Podés iniciar tu estacionamiento desde 15 minutos antes del horario reservado.',
+          'Podés cancelar hasta 1 hora antes del inicio, con reembolso completo.',
+          'Si te pasás de hora, hay 5 minutos de tolerancia; después se cobra el excedente a 1,5 veces el precio por hora.',
+          'La reserva se cierra sola 15 minutos después de su horario de fin.',
+          'Te avisamos un día antes de una reserva futura y 15 minutos antes de que termine una reserva en curso.',
+          `Cada cuenta puede tener hasta ${limits.maxVehiclesPerRegion} vehículos por país, y cada cochera entre 1 y ${limits.maxParkingImages} fotos, todas distintas.`,
+          `La recarga de saldo permite entre ${formatMoney(limits.topupMin)} y ${formatMoney(limits.topupMax)} por vez, y hasta ${formatMoney(limits.walletMaxBalance)} de saldo en total.`,
+          'Un vehículo no puede estar en dos reservas al mismo tiempo.',
+          'Todos los horarios son de Argentina (Buenos Aires) y los importes están en pesos argentinos.',
+        ],
+      },
+      {
+        heading: 'Preguntas frecuentes',
+        bullets: [
+          '¿Puedo reservar mi propia cochera? No: tus cocheras no aparecen en tus búsquedas.',
+          '¿Qué pasa si llego tarde? Podés iniciar hasta el horario de fin de tu reserva. Después ya no se puede iniciar.',
+          '¿Qué pasa si no llego? La reserva se cierra a los 15 minutos del final y el importe se acredita al propietario.',
+          '¿Cuántos autos entran en una cochera? Lo define el propietario: figura como Capacidad en la ficha.',
+          '¿Olvidé mi contraseña? En el inicio de sesión tocá "Olvidé mi contraseña": te enviamos un código por correo.',
+          '¿Cómo hablo con el equipo? Desde Ajustes, en Soporte y ayuda, abrí una consulta: podés vincularla a una reserva (conductor) o a una cochera (propietario), o hacer una consulta general. Sobre una publicación que se eliminó ya no se pueden hacer reportes.',
+          '¿Puedo cambiar los horarios de mi cochera cuando quiera? Sí, los horarios no pasan por revisión. Si cambiás los datos del lugar, la tarifa y los servicios o las fotos, la publicación se revisa de nuevo y mientras tanto no aparece en las búsquedas.',
+          '¿Por qué me piden documentos para publicar? Para comprobar que sos el dueño del lugar o que tenés permiso para ofrecerlo. Solo los ve el equipo y se borran cuando termina la revisión.',
+          '¿Qué pasa con los chats si elimino mi publicación? Se cierran y se borran sus mensajes. El historial de reservas y de billetera se conserva.',
+        ],
+      },
+    ],
+  };
+}
 
 // ── Seguridad ─────────────────────────────────────────────────────────────────────────────────
 

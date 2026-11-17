@@ -1,5 +1,9 @@
-import { sanitizeErrorMessage } from '@/lib/errorMessages';
+import { FunctionsHttpError } from '@supabase/supabase-js';
+
+import { t } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase/client';
+
+import type { RegionCode } from '@/lib/region';
 
 import type { Profile, UserRole } from './types';
 
@@ -11,6 +15,7 @@ function mapProfileRow(row: {
   avatar_url: string | null;
   active_role: 'client' | 'owner';
   is_owner_enabled: boolean;
+  region: RegionCode;
   created_at: string;
 }): Profile {
   return {
@@ -21,6 +26,7 @@ function mapProfileRow(row: {
     avatarUrl: row.avatar_url,
     activeRole: row.active_role,
     isOwnerEnabled: row.is_owner_enabled,
+    region: row.region === 'US' ? 'US' : 'AR',
     createdAt: row.created_at,
   };
 }
@@ -50,6 +56,13 @@ export async function updateProfile(
   return mapProfileRow(data);
 }
 
+/** Cambia la región del perfil (demo de presentación regional, 0086). */
+export async function updateRegion(userId: string, region: RegionCode): Promise<Profile> {
+  const { data, error } = await supabase.from('profiles').update({ region }).eq('id', userId).select('*').single();
+  if (error) throw error;
+  return mapProfileRow(data);
+}
+
 export async function switchActiveRole(userId: string, role: UserRole): Promise<Profile> {
   const updates: { active_role: UserRole; is_owner_enabled?: boolean } = { active_role: role };
   if (role === 'owner') updates.is_owner_enabled = true;
@@ -65,44 +78,14 @@ export async function getWalletBalance(userId: string): Promise<number> {
   return data.balance;
 }
 
-// Recarga manual de saldo — simulación de pagos del MVP hasta integrar una pasarela real. El
-// saldo que genera es ficticio. La 0057 le pone un techo al saldo resultante
-// (`topup_limit_reached`) y la 0061 permite apagarla por entorno (`topup_disabled`).
-export async function topupWallet(amount: number): Promise<void> {
-  const { error } = await supabase.rpc('topup_wallet', { p_amount: amount });
-  if (error) throw error;
-}
-
-/**
- * ¿Está habilitada la recarga de prueba en este entorno? (app_settings, 0061). Si la consulta
- * falla se asume que sí: el servidor igual rechaza la recarga cuando está apagada.
- */
-export async function isDemoTopupEnabled(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('demo_topup_enabled');
-  if (error) throw error;
-  return data;
-}
-
-export function getTopupErrorMessage(error: unknown): string {
-  const fallback = 'No se pudo recargar el saldo.';
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = String((error as { message: unknown }).message);
-    if (message.includes('topup_limit_reached')) {
-      return 'Llegaste al tope de saldo de prueba. Usá el que tenés antes de recargar de nuevo.';
-    }
-    if (message.includes('topup_disabled')) {
-      return 'La recarga de prueba no está disponible.';
-    }
-    return sanitizeErrorMessage(message, fallback);
-  }
-  return fallback;
-}
-
 export type WalletTransaction = {
   id: string;
   type: 'topup' | 'booking_payment' | 'refund' | 'adjustment' | 'overtime_charge' | 'earning';
   amount: number;
   createdAt: string;
+  /** 'mp:<pago>' en lo que entró por Mercado Pago, 'mp-refund:<pago>' en lo que se le devolvió (0084). */
+  gatewayRef: string | null;
+  relatedBookingId: string | null;
 };
 
 /** Movimientos de la billetera del usuario, del más nuevo al más viejo. Alimenta el feed
@@ -118,7 +101,7 @@ export async function listRecentTransactions(userId: string, limit = 5): Promise
 
   const { data, error } = await supabase
     .from('wallet_transactions')
-    .select('id, type, amount, created_at')
+    .select('id, type, amount, created_at, payment_gateway_ref, related_booking_id')
     .eq('wallet_id', wallet.id)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -129,5 +112,52 @@ export async function listRecentTransactions(userId: string, limit = 5): Promise
     type: row.type as WalletTransaction['type'],
     amount: row.amount,
     createdAt: row.created_at,
+    gatewayRef: row.payment_gateway_ref,
+    relatedBookingId: row.related_booking_id,
   }));
+}
+
+// ── Eliminar la cuenta (migración 0088 + Edge Function delete-account) ──────────────────────────
+
+export type AccountDeletionCheck = {
+  /** Reservas propias activas o próximas (incluidas las que esperan el pago). */
+  driverBookings: number;
+  /** Reservas activas o próximas que otros hicieron en sus cocheras. */
+  ownerBookings: number;
+  /** Saldo de la billetera, que se pierde al eliminar la cuenta. */
+  walletBalance: number;
+};
+
+/** Lo que hay que saber antes de pedir la confirmación. El control de verdad lo hace el servidor. */
+export async function getAccountDeletionCheck(): Promise<AccountDeletionCheck> {
+  const { data, error } = await supabase.rpc('account_deletion_check').single();
+  if (error) throw error;
+  return {
+    driverBookings: data.driver_bookings,
+    ownerBookings: data.owner_bookings,
+    walletBalance: Number(data.wallet_balance),
+  };
+}
+
+/**
+ * Da de baja la cuenta y cierra la sesión en este dispositivo. Si tiene reservas activas o
+ * próximas, el servidor no toca nada y responde `account_has_active_bookings`.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('delete-account', { body: {} });
+  if (error) {
+    const payload =
+      error instanceof FunctionsHttpError ? await error.context.json().catch(() => null) : null;
+    throw new Error(typeof payload?.error === 'string' ? payload.error : error.message);
+  }
+  // La sesión ya no vale en el servidor: se cierra solo acá (la global fallaría).
+  await supabase.auth.signOut({ scope: 'local' });
+}
+
+export function getAccountDeletionErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (message.includes('account_has_active_bookings')) {
+    return t('Tenés reservas activas o próximas. Cuando terminen o las canceles, vas a poder eliminar tu cuenta.');
+  }
+  return t('No se pudo eliminar la cuenta. Revisá tu conexión y volvé a intentar.');
 }

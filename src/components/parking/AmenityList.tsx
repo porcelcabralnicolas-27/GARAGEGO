@@ -1,34 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { AMENITY_LABELS, type Amenity } from '@/features/parking/types';
+import type { Amenity } from '@/features/parking/types';
+import { useCatalogs } from '@/hooks/useCatalogs';
+import { amenitiesOf, amenityName } from '@/lib/catalogs';
+import { t } from '@/lib/i18n';
 import { spacing, useTheme } from '@/theme';
 
-const AMENITY_ICONS: Record<Amenity, keyof typeof Ionicons.glyphMap> = {
-  cameras: 'videocam-outline',
-  security_staff: 'shield-checkmark-outline',
-  lighting: 'bulb-outline',
-  ev_charger: 'flash-outline',
-  restrooms: 'water-outline',
-};
+/** Ícono de Ionicons para un servicio (el catálogo guarda el nombre base, 0094). */
+function iconOf(base: string): keyof typeof Ionicons.glyphMap {
+  const name = `${base}-outline`;
+  return (name in Ionicons.glyphMap ? name : 'checkmark-circle-outline') as keyof typeof Ionicons.glyphMap;
+}
 
 export function AmenityList({ amenities }: { amenities: Amenity[] }) {
   const { colors, typography } = useTheme();
+  const { amenities: catalog } = useCatalogs();
 
   if (amenities.length === 0) {
     return (
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-        El propietario no indicó servicios.
+        {t('El propietario no indicó servicios.')}
       </Text>
     );
   }
 
   return (
     <View style={styles.list}>
-      {amenities.map((amenity) => (
-        <View key={amenity} style={styles.row}>
-          <Ionicons name={AMENITY_ICONS[amenity]} size={18} color={colors.accent} />
-          <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{AMENITY_LABELS[amenity]}</Text>
+      {amenitiesOf(amenities, catalog).map((entry) => (
+        <View key={entry.code} style={styles.row}>
+          <Ionicons name={iconOf(entry.icon)} size={18} color={colors.accent} />
+          <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{amenityName(entry)}</Text>
         </View>
       ))}
     </View>

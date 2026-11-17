@@ -23,7 +23,9 @@ import { listRatingsPage, type RatingCursor } from '@/features/rating/api';
 import { StarRating } from '@/components/ui/StarRating';
 import { flattenPages } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
+import { businessWeeklyToDisplay } from '@/lib/time';
 import { useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 /** Opiniones que se ven antes de tocar "Ver más opiniones". */
 const VISIBLE_RATINGS = 3;
@@ -73,8 +75,8 @@ export default function ParkingDetailScreen() {
   if (isError) {
     return (
       <Screen>
-        <ScreenHeader title="Estacionamiento" onBack={goBack} />
-        <Banner message="No se pudo cargar el estacionamiento." />
+        <ScreenHeader title={t('Estacionamiento')} onBack={goBack} />
+        <Banner message={t('No se pudo cargar el estacionamiento.')} />
       </Screen>
     );
   }
@@ -82,7 +84,7 @@ export default function ParkingDetailScreen() {
   if (!data) {
     return (
       <Screen>
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{t('Cargando…')}</Text>
       </Screen>
     );
   }
@@ -120,7 +122,7 @@ export default function ParkingDetailScreen() {
         <View style={styles.capacityRow}>
           <Ionicons name={lot.lotType === 'house' ? 'home-outline' : 'business-outline'} size={16} color={colors.onSurfaceVariant} />
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginLeft: 6 }]}>
-            {LOT_TYPE_LABELS[lot.lotType]}
+            {t(LOT_TYPE_LABELS[lot.lotType])}
           </Text>
         </View>
 
@@ -136,32 +138,37 @@ export default function ParkingDetailScreen() {
         ) : null}
 
         <Text style={[typography.titleMedium, { color: colors.onBackground, marginTop: 24, marginBottom: 8 }]}>
-          Servicios
+          {t('Servicios')}
         </Text>
         <AmenityList amenities={lot.amenities} />
 
         <Text style={[typography.titleMedium, { color: colors.onBackground, marginTop: 24, marginBottom: 8 }]}>
-          Horario disponible
+          {t('Horario disponible')}
         </Text>
         {availability.length === 0 ? (
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-            El propietario todavía no definió un horario recurrente.
+            {t('El propietario todavía no definió un horario recurrente.')}
           </Text>
         ) : (
-          availability.map((entry) => (
-            <Text key={entry.id} style={[typography.bodyMedium, { color: colors.onSurface }]}>
-              {DAY_LABELS[entry.dayOfWeek]}: {entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}
-            </Text>
-          ))
+          availability.map((entry) => {
+            // Guardado en hora de la cochera; se muestra en la de la región.
+            const start = businessWeeklyToDisplay(entry.dayOfWeek, entry.startTime);
+            const end = businessWeeklyToDisplay(entry.dayOfWeek, entry.endTime);
+            return (
+              <Text key={entry.id} style={[typography.bodyMedium, { color: colors.onSurface }]}>
+                {t(DAY_LABELS[start.dayOfWeek])}: {start.time} - {end.time}
+              </Text>
+            );
+          })
         )}
 
         <Text style={[typography.titleMedium, { color: colors.onBackground, marginTop: 24, marginBottom: 8 }]}>
           {/* El total solo se conoce cuando ya se cargaron todas las páginas. */}
-          Opiniones {ratings.length > 0 && !ratingsQuery.hasNextPage ? `(${ratings.length})` : ''}
+          {t('Opiniones')} {ratings.length > 0 && !ratingsQuery.hasNextPage ? `(${ratings.length})` : ''}
         </Text>
         {ratingsQuery.isLoading ? null : ratings.length === 0 ? (
           <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-            Todavía no hay opiniones sobre este estacionamiento.
+            {t('Todavía no hay opiniones sobre este estacionamiento.')}
           </Text>
         ) : (
           visibleRatings.map((rating) => (
@@ -179,30 +186,30 @@ export default function ParkingDetailScreen() {
           ))
         )}
         {!showAllRatings && hasMoreRatings ? (
-          <Button label="Ver más opiniones" variant="text" onPress={() => setShowAllRatings(true)} />
+          <Button label={t('Ver más opiniones')} variant="text" onPress={() => setShowAllRatings(true)} />
         ) : null}
         {showAllRatings && ratingsQuery.hasNextPage ? (
           <Button
-            label="Cargar más opiniones"
+            label={t('Cargar más opiniones')}
             variant="text"
             onPress={() => ratingsQuery.fetchNextPage()}
             loading={ratingsQuery.isFetchingNextPage}
           />
         ) : null}
         {showAllRatings && ratings.length > VISIBLE_RATINGS ? (
-          <Button label="Ver menos" variant="text" onPress={() => setShowAllRatings(false)} />
+          <Button label={t('Ver menos')} variant="text" onPress={() => setShowAllRatings(false)} />
         ) : null}
 
         <View style={styles.spacerLarge} />
 
         <Button
-          label="Cómo llegar"
+          label={t('Cómo llegar')}
           variant="outlined"
           onPress={() => router.push({ pathname: '/(client)/search/parking/[id]/route', params: { id: lot.id } })}
         />
         <View style={styles.spacer} />
         <Button
-          label="Reservar"
+          label={t('Reservar')}
           onPress={() => router.push({ pathname: '/(client)/search/booking/[parkingId]', params: { parkingId: lot.id } })}
         />
       </ScrollView>

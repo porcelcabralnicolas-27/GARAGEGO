@@ -15,11 +15,14 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { listingChangesSince } from '../../domain';
+import { fetchReviewChecks, type ReviewCheck } from '../settings/checklistApi';
 import type {
   AdminParkingLot,
   AdminProfile,
   Amenity,
   ApprovalStatus,
+  ApprovedSnapshot,
   DocumentKind,
   HolderRole,
   ListingChangeField,
@@ -55,6 +58,7 @@ type ParkingLotRow = {
   amenities: string[];
   lot_type: LotType;
   holder_role: HolderRole;
+  region: string | null;
   rating_avg: number;
   is_active: boolean;
   created_at: string;
@@ -69,6 +73,7 @@ type ParkingLotRow = {
   suspended_until: string | null;
   archived_at: string | null;
   ownership_verified_at: string | null;
+  approved_snapshot: ApprovedSnapshot | null;
 };
 
 type ProfileRow = {
@@ -97,6 +102,7 @@ function toAdminLot(row: ParkingLotRow): AdminParkingLot {
     amenities: row.amenities as Amenity[],
     lotType: row.lot_type ?? 'lot',
     holderRole: row.holder_role ?? 'owner',
+    region: row.region ?? 'AR',
     ratingAvg: row.rating_avg,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -137,7 +143,7 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
   const { data: lots, error } = await supabase
     .from('parking_lots')
     .select(
-      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, capacity, amenities, lot_type, holder_role, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, requested_changes, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at, ownership_verified_at'
+      'id, owner_id, name, description, address, latitude, longitude, price_per_hour, capacity, amenities, lot_type, holder_role, region, rating_avg, is_active, created_at, updated_at, approval_status, rejection_reason, requested_changes, reviewed_at, reviewed_by, moderation_state, pause_reason, suspended_until, archived_at, ownership_verified_at, approved_snapshot'
     )
     .order('created_at', { ascending: true })
     .returns<ParkingLotRow[]>();
@@ -155,6 +161,12 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
       .map((l) => l.id)
   );
   const statusByLot = new Map(lots.map((l) => [l.id, l.approval_status]));
+
+  // Constancias del checklist (0092). Sin la migración, el inventario igual anda.
+  const reviewChecksPromise = fetchReviewChecks(lotIds).catch((err: unknown) => {
+    console.warn('listing_review_checks no disponible:', err instanceof Error ? err.message : err);
+    return [] as ReviewCheck[];
+  });
 
   const [ownersRes, imagesRes, statsRes, docsRes] = await Promise.all([
     supabase
@@ -189,7 +201,9 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
   );
 
   const imagesByLot = new Map<string, string[]>();
+  const photoPathsByLot = new Map<string, string[]>();
   for (const img of imagesRes.data ?? []) {
+    photoPathsByLot.set(img.parking_lot_id, [...(photoPathsByLot.get(img.parking_lot_id) ?? []), img.storage_path]);
     const { publicUrl } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(img.storage_path).data;
     const list = imagesByLot.get(img.parking_lot_id) ?? [];
     list.push(publicUrl);
@@ -234,6 +248,11 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
     docsByLot.set(doc.parking_lot_id, list);
   }
 
+  const checksByLot = new Map<string, LotRow['reviewChecks']>();
+  for (const check of await reviewChecksPromise) {
+    checksByLot.set(check.lotId, [...(checksByLot.get(check.lotId) ?? []), { at: check.at, items: check.items }]);
+  }
+
   const now = Date.now();
   return lots.map((row) => {
     const lot = toAdminLot(row);
@@ -243,6 +262,11 @@ export async function fetchModerationLots(): Promise<LotRow[]> {
       owner: ownerById.get(row.owner_id),
       images: imagesByLot.get(row.id) ?? [],
       documents: docsByLot.get(row.id) ?? [],
+      approvedChanges: row.approved_snapshot
+        ? listingChangesSince(row.approved_snapshot, { ...lot, photoPaths: photoPathsByLot.get(row.id) ?? [] })
+        : null,
+      wasApproved: row.approved_snapshot !== null,
+      reviewChecks: checksByLot.get(row.id) ?? [],
       ageHours: (now - new Date(lot.submittedAt).getTime()) / 3_600_000,
       hasActiveSession: stats?.has_active_session ?? false,
       upcomingBookings: stats?.upcoming_bookings ?? 0,
@@ -306,7 +330,8 @@ export async function reviewLot(
   lotId: string,
   decision: ReviewDecision,
   reason: string | null,
-  fields: ListingChangeField[] | null = null
+  fields: ListingChangeField[] | null = null,
+  checkedItems: string[] = []
 ): Promise<{ documentsPending: boolean }> {
   if (!supabase) throw new Error('Supabase no está configurado (falta el .env del panel).');
 
@@ -315,8 +340,18 @@ export async function reviewLot(
     p_decision: decision,
     p_reason: reason,
     p_fields: decision === 'changes_requested' ? fields : null,
+    // Puntos del checklist tildados: el servidor exige los obligatorios para aprobar (0092).
+    p_checked_items: decision === 'approved' ? checkedItems : null,
   });
-  if (error) throw error;
+  if (error) {
+    const pending = /checklist_incomplete: (.*)/.exec(error.message);
+    if (pending) {
+      throw new Error(
+        `faltan puntos obligatorios del checklist (${pending[1].split(' | ').join('; ')}). Si alguien cambió el checklist recién, recargá la página.`
+      );
+    }
+    throw error;
+  }
 
   if (decision === 'changes_requested') return { documentsPending: false };
   try {

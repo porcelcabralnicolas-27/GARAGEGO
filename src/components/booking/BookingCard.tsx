@@ -4,9 +4,11 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { formatMoney } from '@/lib/money';
+import { businessToDisplay } from '@/lib/time';
 import type { BookingStatus } from '@/features/booking/types';
 import { BOOKING_STATUS_LABELS } from '@/features/booking/types';
 import { spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 function statusColor(status: BookingStatus, colors: ReturnType<typeof useTheme>['colors']) {
   switch (status) {
@@ -58,10 +60,13 @@ export function BookingCard({
   const isInProgress = status === 'confirmed' && !!actualStartAt;
   // Finalizada sin entrada: la cerró el sistema porque el conductor nunca llegó (0066).
   const isNoShow = status === 'completed' && !actualStartAt;
-  const statusLabel = isInProgress ? 'En curso' : isNoShow ? 'No se presentó' : BOOKING_STATUS_LABELS[status];
+  const statusLabel = t(isInProgress ? 'En curso' : isNoShow ? 'No se presentó' : BOOKING_STATUS_LABELS[status]);
+  // La reserva está guardada en hora de la cochera; se muestra en la de la región.
+  const shownStart = businessToDisplay(date, startTime);
+  const shownEnd = businessToDisplay(date, endTime);
 
   return (
-    <Card onPress={onPress} accessibilityLabel={onPress ? `Ver la reserva de ${title}` : undefined}>
+    <Card onPress={onPress} accessibilityLabel={onPress ? t('Ver la reserva de {place}', { place: title }) : undefined}>
       <View style={styles.headerRow}>
         <Text style={[typography.titleMedium, { color: colors.onSurface, flex: 1 }]} numberOfLines={1}>
           {title}
@@ -72,7 +77,7 @@ export function BookingCard({
         {subtitle}
       </Text>
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 4 }]}>
-        {date} · {startTime.slice(0, 5)} - {endTime.slice(0, 5)}
+        {shownStart.date} · {shownStart.time} - {shownEnd.time}
       </Text>
       {vehicleLabel ? (
         <View style={styles.vehicleRow}>

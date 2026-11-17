@@ -6,9 +6,10 @@ import { StyleSheet, View } from 'react-native';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { useRegion } from '@/hooks/useRegion';
 
 import type { VehicleInput } from './api';
-import { normalizePlate, vehicleSchema, type VehicleFormValues } from './schemas';
+import { PLATE_RULES, normalizePlate, vehicleSchemaFor, type VehicleFormValues } from './schemas';
 
 type VehicleFormProps = {
   defaultValues?: Partial<VehicleFormValues>;
@@ -19,12 +20,14 @@ type VehicleFormProps = {
 export function VehicleForm({ defaultValues, submitLabel, onSubmit }: VehicleFormProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isSubmittingRef = useRef(false);
+  // El formato de patente depende del país (demo regional): Argentina o Nueva York.
+  const region = useRegion();
   const {
     control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<VehicleFormValues>({
-    resolver: zodResolver(vehicleSchema),
+    resolver: zodResolver(vehicleSchemaFor(region.code)),
     defaultValues: {
       plate: defaultValues?.plate ?? '',
       brand: defaultValues?.brand ?? '',
@@ -67,6 +70,7 @@ export function VehicleForm({ defaultValues, submitLabel, onSubmit }: VehicleFor
         render={({ field, fieldState }) => (
           <TextField
             label="Patente"
+            placeholder={`Ej.: ${PLATE_RULES[region.code].example}`}
             autoCapitalize="characters"
             autoCorrect={false}
             value={field.value}

@@ -6,6 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 // Pantalla de cierre del flujo de pago, en sus dos variantes ("¡Pago realizado con éxito!" y
 // "Ha ocurrido un error" en el Figma). Es una sola pantalla y no dos porque comparten toda la
@@ -67,15 +68,15 @@ export default function BookingResultScreen() {
         </View>
 
         <Text style={[typography.titleLarge, styles.title, { color: colors.onSurface }]}>
-          {isSuccess ? '¡Pago realizado con éxito!' : 'Ha ocurrido un error'}
+          {isSuccess ? t('¡Pago realizado con éxito!') : t('Ha ocurrido un error')}
         </Text>
 
         <Text style={[typography.bodyMedium, styles.body, { color: colors.onSurfaceVariant }]}>
           {isSuccess
             ? // El Figma promete un correo con la factura; la app no manda correos, así que
               // se apunta al comprobante que sí existe (Fase 8, Q12·A).
-              'Ya reservaste tu lugar. Podés ver el comprobante y el detalle en Mis reservas.'
-            : (reason ?? 'No pudimos procesar el pago. Intentá de nuevo.')}
+              t('Ya reservaste tu lugar. Podés ver el comprobante y el detalle en Mis reservas.')
+            : (reason ?? t('No pudimos procesar el pago. Intentá de nuevo.'))}
         </Text>
 
         <View style={styles.actions}>
@@ -84,7 +85,7 @@ export default function BookingResultScreen() {
               {/* Va directo a la pantalla de sesión (el COMENZAR del Figma). Si por lo que
                   sea no llegó el id, cae en la lista, que es donde igual está la reserva. */}
               <Button
-                label="Ver mi reserva"
+                label={t('Ver mi reserva')}
                 onPress={() =>
                   bookingId
                     ? router.replace({ pathname: '/(client)/bookings/[id]', params: { id: bookingId } })
@@ -92,16 +93,16 @@ export default function BookingResultScreen() {
                 }
               />
               <Button
-                label="Volver al inicio"
+                label={t('Volver al inicio')}
                 variant="outlined"
                 onPress={() => router.replace('/(client)')}
               />
             </>
           ) : (
             <>
-              <Button label="Volver a intentar" onPress={() => router.back()} />
+              <Button label={t('Volver a intentar')} onPress={() => router.back()} />
               <Button
-                label="Elegir otro horario"
+                label={t('Elegir otro horario')}
                 variant="outlined"
                 onPress={() =>
                   router.replace({

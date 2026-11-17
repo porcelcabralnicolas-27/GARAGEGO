@@ -10,8 +10,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { deleteVehicle, getVehicleCoverImageUrls, getVehicleErrorMessage, listMyVehicles } from '@/features/vehicle/api';
-import { MAX_VEHICLES, type Vehicle } from '@/features/vehicle/types';
+import type { Vehicle } from '@/features/vehicle/types';
 import { VehicleListItem } from '@/features/vehicle/VehicleListItem';
+import { useAppLimits } from '@/hooks/useAppLimits';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/theme';
@@ -22,6 +23,7 @@ export default function ClientVehiclesScreen() {
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const userId = profile?.id;
+  const { maxVehiclesPerRegion } = useAppLimits();
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
@@ -69,7 +71,7 @@ export default function ClientVehiclesScreen() {
         title="Mis vehículos"
         backHref="/(client)/profile/settings"
         action={
-          vehicles.length < MAX_VEHICLES ? (
+          vehicles.length < maxVehiclesPerRegion ? (
             <Pressable
               onPress={() => router.push('/(client)/vehicles/create')}
               hitSlop={8}
@@ -88,7 +90,7 @@ export default function ClientVehiclesScreen() {
         <EmptyState
           icon="car-outline"
           title="Todavía no cargaste ningún vehículo"
-          description={`Podés tener hasta ${MAX_VEHICLES}. Vas a elegir uno al hacer una reserva.`}
+          description={`Podés tener hasta ${maxVehiclesPerRegion}. Vas a elegir uno al hacer una reserva.`}
           actionLabel="Agregar vehículo"
           onAction={() => router.push('/(client)/vehicles/create')}
         />

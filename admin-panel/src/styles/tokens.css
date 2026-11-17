@@ -43,6 +43,8 @@
   --gg-warn: #b45309;
   --gg-warn-soft: #fdf3e3;
   --gg-warn-border: #f0d7ac;
+  /* Amarillo de la cola de aprobación (marcas y barra de plazos). Como texto no se lee: usar --gg-warn. */
+  --gg-sla-yellow: #eab308;
 
   --gg-danger: #dc2626;
   --gg-danger-soft: #fdecec;

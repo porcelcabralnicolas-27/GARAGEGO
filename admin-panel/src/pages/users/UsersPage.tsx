@@ -20,6 +20,7 @@ import { useToast } from '../../ui/Toast';
 import { computeRatingStats, type PanelRating } from './ratingsApi';
 import { useRatings } from './useRatings';
 import { fetchUserDetail, type UserDetail, type UserDirectoryEntry } from './usersApi';
+import { useModerationConfig } from '../settings/useModerationConfig';
 import { useUsers, type UsersState } from './useUsers';
 
 type Tab = 'drivers' | 'owners' | 'reviews';
@@ -430,14 +431,6 @@ function ReviewsAudit() {
   );
 }
 
-const HIDE_REASONS = [
-  'Contiene datos personales de terceros',
-  'Lenguaje ofensivo',
-  'No describe la experiencia real',
-  'Sospecha de reseña falsa',
-  'Otro',
-];
-
 function HideReviewDialog({
   row,
   onClose,
@@ -447,7 +440,10 @@ function HideReviewDialog({
   onClose: () => void;
   onConfirm: (reason: string) => void;
 }) {
-  const [reason, setReason] = useState(HIDE_REASONS[0]);
+  // Motivos para ocultar (Configuración → Moderación, 0095). Si el elegido se desactiva, el primero.
+  const hideReasons = useModerationConfig().reasons.hide_review;
+  const [chosenReason, setReason] = useState<string | null>(null);
+  const reason = chosenReason && hideReasons.includes(chosenReason) ? chosenReason : hideReasons[0];
 
   if (!row) return null;
 
@@ -484,7 +480,7 @@ function HideReviewDialog({
       <div className="gg-field">
         <label className="gg-field__label">Motivo</label>
         <select className="gg-select" value={reason} onChange={(e) => setReason(e.target.value)}>
-          {HIDE_REASONS.map((r) => (
+          {hideReasons.map((r) => (
             <option key={r} value={r}>
               {r}
             </option>

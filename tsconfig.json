@@ -13,6 +13,7 @@
     "metro.config.js",
     "android",
     "ios",
-    "admin-panel"
+    "admin-panel",
+    "supabase/functions"
   ]
 }

@@ -52,7 +52,8 @@ export type OwnerBookingDetail = OwnerBookingItem & {
 };
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
-  pending: 'Pendiente',
+  // Desde la 0084, 'pending' es una reserva de Mercado Pago que todavía no se pagó.
+  pending: 'Esperando pago',
   confirmed: 'Confirmada',
   cancelled: 'Cancelada',
   completed: 'Finalizada',

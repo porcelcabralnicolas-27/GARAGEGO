@@ -1,8 +1,8 @@
-import { GoogleMap, MarkerF, useJsApiLoader } from '@react-google-maps/api';
+import { GoogleMap, MarkerF, OverlayView, OverlayViewF, useJsApiLoader } from '@react-google-maps/api';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ParkingPreviewSheet } from '@/components/parking/ParkingPreviewSheet';
@@ -11,6 +11,7 @@ import { Logo } from '@/components/ui/Logo';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { searchParkingLots } from '@/features/parking/api';
 import { buildParkingMarkerIcon, buildUserLocationIcon } from '@/features/parking/parkingMarkerIcon.web';
+import { PIN_SIZE } from '@/features/parking/pinImages';
 import { useAvailableNow } from '@/features/parking/useAvailableNow';
 import {
   DEFAULT_SEARCH_RADIUS_KM,
@@ -19,10 +20,13 @@ import {
   nearbyOf,
   searchNotice,
 } from '@/features/search/mapResults';
+import { lotCamera } from '@/features/search/mapCamera';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { mapOrigin } from '@/hooks/useGoBack';
+import { formatPricePerHour } from '@/lib/money';
 import { queryKeys } from '@/lib/queryKeys';
 import { radius, spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 type SearchParams = {
   lat: string;
@@ -57,6 +61,10 @@ export default function ClientHomeWebScreen() {
   const longitude = Number.isFinite(paramLng) ? paramLng : currentLocation.longitude;
   const hasCoordinates = latitude !== null && longitude !== null;
 
+  // Igual que en el celular (app/(client)/index.tsx): tocar un pin abre primero un cartel chico con
+  // el nombre, la tarifa y la calificación (`calloutId`), y recién tocando el cartel aparece la hoja
+  // con toda la información (`selectedId`).
+  const [calloutId, setCalloutId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // El aviso de la búsqueda se oculta apenas se elige un estacionamiento.
   const [noticeDismissed, setNoticeDismissed] = useState(false);
@@ -91,9 +99,10 @@ export default function ClientHomeWebScreen() {
     queryFn: () => searchParkingLots(filters),
     enabled: hasCoordinates,
   });
-  const errorMessage = isError ? 'No se pudieron cargar los estacionamientos.' : null;
+  const errorMessage = isError ? t('No se pudieron cargar los estacionamientos.') : null;
 
   const selected = results.find((r) => r.id === selectedId) ?? null;
+  const callout = results.find((r) => r.id === calloutId) ?? null;
   const nearbyCount = nearbyOf(results, searchRadiusKm).length;
   const showNotice = Boolean(params.place) && isSuccess && params.notice !== '0' && !noticeDismissed;
 
@@ -106,6 +115,25 @@ export default function ClientHomeWebScreen() {
     !currentLocation.isApproximate && currentLocation.latitude !== null && currentLocation.longitude !== null
       ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
       : null;
+
+  // Lleva el mapa a la cochera en un solo movimiento (centro y zoom a la vez), dejándola visible
+  // por encima de la hoja. La cuenta es la misma que en el celular (src/features/search/mapCamera.ts).
+  const zoomToLot = (lot: { latitude: number; longitude: number }) => {
+    if (!map) return;
+    // Se espera a que la hoja esté dibujada para medir cuánto del mapa tapa.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const mapRect = map.getDiv().getBoundingClientRect();
+        const sheet = document.querySelector('[data-testid="parking-preview-sheet"]');
+        const camera = lotCamera(lot, map.getZoom() ?? 0, {
+          mapTop: mapRect.top,
+          mapHeight: mapRect.height,
+          visibleBottom: sheet ? sheet.getBoundingClientRect().top : mapRect.bottom,
+        });
+        map.moveCamera({ center: { lat: camera.center.latitude, lng: camera.center.longitude }, zoom: camera.zoom });
+      })
+    );
+  };
 
   const centerOnMe = () => {
     if (!map || !myPosition) return;
@@ -135,7 +163,7 @@ export default function ClientHomeWebScreen() {
   if (!GOOGLE_MAPS_WEB_API_KEY) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, padding: 20 }]}>
-        <Banner message="Falta configurar EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY en .env para ver el mapa en la versión web." />
+        <Banner message={t('Falta configurar EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY en .env para ver el mapa en la versión web.')} />
       </View>
     );
   }
@@ -143,7 +171,7 @@ export default function ClientHomeWebScreen() {
   if (loadError) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, padding: 20 }]}>
-        <Banner message="No se pudo cargar Google Maps." />
+        <Banner message={t('No se pudo cargar Google Maps.')} />
       </View>
     );
   }
@@ -153,7 +181,7 @@ export default function ClientHomeWebScreen() {
       <View style={styles.header}>
         {/* El logo hace de identidad de la pantalla; antes había un saludo "HOLA, {nombre}". */}
         <Logo />
-        <SearchBar placeholder="¿A dónde vas?" onPress={() => router.push('/(client)/search')} />
+        <SearchBar placeholder={t('¿A dónde vas?')} onPress={() => router.push('/(client)/search')} />
       </View>
 
       {errorMessage ? (
@@ -194,13 +222,18 @@ export default function ClientHomeWebScreen() {
             zoom={13}
             onLoad={setMap}
             onUnmount={() => setMap(null)}
+            // Tocar el mapa fuera de un pin cierra el cartel y la hoja, como en el celular.
+            onClick={() => {
+              setCalloutId(null);
+              setSelectedId(null);
+            }}
           >
             {params.place && mapCenter ? <MarkerF position={mapCenter} title={params.place} zIndex={999} /> : null}
             {myPosition ? (
               <MarkerF
                 position={myPosition}
                 icon={buildUserLocationIcon()}
-                title="Estás acá"
+                title={t('Estás acá')}
                 clickable={false}
                 zIndex={1000}
               />
@@ -211,17 +244,38 @@ export default function ClientHomeWebScreen() {
                 position={{ lat: lot.latitude, lng: lot.longitude }}
                 icon={buildParkingMarkerIcon(lot.lotType, availableNow[lot.id])}
                 onClick={() => {
-                  setSelectedId(lot.id);
+                  setCalloutId(lot.id);
                   setNoticeDismissed(true);
+                  // Como Google Maps en Android: el mapa se centra en el pin, así el cartel nunca
+                  // queda recortado por un borde.
+                  map?.panTo({ lat: lot.latitude, lng: lot.longitude });
                 }}
               />
             ))}
+            {callout ? (
+              <OverlayViewF
+                key={callout.id}
+                position={{ lat: callout.latitude, lng: callout.longitude }}
+                mapPaneName={OverlayView.FLOAT_PANE}
+                // Centrado sobre el pin (que se ancla en su centro), con la flecha tocando su borde.
+                getPixelPositionOffset={(width, height) => ({ x: -width / 2, y: -(height + PIN_SIZE / 2) })}
+              >
+                <MarkerCallout
+                  title={callout.name}
+                  description={`${formatPricePerHour(callout.pricePerHour)} · ★ ${callout.ratingAvg.toFixed(1)}`}
+                  onPress={() => {
+                    setSelectedId(callout.id);
+                    zoomToLot(callout);
+                  }}
+                />
+              </OverlayViewF>
+            ) : null}
           </GoogleMap>
 
           {myPosition ? (
             <Pressable
               onPress={centerOnMe}
-              accessibilityLabel="Centrar el mapa en mi ubicación"
+              accessibilityLabel={t('Centrar el mapa en mi ubicación')}
               style={[styles.locateButton, { backgroundColor: colors.surface }]}
             >
               <Ionicons name="locate" size={22} color={colors.accent} />
@@ -250,6 +304,82 @@ export default function ClientHomeWebScreen() {
         />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * Cartel blanco sobre el pin, con la misma información y el mismo aspecto que el globo de Google
+ * Maps en Android (título en negrita, tarifa y calificación debajo, flecha hacia el pin).
+ */
+function MarkerCallout({ title, description, onPress }: { title: string; description: string; onPress: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onPressRef = useRef(onPress);
+  onPressRef.current = onPress;
+
+  // Sin `preventMapHitsAndGesturesFrom`, el clic llega también al mapa, que cerraría el cartel en el
+  // mismo momento. Esa función corta la propagación en el propio elemento, y React escucha los
+  // eventos en la raíz: por eso el clic se escucha con un listener nativo y no con onClick.
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    google.maps.OverlayView.preventMapHitsAndGesturesFrom(element);
+    const handleClick = () => onPressRef.current();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') onPressRef.current();
+    };
+    element.addEventListener('click', handleClick);
+    element.addEventListener('keydown', handleKey);
+    return () => {
+      element.removeEventListener('click', handleClick);
+      element.removeEventListener('keydown', handleKey);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      role="button"
+      tabIndex={0}
+      aria-label={`${title}. ${description}`}
+      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+    >
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: 8,
+          padding: '8px 12px',
+          boxShadow: '0 2px 7px rgba(0, 0, 0, 0.3)',
+          maxWidth: 240,
+          textAlign: 'center',
+          fontFamily: 'Roboto, Arial, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: '#202124',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {title}
+        </div>
+        <div style={{ fontSize: 13, color: '#5f6368', marginTop: 2, whiteSpace: 'nowrap' }}>{description}</div>
+      </div>
+      {/* Flecha hacia el pin */}
+      <div
+        style={{
+          width: 0,
+          height: 0,
+          borderLeft: '8px solid transparent',
+          borderRight: '8px solid transparent',
+          borderTop: '8px solid #ffffff',
+          filter: 'drop-shadow(0 2px 1px rgba(0, 0, 0, 0.15))',
+        }}
+      />
+    </div>
   );
 }
 

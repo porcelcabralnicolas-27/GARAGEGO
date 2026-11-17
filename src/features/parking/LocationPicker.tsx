@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
 
+import { activeRegion } from '@/lib/region';
 import { useTheme } from '@/theme';
 
-const DEFAULT_CENTER: LatLng = { latitude: -34.6037, longitude: -58.3816 };
+/** Centro de la región del perfil (el Obelisco en Argentina). Se lee al abrir el selector. */
+const defaultCenter = (): LatLng => activeRegion().center;
 
 type LocationPickerProps = {
   latitude: number | null;
@@ -27,7 +29,7 @@ export function LocationPicker({ latitude, longitude, onChange, onAddressResolve
   const { colors, typography } = useTheme();
   const mapRef = useRef<MapView>(null);
   const [initialCenter] = useState<LatLng>(
-    latitude !== null && longitude !== null ? { latitude, longitude } : DEFAULT_CENTER
+    latitude !== null && longitude !== null ? { latitude, longitude } : defaultCenter()
   );
 
   useEffect(() => {

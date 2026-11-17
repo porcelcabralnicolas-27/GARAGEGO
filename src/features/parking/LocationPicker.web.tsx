@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/ui/Banner';
+import { activeRegion } from '@/lib/region';
 import { useTheme } from '@/theme';
 
 const GOOGLE_MAPS_WEB_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY ?? '';
-const DEFAULT_CENTER = { lat: -34.6037, lng: -58.3816 };
+/** Centro de la región del perfil (el Obelisco en Argentina). Se lee al abrir el selector. */
+const defaultCenter = () => ({ lat: activeRegion().center.latitude, lng: activeRegion().center.longitude });
 
 type LocationPickerProps = {
   latitude: number | null;
@@ -29,7 +31,7 @@ export function LocationPicker({ latitude, longitude, onChange, onAddressResolve
   // Centro fijo del mapa: se calcula una sola vez para no "recentrar" el mapa cada vez
   // que el usuario arrastra el marcador (eso pisaría el paneo/zoom del usuario).
   const [center] = useState(latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null);
-  const [fallbackCenter, setFallbackCenter] = useState(DEFAULT_CENTER);
+  const [fallbackCenter, setFallbackCenter] = useState(defaultCenter);
 
   useEffect(() => {
     if (center !== null || typeof navigator === 'undefined' || !navigator.geolocation) return;

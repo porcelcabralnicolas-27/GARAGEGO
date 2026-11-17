@@ -5,7 +5,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
-import type { TransactionStatus, TransactionType } from '../../domain';
+import { TRANSACTION_TYPE_LABELS, type TransactionStatus, type TransactionType } from '../../domain';
 
 function guard(): NonNullable<typeof supabase> {
   if (!supabase) throw new Error('Supabase no está configurado (falta el .env del panel).');
@@ -30,6 +30,44 @@ export const TRANSACTION_SIDE_LABEL: Record<TransactionSide, string> = {
   propietario: 'Como propietario',
   sistema: 'Ajuste del sistema',
 };
+
+// ── Mercado Pago (migración 0084) ───────────────────────────────────────────────────────────
+// Los movimientos de Mercado Pago usan los tipos de siempre y se reconocen por la referencia:
+//   'mp:<pago>'         topup: entró dinero real (recarga, o pago de reserva si tiene reserva)
+//   'mp-refund:<pago>'  adjustment: se le devolvió al conductor a su cuenta de Mercado Pago
+// (el pago de reserva con Mercado Pago es un topup + booking_payment en el mismo instante).
+
+export type TransactionOrigin = 'mercadopago' | 'mercadopago_refund' | 'demo' | 'wallet';
+
+export function transactionOrigin(t: { paymentGatewayRef: string | null; isDemo: boolean }): TransactionOrigin {
+  if (t.paymentGatewayRef?.startsWith('mp:')) return 'mercadopago';
+  if (t.paymentGatewayRef?.startsWith('mp-refund:')) return 'mercadopago_refund';
+  if (t.isDemo) return 'demo';
+  return 'wallet';
+}
+
+export const TRANSACTION_ORIGIN_LABEL: Record<TransactionOrigin, string> = {
+  mercadopago: 'Mercado Pago (dinero real)',
+  mercadopago_refund: 'Devolución a la cuenta de Mercado Pago',
+  demo: 'Recarga de prueba (saldo ficticio)',
+  wallet: 'Billetera GarageGo',
+};
+
+/** Etiqueta del movimiento: el tipo, o qué fue en Mercado Pago. */
+export function transactionLabel(t: PanelTransaction): string {
+  const origin = transactionOrigin(t);
+  if (origin === 'mercadopago') return t.relatedBookingId ? 'Pago con Mercado Pago' : 'Recarga con Mercado Pago';
+  if (origin === 'mercadopago_refund') return 'Devolución a Mercado Pago';
+  return TRANSACTION_TYPE_LABELS[t.type] ?? t.type;
+}
+
+/** El id del pago en Mercado Pago, para buscarlo en su panel; null si no es de Mercado Pago. */
+export function mercadoPagoPaymentId(ref: string | null): string | null {
+  if (!ref) return null;
+  if (ref.startsWith('mp:')) return ref.slice('mp:'.length);
+  if (ref.startsWith('mp-refund:')) return ref.slice('mp-refund:'.length);
+  return null;
+}
 
 export type PanelTransaction = {
   id: string;
@@ -105,7 +143,9 @@ export async function fetchTransactionsPage(
     paymentGatewayRef: r.payment_gateway_ref,
     relatedBookingId: r.related_booking_id,
     userName: r.user_name,
-    side: TRANSACTION_SIDE[r.type] ?? 'sistema',
+    // La devolución a Mercado Pago es un 'adjustment', pero lo genera el conductor al cancelar
+    // (o el propietario al cancelarle): va en la billetera del conductor, no es un ajuste manual.
+    side: r.payment_gateway_ref?.startsWith('mp-refund:') ? 'conductor' : (TRANSACTION_SIDE[r.type] ?? 'sistema'),
     lotName: r.lot_name,
     isDemo: r.is_demo,
   }));

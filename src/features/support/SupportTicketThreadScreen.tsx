@@ -18,12 +18,9 @@ import {
   sendTicketMessage,
   subscribeToTicketMessages,
 } from '@/features/support/api';
-import {
-  TICKET_CATEGORY_LABELS,
-  type ReporterRole,
-  type SupportMessage,
-  type SupportTicket,
-} from '@/features/support/types';
+import { type ReporterRole, type SupportMessage, type SupportTicket } from '@/features/support/types';
+import { useCatalogs } from '@/hooks/useCatalogs';
+import { ticketCategoryName } from '@/lib/catalogs';
 import { appendNewest, newestFirst, type MessageCursor, type Page } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { formatDayMonthTime } from '@/lib/time';
@@ -45,6 +42,7 @@ export function SupportTicketThreadScreen({
   ticketId: string;
 }) {
   const { colors, typography } = useTheme();
+  const { ticketCategories } = useCatalogs();
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
 
@@ -129,7 +127,7 @@ export function SupportTicketThreadScreen({
             {ticket.subject}
           </Text>
           <Text style={[typography.label, { color: colors.onSurfaceVariant, marginTop: 2 }]}>
-            {TICKET_CATEGORY_LABELS[ticket.category]} ·{' '}
+            {ticketCategoryName(ticket.category, ticketCategories)} ·{' '}
             {ticket.status === 'open' ? 'Abierto' : 'Resuelto'}
           </Text>
         </View>

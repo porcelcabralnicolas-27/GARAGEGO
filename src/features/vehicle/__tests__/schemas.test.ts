@@ -1,4 +1,4 @@
-import { isValidArgentinePlate, normalizePlate, vehicleSchema } from '../schemas';
+import { isValidArgentinePlate, isValidNewYorkPlate, normalizePlate, vehicleSchema, vehicleSchemaFor } from '../schemas';
 
 const valid = { plate: 'ABC123', brand: 'Toyota', model: 'Corolla' };
 
@@ -19,6 +19,35 @@ describe('isValidArgentinePlate', () => {
     expect(isValidArgentinePlate('ABCD12')).toBe(false);
     expect(isValidArgentinePlate('1234ABC')).toBe(false);
     expect(isValidArgentinePlate('')).toBe(false);
+  });
+});
+
+describe('isValidNewYorkPlate', () => {
+  it('acepta 3 letras y 4 números, con o sin guion', () => {
+    expect(isValidNewYorkPlate('ABC1234')).toBe(true);
+    expect(isValidNewYorkPlate('abc-1234')).toBe(true);
+    expect(isValidNewYorkPlate(' KXJ 9087 ')).toBe(true);
+  });
+
+  it('rechaza las patentes argentinas y otros formatos', () => {
+    expect(isValidNewYorkPlate('ABC123')).toBe(false);
+    expect(isValidNewYorkPlate('AB123CD')).toBe(false);
+    expect(isValidNewYorkPlate('1234ABC')).toBe(false);
+    expect(isValidNewYorkPlate('')).toBe(false);
+  });
+});
+
+describe('vehicleSchemaFor', () => {
+  it('en Estados Unidos pide el formato de Nueva York', () => {
+    const us = vehicleSchemaFor('US');
+    expect(us.safeParse({ ...valid, plate: 'ABC-1234' }).success).toBe(true);
+    expect(us.safeParse({ ...valid, plate: 'AB123CD' }).success).toBe(false);
+  });
+
+  it('en Argentina sigue pidiendo el formato argentino', () => {
+    const ar = vehicleSchemaFor('AR');
+    expect(ar.safeParse({ ...valid, plate: 'AB123CD' }).success).toBe(true);
+    expect(ar.safeParse({ ...valid, plate: 'ABC-1234' }).success).toBe(false);
   });
 });
 

@@ -10,7 +10,9 @@ import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { getSupportErrorMessage, listMyTicketsPage, type TicketCursor } from '@/features/support/api';
-import { TICKET_CATEGORY_LABELS, type ReporterRole } from '@/features/support/types';
+import type { ReporterRole } from '@/features/support/types';
+import { useCatalogs } from '@/hooks/useCatalogs';
+import { ticketCategoryName } from '@/lib/catalogs';
 import { flattenPages } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { formatDayMonthTime } from '@/lib/time';
@@ -24,6 +26,7 @@ const NEW_HREF = { client: '/(client)/profile/support/new', owner: '/(owner)/pro
 export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
   const router = useRouter();
   const { colors, typography } = useTheme();
+  const { ticketCategories } = useCatalogs();
   const profile = useAuthStore((s) => s.profile);
   const userId = profile?.id;
 
@@ -128,7 +131,7 @@ export function SupportTicketsScreen({ role }: { role: ReporterRole }) {
               style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 2 }]}
               numberOfLines={1}
             >
-              {TICKET_CATEGORY_LABELS[item.category]}
+              {ticketCategoryName(item.category, ticketCategories)}
               {item.contextLabel ? ` · ${item.contextLabel}` : ''}
             </Text>
 

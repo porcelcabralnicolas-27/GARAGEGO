@@ -8,7 +8,6 @@ import {
   formatSigned,
 } from '../../lib/format';
 import {
-  TICKET_CATEGORY_LABELS,
   TRANSACTION_TYPE_LABELS,
   type TicketCategory,
   type TicketStatus,
@@ -23,7 +22,16 @@ import { FilterSelect, SearchInput, SubTabs, Tabs, Toolbar } from '../../ui/cont
 import { MetricCard } from '../../ui/MetricCard';
 import { Badge, Button, Callout, EmptyState, KeyValue, SchemaNote } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
-import { TRANSACTION_SIDE_LABEL, TRANSACTIONS_PAGE_SIZE, type PanelTransaction } from './transactionsApi';
+import { ticketCategoryLabel, useCatalogLabels } from '../settings/useCatalogLabels';
+import {
+  mercadoPagoPaymentId,
+  TRANSACTION_ORIGIN_LABEL,
+  TRANSACTION_SIDE_LABEL,
+  transactionLabel,
+  transactionOrigin,
+  TRANSACTIONS_PAGE_SIZE,
+  type PanelTransaction,
+} from './transactionsApi';
 import type { TicketCounts } from './ticketsApi';
 import { useTicketCounts, useTicketMessages, useTickets } from './useTickets';
 import { useTransactions } from './useTransactions';
@@ -107,7 +115,7 @@ function TransactionsView() {
                   : 'neutral'
           }
         >
-          {TRANSACTION_TYPE_LABELS[r.type] ?? r.type}
+          {transactionLabel(r)}
           {r.isDemo ? ' · Demo' : ''}
         </Badge>
       ),
@@ -230,7 +238,7 @@ function TransactionsView() {
         <Drawer
           open
           title="Detalle del movimiento"
-          subtitle={TRANSACTION_TYPE_LABELS[detail.type] ?? detail.type}
+          subtitle={transactionLabel(detail)}
           onClose={() => setDetail(null)}
         >
           <DrawerSection title="Datos">
@@ -242,8 +250,13 @@ function TransactionsView() {
                 ['Vista', TRANSACTION_SIDE_LABEL[detail.side]],
                 ['Estado', detail.status],
                 ['Cochera', detail.lotName ?? '—'],
-                ['Referencia', detail.paymentGatewayRef ?? '—'],
-                ['Origen', detail.isDemo ? 'Recarga de prueba (saldo ficticio)' : '—'],
+                ['Origen', TRANSACTION_ORIGIN_LABEL[transactionOrigin(detail)]],
+                [
+                  'Referencia',
+                  mercadoPagoPaymentId(detail.paymentGatewayRef)
+                    ? `Pago de Mercado Pago ${mercadoPagoPaymentId(detail.paymentGatewayRef)}`
+                    : (detail.paymentGatewayRef ?? '—'),
+                ],
               ]}
             />
           </DrawerSection>
@@ -276,6 +289,8 @@ function TicketsView({ counts }: { counts: TicketCounts }) {
 
   const [tab, setTab] = useState<TicketTab>('open');
   const [category, setCategory] = useState<TicketCategory | 'all'>('all');
+  // Categorías del catálogo (0094), activas e inactivas: los tickets viejos pueden tener cualquiera.
+  const { ticketCategories } = useCatalogLabels();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reply, setReply] = useState('');
@@ -378,9 +393,9 @@ function TicketsView({ counts }: { counts: TicketCounts }) {
             onChange={setCategory}
             options={[
               { value: 'all', label: 'Todas las categorías' },
-              ...(Object.keys(TICKET_CATEGORY_LABELS) as TicketCategory[]).map((c) => ({
-                value: c,
-                label: TICKET_CATEGORY_LABELS[c],
+              ...ticketCategories.map((c) => ({
+                value: c.code,
+                label: c.isActive ? c.label : `${c.label} (desactivada)`,
               })),
             ]}
           />
@@ -431,7 +446,7 @@ function TicketsView({ counts }: { counts: TicketCounts }) {
                     style={{ marginTop: 4, color: 'var(--gg-text-soft)', fontSize: 'var(--gg-fs-sm)' }}
                   >
                     {t.reporterName}
-                    <Badge tone="neutral">{TICKET_CATEGORY_LABELS[t.category]}</Badge>
+                    <Badge tone="neutral">{ticketCategoryLabel(t.category)}</Badge>
                   </div>
                 </button>
               </li>

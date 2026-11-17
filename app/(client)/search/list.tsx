@@ -13,6 +13,7 @@ import type { ParkingLotWithDistance } from '@/features/parking/types';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import type { Page } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
+import { t } from '@/lib/i18n';
 
 type SearchParams = {
   lat: string;
@@ -56,12 +57,14 @@ export default function ListScreen() {
 
   const results = data?.pages.flatMap((page) => page.items) ?? [];
   const coverImages = Object.assign({}, ...(data?.pages.map((page) => page.coverImages) ?? [])) as Record<string, string>;
-  const errorMessage = isError ? 'No se pudieron cargar los estacionamientos.' : null;
+  const errorMessage = isError ? t('No se pudieron cargar los estacionamientos.') : null;
 
   // Mientras haya más páginas, el total todavía no se sabe.
   const title = hasNextPage
-    ? `Más de ${results.length} resultados`
-    : `${results.length} ${results.length === 1 ? 'resultado' : 'resultados'}`;
+    ? t('Más de {count} resultados', { count: results.length })
+    : results.length === 1
+      ? t('1 resultado')
+      : t('{count} resultados', { count: results.length });
 
   return (
     <Screen>
@@ -73,8 +76,8 @@ export default function ListScreen() {
       {!isLoading && results.length === 0 && !errorMessage ? (
         <EmptyState
           icon="search-outline"
-          title="Sin resultados"
-          description="No encontramos estacionamientos con esos filtros. Probá ampliar la distancia o el precio."
+          title={t('Sin resultados')}
+          description={t('No encontramos estacionamientos con esos filtros. Probá ampliar la distancia o el precio.')}
           actionLabel="Cambiar filtros"
           onAction={() => router.replace('/(client)/search')}
         />

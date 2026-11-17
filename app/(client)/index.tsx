@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type LayoutRectangle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
@@ -19,11 +19,13 @@ import {
   nearbyOf,
   searchNotice,
 } from '@/features/search/mapResults';
+import { lotCamera } from '@/features/search/mapCamera';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { mapOrigin } from '@/hooks/useGoBack';
 import { formatPricePerHour } from '@/lib/money';
 import { queryKeys } from '@/lib/queryKeys';
 import { radius, spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 type SearchParams = {
   lat: string;
@@ -55,6 +57,29 @@ export default function ClientHomeScreen() {
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const mapRef = useRef<MapView>(null);
 
+  // Al tocar el cartel, el mapa va directo a la cochera y la deja visible por encima de la hoja,
+  // igual que en la web (src/features/search/mapCamera.ts). Para eso hace falta saber dónde está el
+  // mapa y dónde empieza la hoja; la hoja recién se mide cuando aparece, así que el movimiento
+  // queda pendiente hasta ese momento.
+  const mapLayoutRef = useRef<LayoutRectangle | null>(null);
+  const sheetTopRef = useRef<number | null>(null);
+  const pendingZoomRef = useRef<{ latitude: number; longitude: number } | null>(null);
+
+  const runPendingZoom = async () => {
+    const lot = pendingZoomRef.current;
+    const mapLayout = mapLayoutRef.current;
+    const sheetTop = sheetTopRef.current;
+    if (!lot || !mapLayout || sheetTop === null || !mapRef.current) return;
+    pendingZoomRef.current = null;
+    const current = await mapRef.current.getCamera().catch(() => null);
+    const camera = lotCamera(lot, current?.zoom ?? 0, {
+      mapTop: mapLayout.y,
+      mapHeight: mapLayout.height,
+      visibleBottom: sheetTop,
+    });
+    mapRef.current?.animateCamera({ center: camera.center, zoom: camera.zoom }, { duration: 500 });
+  };
+
   // Inicio (sin filtros) y la búsqueda por dirección muestran TODOS los estacionamientos. Solo
   // cuando se eligió una distancia en Buscar ("Ver en mapa") el mapa se limita a ese radio.
   const isRadiusSearch = Boolean(params.radiusKm) && !params.place;
@@ -71,9 +96,10 @@ export default function ClientHomeScreen() {
     queryFn: () => searchParkingLots(filters),
     enabled: latitude !== null && longitude !== null,
   });
-  const errorMessage = isError ? 'No se pudieron cargar los estacionamientos.' : null;
+  const errorMessage = isError ? t('No se pudieron cargar los estacionamientos.') : null;
 
   const selected = results.find((r) => r.id === selectedId) ?? null;
+  if (!selected) sheetTopRef.current = null;
   const nearbyCount = nearbyOf(results, searchRadiusKm).length;
   const showNotice = Boolean(params.place) && isSuccess && params.notice !== '0' && !noticeDismissed;
 
@@ -101,7 +127,7 @@ export default function ClientHomeScreen() {
         <View style={styles.header}>
           {/* El logo hace de identidad de la pantalla; antes había un saludo "HOLA, {nombre}". */}
           <Logo />
-          <SearchBar placeholder="¿A dónde vas?" onPress={() => router.push('/(client)/search')} />
+          <SearchBar placeholder={t('¿A dónde vas?')} onPress={() => router.push('/(client)/search')} />
         </View>
         {errorMessage ? (
           <View style={styles.banner}>
@@ -129,7 +155,12 @@ export default function ClientHomeScreen() {
       </SafeAreaView>
 
       {latitude !== null && longitude !== null ? (
-        <View style={styles.mapWrapper}>
+        <View
+          style={styles.mapWrapper}
+          onLayout={(event) => {
+            mapLayoutRef.current = event.nativeEvent.layout;
+          }}
+        >
         <MapView
           ref={mapRef}
           // `initialRegion` solo se lee al montar: con la `key` el mapa se vuelve a armar (y se
@@ -166,6 +197,9 @@ export default function ClientHomeScreen() {
               onPress={() => {
                 setSelectedId(lot.id);
                 setNoticeDismissed(true);
+                pendingZoomRef.current = { latitude: lot.latitude, longitude: lot.longitude };
+                // Si la hoja ya estaba abierta (otra cochera), no se vuelve a medir: se mueve ya.
+                void runPendingZoom();
               }}
             />
           ))}
@@ -173,7 +207,7 @@ export default function ClientHomeScreen() {
         </View>
       ) : (
         <View style={styles.centerFill}>
-          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Obteniendo tu ubicación…</Text>
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{t('Obteniendo tu ubicación…')}</Text>
         </View>
       )}
 
@@ -181,6 +215,11 @@ export default function ClientHomeScreen() {
         <ParkingPreviewSheet
           lot={selected}
           isAvailableNow={availableNow[selected.id]}
+          onLayout={(event) => {
+            // La hoja está anclada abajo del mismo contenedor que el mapa: su `y` es dónde empieza.
+            sheetTopRef.current = event.nativeEvent.layout.y;
+            void runPendingZoom();
+          }}
           onClose={() => setSelectedId(null)}
           onViewDetail={() =>
             router.push({

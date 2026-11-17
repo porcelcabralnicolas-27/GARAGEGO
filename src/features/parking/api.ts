@@ -1,11 +1,12 @@
+import { appLimits } from '@/lib/appLimits';
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { guessImageContentType } from '@/lib/imageMime';
 import { toPage, type Page } from '@/lib/pagination';
+import { activeRegion } from '@/lib/region';
 import { supabase } from '@/lib/supabase/client';
 
 import {
   LISTING_CHANGE_FIELD_LABELS,
-  MAX_PARKING_IMAGES,
   type Amenity,
   type ApprovalStatus,
   type AvailabilityException,
@@ -136,6 +137,8 @@ export async function listMyParkingLots(ownerId: string): Promise<ParkingLot[]> 
     .from('parking_lots')
     .select('*')
     .eq('owner_id', ownerId)
+    // Demo regional (0087): el propietario ve solo las publicaciones del país activo.
+    .eq('region', activeRegion().code)
     // Las archivadas (borradas con historial, ver deleteParkingLot) ya no se listan.
     .is('archived_at', null)
     .order('created_at', { ascending: false })
@@ -556,11 +559,15 @@ function changesNotMadeMessage(message: string): string {
 export function getParkingErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
-    if (message.includes('max_parking_images_reached')) return `Ya llegaste al máximo de ${MAX_PARKING_IMAGES} fotos.`;
+    if (message.includes('max_parking_images_reached')) return `Ya llegaste al máximo de ${appLimits().maxParkingImages} fotos.`;
     if (message.includes('duplicate key') || message.includes('parking_availability_recurring_no_dupes')) {
       return 'Ese horario ya está cargado para ese día.';
     }
     if (message.includes('changes_not_made')) return changesNotMadeMessage(message);
+    // Un servicio que el equipo desactivó en el catálogo (0094) no se puede agregar.
+    if (message.includes('amenity_unavailable')) {
+      return 'Alguno de los servicios elegidos ya no se ofrece. Quitalo y volvé a guardar.';
+    }
     if (message.includes('photo_required')) return 'Subí al menos una foto del lugar para publicarlo.';
     if (message.includes('ownership_docs_required')) {
       return 'Faltan los documentos que acreditan que sos el dueño o que tenés permiso para publicar este lugar.';

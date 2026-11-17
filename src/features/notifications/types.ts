@@ -18,6 +18,12 @@ export type NotificationType =
   // Soporte (migración 0041). Llegan con `related_ticket_id` y `audience` del rol que abrió.
   | 'support_reply'
   | 'support_resolved'
+  // Mercado Pago (migración 0084). Las de reserva llegan con `related_booking_id`;
+  // `topup_approved` no tiene reserva y llega con `audience = 'client'`.
+  | 'payment_approved'
+  | 'payment_expired'
+  | 'payment_refunded'
+  | 'topup_approved'
   | string;
 
 /**
@@ -39,6 +45,8 @@ export type AppNotification = {
   audience: NotificationAudience | null;
   relatedBookingId: string | null;
   relatedTicketId: string | null;
+  /** País de la reserva relacionada (0087): solo se muestran las de la región del perfil. */
+  region: 'AR' | 'US';
   read: boolean;
   createdAt: string;
 };

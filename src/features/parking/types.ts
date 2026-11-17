@@ -5,6 +5,7 @@ export type {
   ApprovalStatus,
   DocumentKind,
   DocumentRequirement,
+  DocumentRule,
   HolderRole,
   ListingChangeField,
   LotType,
@@ -20,8 +21,10 @@ export {
   LOT_TYPES,
   LOT_TYPE_DESCRIPTIONS,
   LOT_TYPE_LABELS,
+  DEFAULT_DOCUMENT_RULES,
   documentRequirements,
   missingDocumentRequirements,
+  parseDocumentRules,
 } from '../../../shared/domain';
 
 import type {
@@ -89,7 +92,7 @@ export function getListingStatus(lot: ParkingLot): ListingStatus {
   return lot.isActive ? 'active' : 'paused';
 }
 
-export const MAX_PARKING_IMAGES = 3;
+// El máximo de fotos por cochera lo configura el equipo en el panel (0093): `useAppLimits()`.
 
 export type ParkingImage = {
   id: string;

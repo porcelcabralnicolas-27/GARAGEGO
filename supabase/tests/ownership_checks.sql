@@ -165,7 +165,7 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.admin'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
     begin
-      perform public.admin_review_parking_lot(v_lot2, 'approved', null, null);
+      perform public.admin_review_parking_lot(v_lot2, 'approved', null, null, array(select id from public.lot_checklist_items(v_lot2)));
       execute 'reset role';
       v_report := v_report || e'\n' || concat_ws(' | ', 8, 'aprobar sin documentos', 'FALLA', 'la aprobó');
     exception when others then
@@ -182,7 +182,7 @@ begin
   begin
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.admin'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
-    perform public.admin_review_parking_lot(v_lot, 'approved', null, null);
+    perform public.admin_review_parking_lot(v_lot, 'approved', null, null, array(select id from public.lot_checklist_items(v_lot)));
     execute 'reset role';
     select approval_status into v_text from public.parking_lots where id = v_lot;
     v_report := v_report || e'\n' || concat_ws(' | ', 9, 'aprobar con documentos',

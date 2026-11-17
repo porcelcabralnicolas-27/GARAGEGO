@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { activeRegion } from '@/lib/region';
+
 type LocationState = {
   latitude: number | null;
   longitude: number | null;
@@ -50,6 +52,12 @@ export function useCurrentLocation({ fallback = true }: Options = {}) {
       : { latitude: null, longitude: null, isLoading: false, errorMessage: message, isApproximate: false };
 
   const request = () => {
+    // Demo de Estados Unidos: ubicación simulada en Midtown Manhattan (ver la versión nativa).
+    const region = activeRegion();
+    if (region.simulatedLocation) {
+      setState({ ...region.center, isLoading: false, errorMessage: null, isApproximate: false });
+      return;
+    }
     setState((prev) => ({ ...prev, isLoading: true, errorMessage: null }));
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {

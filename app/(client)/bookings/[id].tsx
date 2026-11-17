@@ -24,9 +24,10 @@ import type { ClientBookingDetail } from '@/features/booking/types';
 import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
 import { formatMoney } from '@/lib/money';
 import { queryKeys } from '@/lib/queryKeys';
-import { businessInstant, formatCalendarDate, formatDateTime } from '@/lib/time';
+import { businessInstant, businessToDisplay, formatCalendarDate, formatDateTime } from '@/lib/time';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 /** Cuánto antes del horario reservado se habilita COMENZAR. Igual que en `start_booking`. */
 const EARLY_WINDOW_MS = 15 * 60 * 1000;
@@ -129,7 +130,10 @@ export default function BookingSessionScreen() {
       const { overtimeMinutes, overtimeCharge } = await completeBooking(id);
       if (overtimeCharge > 0) {
         setErrorMessage(
-          `Te pasaste ${overtimeMinutes} min del horario reservado. Se debitaron ${formatMoney(overtimeCharge)} de tu billetera.`
+          t('Te pasaste {minutes} min del horario reservado. Se debitaron {amount} de tu billetera.', {
+            minutes: overtimeMinutes,
+            amount: formatMoney(overtimeCharge),
+          })
         );
       }
       reloadProfile();
@@ -144,8 +148,8 @@ export default function BookingSessionScreen() {
   if (loadError) {
     return (
       <Screen>
-        <ScreenHeader title="Reserva" backHref="/(client)/bookings" />
-        <Banner message="No se pudo cargar esta reserva." />
+        <ScreenHeader title={t('Reserva')} backHref="/(client)/bookings" />
+        <Banner message={t('No se pudo cargar esta reserva.')} />
       </Screen>
     );
   }
@@ -153,8 +157,8 @@ export default function BookingSessionScreen() {
   if (!booking) {
     return (
       <Screen>
-        <ScreenHeader title="Reserva" backHref="/(client)/bookings" />
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
+        <ScreenHeader title={t('Reserva')} backHref="/(client)/bookings" />
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{t('Cargando…')}</Text>
       </Screen>
     );
   }
@@ -167,6 +171,8 @@ export default function BookingSessionScreen() {
   const isActive = booking.status === 'confirmed' && isStarted;
   const isPending = booking.status === 'confirmed' && !isStarted;
   const isFinished = booking.status === 'completed';
+  // Reserva de Mercado Pago que todavía no se pagó (0084).
+  const isAwaitingPayment = booking.status === 'pending';
 
   const canStartAt = startsAt.getTime() - EARLY_WINDOW_MS;
   const canStartNow = now >= canStartAt && now <= endsAt.getTime();
@@ -180,15 +186,19 @@ export default function BookingSessionScreen() {
   const progress = totalMs > 0 ? elapsedMs / totalMs : 0;
   const isOvertime = remainingMs < 0;
 
+  // Guardado en hora de la cochera; se muestra en la de la región.
+  const shownStart = businessToDisplay(booking.date, booking.startTime);
+  const shownEnd = businessToDisplay(booking.date, booking.endTime);
+
   const detailCard = (
     <Card>
-      <DetailRow label="Lugar" value={booking.parkingLotName} />
-      <DetailRow label="Dirección" value={booking.parkingLotAddress} />
-      <DetailRow label="Fecha" value={formatCalendarDate(booking.date)} />
-      <DetailRow label="Horario" value={`${booking.startTime.slice(0, 5)} – ${booking.endTime.slice(0, 5)}`} />
+      <DetailRow label={t('Lugar')} value={booking.parkingLotName} />
+      <DetailRow label={t('Dirección')} value={booking.parkingLotAddress} />
+      <DetailRow label={t('Fecha')} value={formatCalendarDate(shownStart.date)} />
+      <DetailRow label={t('Horario')} value={`${shownStart.time} – ${shownEnd.time}`} />
       {booking.vehicle ? (
         <DetailRow
-          label="Vehículo"
+          label={t('Vehículo')}
           value={[
             booking.vehicle.plate,
             [booking.vehicle.brand, booking.vehicle.model].filter(Boolean).join(' '),
@@ -199,7 +209,9 @@ export default function BookingSessionScreen() {
       ) : null}
       <View style={[styles.divider, { backgroundColor: colors.outline }]} />
       <View style={styles.detailRow}>
-        <Text style={[typography.titleMedium, { color: colors.onSurface }]}>Pagado</Text>
+        <Text style={[typography.titleMedium, { color: colors.onSurface }]}>
+          {isAwaitingPayment ? t('Total a pagar') : t('Pagado')}
+        </Text>
         <Text style={[typography.titleMedium, { color: colors.accent }]}>{formatMoney(booking.totalPrice)}</Text>
       </View>
     </Card>
@@ -208,7 +220,7 @@ export default function BookingSessionScreen() {
   return (
     <Screen>
       <ScrollView>
-        <ScreenHeader title="Reserva" backHref="/(client)/bookings" />
+        <ScreenHeader title={t('Reserva')} backHref="/(client)/bookings" />
 
         {errorMessage ? <Banner message={errorMessage} /> : null}
 
@@ -222,34 +234,34 @@ export default function BookingSessionScreen() {
             <View style={styles.centerBlock}>
               {startWindowOver ? (
                 <Text style={[typography.bodyMedium, styles.centerText, { color: colors.error }]}>
-                  El horario de esta reserva ya terminó.
+                  {t('El horario de esta reserva ya terminó.')}
                 </Text>
               ) : canStartNow ? (
                 <Text style={[typography.bodyMedium, styles.centerText, { color: colors.onSurfaceVariant }]}>
-                  Ya podés comenzar tu estacionamiento.
+                  {t('Ya podés comenzar tu estacionamiento.')}
                 </Text>
               ) : (
                 <>
-                  <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>COMIENZA EN</Text>
+                  <Text style={[typography.label, { color: colors.onSurfaceVariant }]}>{t('COMIENZA EN')}</Text>
                   <Text style={[typography.displayLarge, { color: colors.onSurface }]}>
                     {formatRemaining(startsAt.getTime() - now)}
                   </Text>
                   <Text style={[typography.bodyMedium, styles.centerText, { color: colors.onSurfaceVariant }]}>
-                    El botón se habilita 15 minutos antes.
+                    {t('El botón se habilita 15 minutos antes.')}
                   </Text>
                 </>
               )}
             </View>
 
             <Button
-              label="Comenzar"
+              label={t('Comenzar')}
               onPress={handleStart}
               loading={isBusy}
               disabled={isBusy || !canStartNow}
             />
             <View style={styles.buttonGap} />
             <Button
-              label="Cómo llegar"
+              label={t('Cómo llegar')}
               variant="outlined"
               icon="navigate-outline"
               onPress={() =>
@@ -269,7 +281,7 @@ export default function BookingSessionScreen() {
               <ProgressRing progress={progress}>
                 <Ionicons name="car-sport" size={40} color={colors.accent} />
                 <Text style={[typography.label, styles.ringLabel, { color: colors.onSurfaceVariant }]}>
-                  {isOvertime ? 'TIEMPO EXCEDIDO' : 'TIEMPO RESTANTE'}
+                  {isOvertime ? t('TIEMPO EXCEDIDO') : t('TIEMPO RESTANTE')}
                 </Text>
                 <Text
                   style={[typography.displayLarge, { color: isOvertime ? colors.error : colors.onSurface }]}
@@ -280,7 +292,7 @@ export default function BookingSessionScreen() {
 
               {isOvertime ? (
                 <Text style={[typography.bodyMedium, styles.centerText, { color: colors.error }]}>
-                  Se está cobrando tiempo excedido. Finalizá para detener el cargo.
+                  {t('Se está cobrando tiempo excedido. Finalizá para detener el cargo.')}
                 </Text>
               ) : null}
             </View>
@@ -288,7 +300,7 @@ export default function BookingSessionScreen() {
             {detailCard}
 
             <Button
-              label="Finalizar estacionamiento"
+              label={t('Finalizar estacionamiento')}
               onPress={() => setShowFinishConfirm(true)}
               loading={isBusy}
               disabled={isBusy}
@@ -307,12 +319,12 @@ export default function BookingSessionScreen() {
                   color={colors.onPrimaryContainer}
                 />
                 <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>
-                  {isStarted ? 'COMPLETADO' : 'NO SE PRESENTÓ'}
+                  {isStarted ? t('COMPLETADO') : t('NO SE PRESENTÓ')}
                 </Text>
               </View>
               {!isStarted ? (
                 <Text style={[typography.bodyMedium, styles.centerText, { color: colors.onSurfaceVariant }]}>
-                  La reserva no se inició y se cerró automáticamente 15 minutos después del horario.
+                  {t('La reserva no se inició y se cerró automáticamente 15 minutos después del horario.')}
                 </Text>
               ) : null}
             </View>
@@ -322,19 +334,19 @@ export default function BookingSessionScreen() {
             {/* Registro de actividades del Figma. Sin descarga: Q11·A. */}
             <Card>
               <Text style={[typography.titleMedium, styles.cardHeading, { color: colors.onSurface }]}>
-                Registro de actividades
+                {t('Registro de actividades')}
               </Text>
               <DetailRow
-                label="Entrada"
+                label={t('Entrada')}
                 value={booking.actualStartAt ? formatDateTime(booking.actualStartAt) : '—'}
               />
               <DetailRow
-                label="Salida"
+                label={t('Salida')}
                 value={booking.actualEndAt ? formatDateTime(booking.actualEndAt) : '—'}
               />
               {booking.overtimeCharge > 0 ? (
                 <DetailRow
-                  label="Tiempo excedido"
+                  label={t('Tiempo excedido')}
                   value={`${booking.overtimeMinutes} min · ${formatMoney(booking.overtimeCharge)}`}
                 />
               ) : null}
@@ -343,24 +355,38 @@ export default function BookingSessionScreen() {
             {/* Sin registro de entrada no se califica (lo exige también la 0066). */}
             {isStarted && !isRated ? (
               <>
-                <Button label="Calificar" onPress={() => setShowRateDialog(true)} />
+                <Button label={t('Calificar')} onPress={() => setShowRateDialog(true)} />
                 <View style={styles.buttonGap} />
               </>
             ) : null}
             <Button
-              label="Volver al inicio"
+              label={t('Volver al inicio')}
               variant="outlined"
               onPress={() => router.replace('/(client)')}
             />
           </>
         ) : null}
 
-        {/* ── Cancelada / pendiente de aprobación (reservas viejas) ──────── */}
-        {!isPending && !isActive && !isFinished ? (
+        {/* ── Esperando el pago con Mercado Pago ─────────────────────────── */}
+        {isAwaitingPayment ? (
+          <>
+            {detailCard}
+            <Text style={[typography.bodyMedium, styles.centerText, styles.awaitingText, { color: colors.onSurfaceVariant }]}>
+              {t('Esta reserva está esperando el pago con Mercado Pago. Si no se paga a tiempo, se cancela sola y el lugar queda libre.')}
+            </Text>
+            <Button
+              label={t('Completar el pago')}
+              onPress={() => router.push({ pathname: '/(client)/payment-return', params: { booking: booking.id } })}
+            />
+          </>
+        ) : null}
+
+        {/* ── Cancelada ──────────────────────────────────────────────────── */}
+        {booking.status === 'cancelled' ? (
           <>
             {detailCard}
             <Text style={[typography.bodyMedium, styles.centerText, { color: colors.onSurfaceVariant }]}>
-              Esta reserva está {booking.status === 'cancelled' ? 'cancelada' : 'pendiente de aprobación'}.
+              {t('Esta reserva está cancelada.')}
             </Text>
           </>
         ) : null}
@@ -368,14 +394,14 @@ export default function BookingSessionScreen() {
 
       <ConfirmDialog
         visible={showFinishConfirm}
-        title="Finalizar estacionamiento"
+        title={t('Finalizar estacionamiento')}
         message={
           isOvertime
-            ? 'Te pasaste del horario reservado. Al finalizar se te va a cobrar el tiempo excedido.'
-            : '¿Terminaste de usar el lugar? Una vez finalizada, la reserva se cierra.'
+            ? t('Te pasaste del horario reservado. Al finalizar se te va a cobrar el tiempo excedido.')
+            : t('¿Terminaste de usar el lugar? Una vez finalizada, la reserva se cierra.')
         }
-        confirmLabel="Finalizar"
-        cancelLabel="Volver"
+        confirmLabel={t('Finalizar')}
+        cancelLabel={t('Volver')}
         loading={isBusy}
         onConfirm={handleFinish}
         onCancel={() => setShowFinishConfirm(false)}
@@ -426,6 +452,9 @@ const styles = StyleSheet.create({
   },
   centerText: {
     textAlign: 'center',
+  },
+  awaitingText: {
+    marginBottom: spacing.lg,
   },
   ringLabel: {
     marginTop: spacing.sm,

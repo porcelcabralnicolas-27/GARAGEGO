@@ -1,4 +1,5 @@
 import { toPage, type Page } from '@/lib/pagination';
+import { activeRegion, type RegionCode } from '@/lib/region';
 import { supabase } from '@/lib/supabase/client';
 
 import type { AppNotification, NotificationAudience } from './types';
@@ -15,6 +16,7 @@ function mapNotificationRow(row: {
   related_ticket_id: string | null;
   read: boolean;
   created_at: string;
+  region?: string | null;
 }): AppNotification {
   return {
     id: row.id,
@@ -28,6 +30,7 @@ function mapNotificationRow(row: {
     relatedTicketId: row.related_ticket_id,
     read: row.read,
     createdAt: row.created_at,
+    region: row.region === 'US' ? 'US' : 'AR',
   };
 }
 
@@ -47,10 +50,11 @@ const UNREAD_LIMIT = 200;
 
 export type NotificationCursor = { createdAt: string; id: string };
 
-/** ¿Esta notificación corresponde al rol activo? Misma regla que `audienceFilter`, para los
- *  eventos de realtime, que llegan sin pasar por el filtro de la consulta. */
+/** ¿Esta notificación corresponde al rol activo y a la región del perfil? Misma regla que las
+ *  consultas, para los eventos de realtime, que llegan sin pasar por su filtro. */
 export function matchesAudience(notification: AppNotification, audience: NotificationAudience): boolean {
-  return notification.audience === null || notification.audience === audience;
+  const regionMatches = notification.region === (activeRegion().code as RegionCode);
+  return regionMatches && (notification.audience === null || notification.audience === audience);
 }
 
 /** Una página de notificaciones del rol activo, de la más nueva a la más vieja (0059). */
@@ -85,6 +89,7 @@ export async function markAllNotificationsAsRead(
     .update({ read: true })
     .eq('user_id', userId)
     .or(audienceFilter(audience))
+    .eq('region', activeRegion().code)
     .eq('read', false);
   if (error) throw error;
 }
@@ -99,6 +104,7 @@ export async function countUnreadMessageNotifications(
     .eq('user_id', userId)
     .eq('type', 'new_message')
     .or(audienceFilter(audience))
+    .eq('region', activeRegion().code)
     .eq('read', false);
   if (error) throw error;
   return count ?? 0;
@@ -111,6 +117,7 @@ export async function countUnreadNotifications(userId: string, audience: Notific
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .or(audienceFilter(audience))
+    .eq('region', activeRegion().code)
     .eq('read', false);
   if (error) throw error;
   return count ?? 0;
@@ -126,6 +133,7 @@ export async function listUnreadMessageNotifications(
     .eq('user_id', userId)
     .eq('type', 'new_message')
     .or(audienceFilter(audience))
+    .eq('region', activeRegion().code)
     .eq('read', false)
     .limit(UNREAD_LIMIT);
   if (error) throw error;
@@ -176,7 +184,8 @@ export async function deleteAllNotifications(
     .from('notifications')
     .delete()
     .eq('user_id', userId)
-    .or(audienceFilter(audience));
+    .or(audienceFilter(audience))
+    .eq('region', activeRegion().code);
   if (error) throw error;
 }
 

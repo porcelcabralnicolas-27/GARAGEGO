@@ -17,6 +17,7 @@ import { RateBookingDialog } from '@/features/rating/RateBookingDialog';
 import { flattenPages, type Page } from '@/lib/pagination';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
+import { t } from '@/lib/i18n';
 
 /**
  * Historial del conductor: lo que ya terminó (finalizadas y canceladas), de la más reciente a la
@@ -69,24 +70,24 @@ export default function ClientBookingHistoryScreen() {
       setDeleteTarget(null);
     },
     onError: () => {
-      setErrorMessage('No se pudo borrar la reserva del historial.');
+      setErrorMessage(t('No se pudo borrar la reserva del historial.'));
       setDeleteTarget(null);
     },
   });
 
-  const visibleError = errorMessage ?? (isError ? 'No se pudo cargar tu historial.' : null);
+  const visibleError = errorMessage ?? (isError ? t('No se pudo cargar tu historial.') : null);
 
   return (
     <Screen>
-      <ScreenHeader title="Historial" backHref="/(client)/bookings" />
+      <ScreenHeader title={t('Historial')} backHref="/(client)/bookings" />
 
       {visibleError ? <Banner message={visibleError} /> : null}
 
       {!isLoading && bookings.length === 0 && !visibleError ? (
         <EmptyState
           icon="time-outline"
-          title="Tu historial está vacío"
-          description="Acá van a quedar tus reservas finalizadas y canceladas."
+          title={t('Tu historial está vacío')}
+          description={t('Acá van a quedar tus reservas finalizadas y canceladas.')}
         />
       ) : null}
 
@@ -121,9 +122,9 @@ export default function ClientBookingHistoryScreen() {
               onPress={() => router.push({ pathname: '/(client)/bookings/[id]', params: { id: item.id } })}
               actions={
                 <>
-                  {canRate ? <Button label="Calificar" size="compact" onPress={() => setRateTarget(item)} /> : null}
+                  {canRate ? <Button label={t('Calificar')} size="compact" onPress={() => setRateTarget(item)} /> : null}
                   <Button
-                    label="Borrar"
+                    label={t('Borrar')}
                     size="compact"
                     variant="outlined"
                     onPress={() => setDeleteTarget(item)}
@@ -137,10 +138,10 @@ export default function ClientBookingHistoryScreen() {
 
       <ConfirmDialog
         visible={deleteTarget !== null}
-        title="Borrar del historial"
-        message="Esta reserva se saca de tu historial y no la vas a ver más. No afecta al propietario, que la sigue viendo en el suyo."
-        confirmLabel="Borrar"
-        cancelLabel="Volver"
+        title={t('Borrar del historial')}
+        message={t('Esta reserva se saca de tu historial y no la vas a ver más. No afecta al propietario, que la sigue viendo en el suyo.')}
+        confirmLabel={t('Borrar')}
+        cancelLabel={t('Volver')}
         loading={hide.isPending}
         onConfirm={() => {
           if (!deleteTarget) return;

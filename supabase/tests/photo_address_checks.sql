@@ -1,7 +1,7 @@
--- GarageGo — verificación de la migración 0082 (toda publicación necesita al menos una foto, y
--- cambiar la dirección de una cochera ya verificada exige acreditar la titularidad de nuevo),
+-- GarageGo — verificación de la migración 0082 (toda publicación necesita al menos una foto) y de
+-- la 0089 (la titularidad se verifica una sola vez: cambiar la dirección ya NO quita el sello),
 -- contra las policies REALES del proyecto.
--- Ejecutar en Supabase Dashboard > SQL Editor > New query > Run, DESPUÉS de correr la 0082.
+-- Ejecutar en Supabase Dashboard > SQL Editor > New query > Run, DESPUÉS de correr la 0089.
 --
 -- NO deja datos: es un único bloque DO que termina con un error a propósito. Ese error revierte
 -- todo (fixtures incluidos) y su mensaje ES el reporte, con una línea OK / FALLA por prueba.
@@ -67,7 +67,7 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.admin'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
     begin
-      perform public.admin_review_parking_lot(v_lot_a, 'approved', null, null);
+      perform public.admin_review_parking_lot(v_lot_a, 'approved', null, null, array(select id from public.lot_checklist_items(v_lot_a)));
       execute 'reset role';
       v_report := v_report || e'\n' || concat_ws(' | ', 2, 'aprobar sin fotos', 'FALLA', 'la aprobó');
     exception when others then
@@ -90,7 +90,7 @@ begin
     execute 'reset role';
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.admin'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
-    perform public.admin_review_parking_lot(v_lot_a, 'approved', null, null);
+    perform public.admin_review_parking_lot(v_lot_a, 'approved', null, null, array(select id from public.lot_checklist_items(v_lot_a)));
     execute 'reset role';
     select approval_status into v_text from public.parking_lots where id = v_lot_a;
     v_report := v_report || e'\n' || concat_ws(' | ', 3, 'con una foto se activa y se aprueba',
@@ -114,7 +114,7 @@ begin
     v_report := v_report || e'\n' || concat_ws(' | ', 4, 'cambiar nombre y tarifa conserva el sello', 'ERROR INESPERADO', sqlerrm);
   end;
 
-  -- 5. Cambiar la dirección le quita el sello y la manda a revisión.
+  -- 5. Cambiar la dirección conserva el sello (0089) y la manda a revisión (0081).
   begin
     update public.parking_lots set approval_status = 'approved' where id = v_lot_v;  -- como postgres
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.owner'), 'role', 'authenticated')::text, true);
@@ -123,36 +123,48 @@ begin
     execute 'reset role';
     select (ownership_verified_at is not null)::text, approval_status into v_stamp, v_text
     from public.parking_lots where id = v_lot_v;
-    v_report := v_report || e'\n' || concat_ws(' | ', 5, 'cambiar la dirección quita el sello y revisa',
-      case when v_stamp = 'false' and v_text = 'pending' then 'OK' else 'FALLA' end,
+    v_report := v_report || e'\n' || concat_ws(' | ', 5, 'cambiar la dirección conserva el sello y revisa',
+      case when v_stamp = 'true' and v_text = 'pending' then 'OK' else 'FALLA' end,
       format('con sello: %s / estado: %s', v_stamp, v_text));
   exception when others then
     execute 'reset role';
-    v_report := v_report || e'\n' || concat_ws(' | ', 5, 'cambiar la dirección quita el sello', 'ERROR INESPERADO', sqlerrm);
+    v_report := v_report || e'\n' || concat_ws(' | ', 5, 'cambiar la dirección conserva el sello', 'ERROR INESPERADO', sqlerrm);
   end;
 
-  -- 6. Sin el sello, la publicación vuelve a pedir los documentos (el equipo no la puede aprobar).
+  -- 6. Con el sello, el equipo aprueba la edición sin documentos, y queda la foto de lo aprobado.
   begin
     insert into public.parking_images (parking_lot_id, storage_path, position)
     values (v_lot_v, current_setting('gg.owner') || '/' || v_lot_v::text || '/foto.jpg', 0);  -- como postgres
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.admin'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
-    begin
-      perform public.admin_review_parking_lot(v_lot_v, 'approved', null, null);
-      execute 'reset role';
-      v_report := v_report || e'\n' || concat_ws(' | ', 6, 'sin sello se piden los documentos de nuevo', 'FALLA', 'la aprobó sin documentos');
-    exception when others then
-      execute 'reset role';
-      v_report := v_report || e'\n' || concat_ws(' | ', 6, 'sin sello se piden los documentos de nuevo',
-        case when sqlerrm like '%ownership_docs_missing%' then 'OK' else 'FALLA' end, sqlerrm);
-    end;
+    perform public.admin_review_parking_lot(v_lot_v, 'approved', null, null, array(select id from public.lot_checklist_items(v_lot_v)));
+    execute 'reset role';
+    select approval_status, approved_snapshot->>'address' into v_text, v_stamp from public.parking_lots where id = v_lot_v;
+    v_report := v_report || e'\n' || concat_ws(' | ', 6, 'aprobar la edición sin documentos (0089)',
+      case when v_text = 'approved' and v_stamp like '%Otra dirección distinta%' then 'OK' else 'FALLA' end,
+      format('estado: %s / foto: %s', v_text, v_stamp));
   exception when others then
     execute 'reset role';
-    v_report := v_report || e'\n' || concat_ws(' | ', 6, 'sin sello se piden los documentos de nuevo', 'ERROR INESPERADO', sqlerrm);
+    v_report := v_report || e'\n' || concat_ws(' | ', 6, 'aprobar la edición sin documentos', 'FALLA', sqlerrm);
   end;
 
-  -- 7. El propietario no puede devolverse el sello a mano.
+  -- 6b. El propietario no puede escribir la foto de lo aprobado.
   begin
+    perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.owner'), 'role', 'authenticated')::text, true);
+    execute 'set local role authenticated';
+    update public.parking_lots set approved_snapshot = '{"name":"trucha"}'::jsonb where id = v_lot_v;
+    execute 'reset role';
+    select approved_snapshot->>'name' into v_text from public.parking_lots where id = v_lot_v;
+    v_report := v_report || e'\n' || concat_ws(' | ', '6b', 'el cliente no escribe approved_snapshot',
+      case when v_text is distinct from 'trucha' then 'OK' else 'FALLA' end, format('nombre en la foto: %s', v_text));
+  exception when others then
+    execute 'reset role';
+    v_report := v_report || e'\n' || concat_ws(' | ', '6b', 'el cliente no escribe approved_snapshot', 'ERROR INESPERADO', sqlerrm);
+  end;
+
+  -- 7. El propietario no puede ponerse el sello a mano.
+  begin
+    update public.parking_lots set ownership_verified_at = null, ownership_verified_by = null where id = v_lot_v;  -- como postgres
     perform set_config('request.jwt.claims', json_build_object('sub', current_setting('gg.owner'), 'role', 'authenticated')::text, true);
     execute 'set local role authenticated';
     update public.parking_lots set ownership_verified_at = now() where id = v_lot_v;

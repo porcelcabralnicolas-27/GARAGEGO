@@ -4,22 +4,22 @@ import { ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useAppLimits } from '@/hooks/useAppLimits';
 import { spacing, useTheme } from '@/theme';
 
-import { CONTENT_UPDATED_AT, INFO_CONTENT, SECURITY_CONTENT } from './content';
+import { CONTENT_UPDATED_AT, infoContent, SECURITY_CONTENT } from './content';
 import { InfoSections } from './InfoSections';
 
 type InfoKind = 'info' | 'security';
 
-const SCREENS = {
-  info: { title: 'Información', content: INFO_CONTENT },
-  security: { title: 'Seguridad', content: SECURITY_CONTENT },
-} as const;
+const TITLES: Record<InfoKind, string> = { info: 'Información', security: 'Seguridad' };
 
 // Pantallas de texto "Información" y "Seguridad" de Ajustes.
 export function InfoScreen({ kind, backHref }: { kind: InfoKind; backHref: Href }) {
   const { colors, typography } = useTheme();
-  const { title, content } = SCREENS[kind];
+  const limits = useAppLimits();
+  const title = TITLES[kind];
+  const content = kind === 'info' ? infoContent(limits) : SECURITY_CONTENT;
   const version = Constants.expoConfig?.version;
 
   return (

@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { formatPricePerHour } from '@/lib/money';
 import { IconButton } from '@/components/ui/IconButton';
 import { LOT_TYPE_LABELS, type ParkingLotWithDistance } from '@/features/parking/types';
 import { radius, shadows, spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 type ParkingPreviewSheetProps = {
   lot: ParkingLotWithDistance;
@@ -14,6 +15,8 @@ type ParkingPreviewSheetProps = {
   onClose: () => void;
   onViewDetail: () => void;
   onBook: () => void;
+  /** Para que el mapa nativo sepa cuánto tapa la hoja al acercarse a la cochera. */
+  onLayout?: (event: LayoutChangeEvent) => void;
 };
 
 // Hoja que aparece sobre el mapa al elegir un estacionamiento.
@@ -28,16 +31,29 @@ type ParkingPreviewSheetProps = {
 //
 // Vive acá y no dentro de la pantalla de Inicio porque la usan las dos versiones del mapa,
 // la nativa y la web, que son archivos separados.
-export function ParkingPreviewSheet({ lot, isAvailableNow, onClose, onViewDetail, onBook }: ParkingPreviewSheetProps) {
+export function ParkingPreviewSheet({
+  lot,
+  isAvailableNow,
+  onClose,
+  onViewDetail,
+  onBook,
+  onLayout,
+}: ParkingPreviewSheetProps) {
   const { colors, typography } = useTheme();
 
   return (
-    <View style={[styles.sheet, shadows.raised, { backgroundColor: colors.surface }]}>
+    // El testID lo usa el mapa web (y onLayout el nativo) para saber cuánto tapa la hoja al
+    // acercarse a la cochera.
+    <View
+      testID="parking-preview-sheet"
+      onLayout={onLayout}
+      style={[styles.sheet, shadows.raised, { backgroundColor: colors.surface }]}
+    >
       <View style={styles.header}>
         <Text style={[typography.displayLarge, styles.title, { color: colors.onSurface }]} numberOfLines={1}>
-          Reserva tu lugar
+          {t('Reserva tu lugar')}
         </Text>
-        <IconButton name="close" size={18} onPress={onClose} accessibilityLabel="Cerrar" />
+        <IconButton name="close" size={18} onPress={onClose} accessibilityLabel={t('Cerrar')} />
       </View>
 
       <View style={[styles.detail, { borderColor: colors.outline }]}>
@@ -58,7 +74,7 @@ export function ParkingPreviewSheet({ lot, isAvailableNow, onClose, onViewDetail
               ]}
             />
             <Text style={[typography.label, { color: isAvailableNow ? colors.accent : colors.onSurfaceVariant }]}>
-              {isAvailableNow ? 'Disponible ahora' : 'No disponible ahora · podés reservar para más tarde'}
+              {isAvailableNow ? t('Disponible ahora') : t('No disponible ahora · podés reservar para más tarde')}
             </Text>
           </View>
         ) : null}
@@ -86,8 +102,8 @@ export function ParkingPreviewSheet({ lot, isAvailableNow, onClose, onViewDetail
         </View>
       </View>
 
-      <Button label="Continuar" onPress={onBook} fullWidth />
-      <Button label="Ver detalle" variant="text" onPress={onViewDetail} fullWidth />
+      <Button label={t('Continuar')} onPress={onBook} fullWidth />
+      <Button label={t('Ver detalle')} variant="text" onPress={onViewDetail} fullWidth />
     </View>
   );
 }

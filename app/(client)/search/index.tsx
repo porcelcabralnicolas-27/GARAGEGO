@@ -11,6 +11,7 @@ import { TextField } from '@/components/ui/TextField';
 import { useGeocoder } from '@/features/search/useGeocoder';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 const RADIUS_OPTIONS = [
   { value: '2', label: '2 km' },
@@ -63,7 +64,7 @@ export default function SearchScreen() {
     try {
       const found = await geocoder.geocode(query);
       if (!found) {
-        setAddressError('No encontramos esa dirección. Probá con calle, número y localidad.');
+        setAddressError(t('No encontramos esa dirección. Probá con calle, número y localidad.'));
         return;
       }
       router.push({
@@ -78,7 +79,7 @@ export default function SearchScreen() {
         },
       });
     } catch {
-      setAddressError('No se pudo buscar la dirección. Revisá tu conexión e intentá de nuevo.');
+      setAddressError(t('No se pudo buscar la dirección. Revisá tu conexión e intentá de nuevo.'));
     } finally {
       setIsSearchingAddress(false);
     }
@@ -87,11 +88,11 @@ export default function SearchScreen() {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="Buscar" backHref="/(client)" />
+        <ScreenHeader title={t('Buscar')} backHref="/(client)" />
 
         <TextField
-          label="Buscar por dirección"
-          placeholder="Ej.: Av. Mitre 1500, Avellaneda"
+          label={t('Buscar por dirección')}
+          placeholder={t('Ej.: Av. Mitre 1500, Avellaneda')}
           value={address}
           onChangeText={(text) => {
             setAddress(text);
@@ -103,7 +104,7 @@ export default function SearchScreen() {
           errorMessage={addressError ?? undefined}
         />
         <Button
-          label="Buscar esta dirección en el mapa"
+          label={t('Buscar esta dirección en el mapa')}
           onPress={searchAddress}
           loading={isSearchingAddress}
           disabled={address.trim().length < 3 || isSearchingAddress || !geocoder.isReady}
@@ -111,47 +112,51 @@ export default function SearchScreen() {
 
         <View style={styles.spacerLarge} />
         <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>
-          O buscá cerca de donde estás
+          {t('O buscá cerca de donde estás')}
         </Text>
 
         {location.errorMessage ? (
           <>
             <Banner message={location.errorMessage} variant={location.isApproximate ? 'info' : 'error'} />
-            <Button label="Reintentar ubicación" variant="outlined" onPress={location.retry} />
+            <Button label={t('Reintentar ubicación')} variant="outlined" onPress={location.retry} />
             <View style={styles.spacer} />
           </>
         ) : null}
 
-        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Distancia</Text>
+        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>{t('Distancia')}</Text>
         <ChipSelect options={RADIUS_OPTIONS} value={radiusKm} onChange={setRadiusKm} />
         <Text style={[typography.label, { color: colors.onSurfaceVariant, marginTop: 8 }]}>
-          Se aplica a «Ver en mapa» y «Ver en lista». El mapa de Inicio muestra todos los estacionamientos.
+          {t('Se aplica a «Ver en mapa» y «Ver en lista». El mapa de Inicio muestra todos los estacionamientos.')}
         </Text>
 
         <View style={styles.spacer} />
 
         <TextField
-          label="Precio máximo por hora (opcional)"
+          label={t('Precio máximo por hora (opcional)')}
           keyboardType="decimal-pad"
-          placeholder="Sin límite"
+          placeholder={t('Sin límite')}
           value={maxPrice}
           onChangeText={setMaxPrice}
         />
 
-        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Calificación mínima</Text>
-        <ChipSelect options={RATING_OPTIONS} value={minRating} onChange={setMinRating} />
+        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>{t('Calificación mínima')}</Text>
+        <ChipSelect
+          options={RATING_OPTIONS.map((option) => ({ ...option, label: t(option.label) }))}
+          value={minRating}
+          onChange={setMinRating}
+        />
 
         <View style={styles.spacerLarge} />
 
         <Button
-          label="Ver en lista"
+          label={t('Ver en lista')}
           onPress={() => goToResults('list')}
           disabled={location.isLoading || !location.latitude}
           loading={location.isLoading}
         />
         <View style={styles.spacer} />
         <Button
-          label="Ver en mapa"
+          label={t('Ver en mapa')}
           variant="outlined"
           onPress={() => goToResults('map')}
           disabled={location.isLoading || !location.latitude}

@@ -3,6 +3,7 @@
 export type { UserRole } from '../../../shared/domain';
 
 import type { UserRole } from '../../../shared/domain';
+import type { RegionCode } from '@/lib/region';
 
 export type Profile = {
   id: string;
@@ -12,5 +13,7 @@ export type Profile = {
   avatarUrl: string | null;
   activeRole: UserRole;
   isOwnerEnabled: boolean;
+  /** Región elegida en el perfil (0086): cambia la presentación de la app, no los datos. */
+  region: RegionCode;
   createdAt: string;
 };

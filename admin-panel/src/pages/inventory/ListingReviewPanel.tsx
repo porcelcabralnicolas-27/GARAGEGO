@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { formatDate, formatMoney, formatRelative, fullName } from '../../lib/format';
 import {
-  AMENITY_LABELS,
   APPROVAL_STATUS_LABELS,
   DOCUMENT_KIND_LABELS,
   HOLDER_ROLE_LABELS,
@@ -13,28 +12,30 @@ import {
   findContactInfo,
   missingDocumentRequirements,
   operationalStateOf,
+  type ListingChange,
   type ListingChangeField,
   type LotRow,
 } from '../../domain';
 import { Modal } from '../../ui/overlays';
 import { Badge, Button, Callout, KeyValue, StarRating } from '../../ui/primitives';
-
-/** Los cinco puntos que el revisor tiene que chequear antes de publicar. Vacía el checklist
- *  cada vez que cambia la publicación: son decisiones sobre ESA cochera, no un estado global. */
-const CHECKLIST = [
-  'Las fotos muestran la cochera y son legibles',
-  'La dirección es coherente con las coordenadas',
-  'El precio está dentro de un rango razonable',
-  'La descripción no incluye datos de contacto',
-  'El DNI coincide con el propietario y los documentos acreditan su vínculo con esta dirección',
-] as const;
+import { itemsForLot, type ChecklistItem } from '../settings/checklistApi';
+import { amenityLabel, useCatalogLabels } from '../settings/useCatalogLabels';
+import { useModerationConfig } from '../settings/useModerationConfig';
+import { useDocumentRules } from '../settings/useDocumentRules';
+import { usePanelLimits } from '../settings/usePanelLimits';
+import { priceReference, runAutoCheck, type AutoCheckResult } from './autoChecks';
 
 type Props = {
   row: LotRow;
   now: number;
   /** Historial de moderación de esta cochera, más nuevo primero. */
   events: Array<{ id: string; label: string; detail: string | null; at: string }>;
-  onApprove: () => void;
+  /** Todos los puntos del checklist (0092); acá se filtran los que corresponden a esta cochera. */
+  checklistItems: ChecklistItem[];
+  /** Todas las cocheras de la cola: el control de tarifa compara con las aprobadas parecidas (0096). */
+  allRows: LotRow[];
+  /** Aprobar con los puntos del checklist que el revisor tildó (ids). */
+  onApprove: (checkedItems: string[]) => void;
   onReject: (reason: string) => void;
   onRequestChanges: (note: string, fields: ListingChangeField[]) => void;
   /** En modo lectura (pestaña de cocheras activas) se ocultan las acciones de moderación. */
@@ -45,14 +46,43 @@ export function ListingReviewPanel({
   row,
   now,
   events,
+  checklistItems,
+  allRows,
   onApprove,
   onReject,
   onRequestChanges,
   readOnly,
 }: Props) {
   const { lot, owner, images, documents } = row;
+  // Nombres de los servicios desde el catálogo (0094); re-renderiza cuando llegan.
+  useCatalogLabels();
 
-  const [checked, setChecked] = useState<boolean[]>(CHECKLIST.map(() => false));
+  // La titularidad se verifica una sola vez (0089): con el sello, no se vuelven a pedir ni a
+  // revisar documentos, y los puntos del checklist marcados "solo con documentos" no aplican.
+  const ownershipVerified = lot.ownershipVerifiedAt !== null;
+  // El checklist lo configura el equipo (Configuración, 0092): acá van los puntos de ESTA cochera.
+  // En una edición, solo los puntos de lo que cambió (0096); en un alta (sin foto de lo aprobado), todos.
+  const changedFields = useMemo(
+    () => (row.approvedChanges ? row.approvedChanges.map((change) => change.field) : null),
+    [row.approvedChanges]
+  );
+  const checklist = useMemo(
+    () =>
+      itemsForLot(checklistItems, {
+        lotType: lot.lotType,
+        isEdit: row.wasApproved,
+        ownershipVerified,
+        hasDocuments: documents.length > 0,
+        changedFields,
+      }),
+    [checklistItems, lot.lotType, row.wasApproved, ownershipVerified, documents.length, changedFields]
+  );
+  // Límite de fotos (Configuración → Límites) y factor del control de tarifa (Moderación).
+  const { max_parking_images: maxPhotos } = usePanelLimits();
+  const { priceFactor } = useModerationConfig();
+  // Qué documentos se piden (Configuración → Aprobación y titularidad, 0097).
+  const documentRules = useDocumentRules();
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [docLightbox, setDocLightbox] = useState<number | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -61,19 +91,42 @@ export function ListingReviewPanel({
   // Al cambiar de publicación se reinicia todo: si no, el tilde de la anterior habilitaría
   // aprobar una que el revisor ni miró.
   useEffect(() => {
-    setChecked(CHECKLIST.map(() => false));
+    setChecked({});
     setLightbox(null);
     setDocLightbox(null);
   }, [lot.id]);
 
   const contactHits = useMemo(() => findContactInfo(lot.description), [lot.description]);
-  const allChecked = checked.every(Boolean);
+  const priceRef = useMemo(() => priceReference(allRows, row), [allRows, row]);
+  // Resultado de los controles automáticos de los puntos que los tienen (0096).
+  const autoResults = useMemo(() => {
+    const results: Record<string, AutoCheckResult> = {};
+    for (const item of checklist) {
+      if (!item.autoCheck) continue;
+      results[item.id] = runAutoCheck(item.autoCheck, {
+        photoCount: images.length,
+        maxPhotos,
+        changes: row.approvedChanges,
+        contactHits,
+        price: Number(lot.pricePerHour),
+        priceRef,
+        priceFactor,
+      });
+    }
+    return results;
+  }, [checklist, images.length, maxPhotos, row.approvedChanges, contactHits, lot.pricePerHour, priceRef, priceFactor]);
+  const allChecked = checklist.every((item) => !item.required || checked[item.id]);
   const isPending = lot.approvalStatus === 'pending' || lot.approvalStatus === 'changes_requested';
   // Sin los documentos completos el servidor no deja aprobar (migración 0078): se avisa antes.
-  const missingDocs = missingDocumentRequirements(
-    lot.holderRole,
-    documents.map((d) => d.kind)
-  );
+  // Con la titularidad ya verificada no falta nada (`lot_missing_documents` devuelve vacío).
+  const missingDocs = ownershipVerified
+    ? []
+    : missingDocumentRequirements(
+        lot.holderRole,
+        documents.map((d) => d.kind),
+        lot.lotType,
+        documentRules
+      );
   // Tampoco se aprueba sin ninguna foto: el servidor no lo deja (migración 0082).
   const hasPhotos = images.length > 0;
   const canApprove = allChecked && missingDocs.length === 0 && hasPhotos;
@@ -168,9 +221,11 @@ export function ListingReviewPanel({
                     />
                   </button>
                 ))}
-                {images.length < 3 ? (
+                {images.length < maxPhotos ? (
                   <span style={{ marginLeft: 'var(--gg-s2)' }}>
-                    <Badge tone="warn">Solo {images.length} de 3 fotos</Badge>
+                    <Badge tone="warn">
+                      Solo {images.length} de {maxPhotos} fotos
+                    </Badge>
                   </span>
                 ) : null}
               </div>
@@ -189,7 +244,7 @@ export function ListingReviewPanel({
               ['Capacidad', `${lot.capacity} ${lot.capacity === 1 ? 'auto' : 'autos'} a la vez`],
               [
                 'Servicios',
-                lot.amenities.length > 0 ? lot.amenities.map((a) => AMENITY_LABELS[a]).join(' · ') : 'Ninguno indicado',
+                lot.amenities.length > 0 ? lot.amenities.map(amenityLabel).join(' · ') : 'Ninguno indicado',
               ],
               ['Dirección', lot.address],
               [
@@ -269,10 +324,33 @@ export function ListingReviewPanel({
             <Callout tone="info">
               <div>
                 <strong>Edición de una publicación ya aprobada</strong>
-                <p style={{ marginTop: 4 }}>
-                  El propietario cambió los datos del lugar, la tarifa y los servicios o las fotos. Revisá lo
-                  que se modificó antes de volver a aprobarla. Los horarios no se revisan.
-                </p>
+                {row.approvedChanges ? (
+                  <>
+                    <p style={{ marginTop: 4 }}>
+                      Cambios desde la última aprobación. Aprobá si están bien: la titularidad ya se
+                      verificó y no hace falta pedir documentos. Los horarios no se revisan.
+                    </p>
+                    {row.approvedChanges.length > 0 ? (
+                      <ul style={{ margin: 'var(--gg-s2) 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
+                        {row.approvedChanges.map((change) => (
+                          <li key={change.field}>
+                            <ChangeLine change={change} />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p style={{ marginTop: 4 }}>
+                        Los datos coinciden con lo aprobado (el propietario cambió algo y lo volvió atrás).
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p style={{ marginTop: 4 }}>
+                    El propietario cambió los datos del lugar, la tarifa y los servicios o las fotos. Esta
+                    edición es anterior al registro de cambios, así que no se puede mostrar qué se modificó:
+                    revisá la publicación completa. Los horarios no se revisan.
+                  </p>
+                )}
               </div>
             </Callout>
           </div>
@@ -288,7 +366,7 @@ export function ListingReviewPanel({
               </div>
               {lot.ownershipVerifiedAt ? (
                 <div style={{ marginTop: 'var(--gg-s2)', color: 'var(--gg-text-soft)' }}>
-                  La titularidad ya se verificó el {formatDate(lot.ownershipVerifiedAt)}.
+                  La titularidad ya se verificó el {formatDate(lot.ownershipVerifiedAt)}. No se vuelve a pedir.
                 </div>
               ) : null}
               {documents.length > 0 ? (
@@ -321,10 +399,12 @@ export function ListingReviewPanel({
                   ))}
                 </div>
               ) : null}
-              <p style={{ marginTop: 'var(--gg-s2)', color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)' }}>
-                Por seguridad, los documentos se borran solos cuando aprobás o rechazás. Con "Pedir
-                cambios" se conservan.
-              </p>
+              {ownershipVerified ? null : (
+                <p style={{ marginTop: 'var(--gg-s2)', color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)' }}>
+                  Por seguridad, los documentos se borran solos cuando aprobás o rechazás. Con "Pedir
+                  cambios" se conservan.
+                </p>
+              )}
               {missingDocs.length > 0 ? (
                 <div style={{ marginTop: 'var(--gg-s2)' }}>
                   <Callout tone="warn">
@@ -385,22 +465,54 @@ export function ListingReviewPanel({
         {!readOnly && isPending ? (
           <div style={{ marginBottom: 'var(--gg-s4)' }}>
             <h3 className="gg-drawer__section-title">Checklist de revisión</h3>
-            <div className="gg-stack" style={{ gap: 'var(--gg-s2)' }}>
-              {CHECKLIST.map((item, i) => (
-                <label key={item} className="gg-row" style={{ cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={checked[i]}
-                    onChange={(e) =>
-                      setChecked((current) =>
-                        current.map((c, idx) => (idx === i ? e.target.checked : c))
-                      )
-                    }
-                  />
-                  <span>{item}</span>
-                </label>
-              ))}
-            </div>
+            {changedFields ? (
+              <p style={{ color: 'var(--gg-text-faint)', fontSize: 'var(--gg-fs-sm)', margin: '0 0 var(--gg-s2)' }}>
+                Es una edición: van los puntos de lo que cambió y los que se revisan siempre.
+              </p>
+            ) : null}
+            {checklist.length === 0 ? (
+              <p style={{ color: 'var(--gg-text-soft)' }}>
+                No hay puntos del checklist para esta publicación. Se configuran en Configuración.
+              </p>
+            ) : (
+              <div className="gg-stack" style={{ gap: 'var(--gg-s2)' }}>
+                {checklist.map((item) => (
+                  <label
+                    key={item.id}
+                    className="gg-row"
+                    style={{ cursor: 'pointer', alignItems: 'flex-start', flexWrap: 'nowrap' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(checked[item.id])}
+                      onChange={(e) => setChecked((current) => ({ ...current, [item.id]: e.target.checked }))}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      {item.label}
+                      {item.required ? null : (
+                        <span style={{ marginLeft: 6 }}>
+                          <Badge>Opcional</Badge>
+                        </span>
+                      )}
+                      {item.help ? (
+                        <span
+                          style={{
+                            display: 'block',
+                            color: 'var(--gg-text-faint)',
+                            fontSize: 'var(--gg-fs-sm)',
+                            marginTop: 2,
+                          }}
+                        >
+                          {item.help}
+                        </span>
+                      ) : null}
+                      {autoResults[item.id] ? <AutoCheckLine result={autoResults[item.id]} /> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -451,7 +563,7 @@ export function ListingReviewPanel({
           <Button
             variant="primary"
             disabled={!canApprove}
-            onClick={onApprove}
+            onClick={() => onApprove(checklist.filter((item) => checked[item.id]).map((item) => item.id))}
             title={
               canApprove
                 ? undefined
@@ -459,7 +571,7 @@ export function ListingReviewPanel({
                   ? 'La publicación no tiene ninguna foto'
                   : missingDocs.length > 0
                     ? 'Faltan los documentos de titularidad'
-                    : 'Completá la checklist para poder aprobar'
+                    : 'Tildá los puntos obligatorios del checklist para poder aprobar'
             }
           >
             Aprobar y publicar
@@ -480,7 +592,7 @@ export function ListingReviewPanel({
                 ? 'Sin ninguna foto no se puede aprobar'
                 : missingDocs.length > 0
                   ? 'Faltan documentos de titularidad: no se puede aprobar'
-                  : 'Completá la checklist para habilitar la aprobación'}
+                  : 'Tildá los puntos obligatorios del checklist para habilitar la aprobación'}
             </span>
           ) : null}
         </footer>
@@ -515,6 +627,7 @@ export function ListingReviewPanel({
 
       <ChangesDialog
         open={changesOpen}
+        ownershipVerified={ownershipVerified}
         onClose={() => setChangesOpen(false)}
         onConfirm={(note, fields) => {
           setChangesOpen(false);
@@ -565,17 +678,36 @@ function LightboxModal({
   );
 }
 
-/* ---------------------------------------------------------------- Rechazo */
+/* ---------------------------------------------------------------- Controles automáticos */
 
-const REJECT_REASONS = [
-  'Fotos insuficientes o poco claras',
-  'La dirección no se puede verificar',
-  'No se pudo verificar la titularidad',
-  'Precio fuera de rango',
-  'Incluye datos de contacto en la descripción',
-  'Contenido inapropiado',
-  'Otro',
-];
+const AUTO_CHECK_STYLE: Record<AutoCheckResult['tone'], { icon: string; color: string }> = {
+  ok: { icon: '✓', color: 'var(--gg-ok)' },
+  warn: { icon: '⚠', color: 'var(--gg-warn)' },
+  neutral: { icon: 'ⓘ', color: 'var(--gg-text-soft)' },
+};
+
+/** Resultado de un control automático (0096), debajo del punto del checklist. */
+function AutoCheckLine({ result }: { result: AutoCheckResult }) {
+  const style = AUTO_CHECK_STYLE[result.tone];
+  return (
+    <span
+      style={{
+        display: 'flex',
+        gap: 6,
+        alignItems: 'flex-start',
+        color: style.color,
+        fontSize: 'var(--gg-fs-sm)',
+        marginTop: 4,
+        fontWeight: result.tone === 'warn' ? 600 : 400,
+      }}
+    >
+      <span aria-hidden>{style.icon}</span>
+      <span>{result.text}</span>
+    </span>
+  );
+}
+
+/* ---------------------------------------------------------------- Rechazo */
 
 function RejectDialog({
   open,
@@ -590,7 +722,10 @@ function RejectDialog({
   lotName: string;
   ownerName: string;
 }) {
-  const [reason, setReason] = useState(REJECT_REASONS[0]);
+  // Motivos de rechazo (Configuración → Moderación, 0095). Si el elegido se desactiva, el primero.
+  const rejectReasons = useModerationConfig().reasons.reject;
+  const [chosenReason, setReason] = useState<string | null>(null);
+  const reason = chosenReason && rejectReasons.includes(chosenReason) ? chosenReason : rejectReasons[0];
   const [detail, setDetail] = useState('');
 
   const fullReason = `${reason}. ${detail}`.trim();
@@ -613,7 +748,7 @@ function RejectDialog({
       <div className="gg-field">
         <label className="gg-field__label">Motivo</label>
         <select className="gg-select" value={reason} onChange={(e) => setReason(e.target.value)}>
-          {REJECT_REASONS.map((r) => (
+          {rejectReasons.map((r) => (
             <option key={r} value={r}>
               {r}
             </option>
@@ -647,17 +782,97 @@ function RejectDialog({
   );
 }
 
+/* ---------------------------------------------------------------- Cambios desde la aprobación */
+
+const CHANGE_LABELS: Record<ListingChange['field'], string> = {
+  name: 'Nombre',
+  description: 'Descripción',
+  address: 'Dirección',
+  location: 'Ubicación en el mapa',
+  lot_type: 'Tipo',
+  price: 'Precio por hora',
+  capacity: 'Capacidad',
+  amenities: 'Servicios',
+  photos: 'Fotos',
+};
+
+const amenityList = (codes: string[]) => codes.map(amenityLabel).join(', ');
+
+/** Una línea "Campo: antes → ahora". */
+function ChangeLine({ change }: { change: ListingChange }) {
+  const label = <strong>{CHANGE_LABELS[change.field]}:</strong>;
+  const arrow = (before: string, after: string) => (
+    <>
+      {label} <s style={{ color: 'var(--gg-text-faint)' }}>{before || '(vacío)'}</s> → {after || '(vacío)'}
+    </>
+  );
+
+  switch (change.field) {
+    case 'name':
+    case 'description':
+    case 'address':
+      return arrow(change.before, change.after);
+    case 'location':
+      return (
+        <>
+          {label}{' '}
+          <span className="gg-mono">
+            {change.before.lat.toFixed(5)}, {change.before.lng.toFixed(5)} → {change.after.lat.toFixed(5)},{' '}
+            {change.after.lng.toFixed(5)}
+          </span>{' '}
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${change.after.lat},${change.after.lng}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ver la nueva
+          </a>
+        </>
+      );
+    case 'lot_type':
+      return arrow(LOT_TYPE_LABELS[change.before], LOT_TYPE_LABELS[change.after]);
+    case 'price':
+      return arrow(formatMoney(change.before), formatMoney(change.after));
+    case 'capacity':
+      return arrow(String(change.before), String(change.after));
+    case 'amenities':
+      return (
+        <>
+          {label} {change.added.length > 0 ? `se agregó ${amenityList(change.added)}` : null}
+          {change.added.length > 0 && change.removed.length > 0 ? '; ' : null}
+          {change.removed.length > 0 ? `se quitó ${amenityList(change.removed)}` : null}
+        </>
+      );
+    case 'photos':
+      return (
+        <>
+          {label} {change.added > 0 ? `${change.added} nueva${change.added === 1 ? '' : 's'}` : null}
+          {change.added > 0 && change.removed > 0 ? ', ' : null}
+          {change.removed > 0 ? `${change.removed} quitada${change.removed === 1 ? '' : 's'}` : null}
+        </>
+      );
+  }
+}
+
+/* ---------------------------------------------------------------- Pedir cambios */
+
 function ChangesDialog({
   open,
+  ownershipVerified,
   onClose,
   onConfirm,
 }: {
   open: boolean;
+  /** Con la titularidad verificada no se pueden pedir documentos (0089). */
+  ownershipVerified: boolean;
   onClose: () => void;
   onConfirm: (note: string, fields: ListingChangeField[]) => void;
 }) {
   const [note, setNote] = useState('');
   const [fields, setFields] = useState<ListingChangeField[]>([]);
+  const availableFields = ownershipVerified
+    ? LISTING_CHANGE_FIELDS.filter((field) => field !== 'documents')
+    : LISTING_CHANGE_FIELDS;
 
   const toggle = (field: ListingChangeField) =>
     setFields((current) => (current.includes(field) ? current.filter((f) => f !== field) : [...current, field]));
@@ -692,7 +907,7 @@ function ChangesDialog({
       <div className="gg-field">
         <label className="gg-field__label">¿Qué tiene que modificar el propietario?</label>
         <div className="gg-stack" style={{ gap: 'var(--gg-s2)' }}>
-          {LISTING_CHANGE_FIELDS.map((field) => (
+          {availableFields.map((field) => (
             <label key={field} className="gg-row" style={{ cursor: 'pointer' }}>
               <input type="checkbox" checked={fields.includes(field)} onChange={() => toggle(field)} />
               <span>{LISTING_CHANGE_FIELD_LABELS[field]}</span>

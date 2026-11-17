@@ -15,8 +15,9 @@ import { getBookedIntervals, type BookedInterval } from '@/features/booking/api'
 import {
   generateEndTimeOptions,
   generateStartTimeOptions,
-  getFreeWindowsForDate,
-  listAvailableDates,
+  getDisplayWindowsForDate,
+  listDisplayAvailableDates,
+  toBusinessBooking,
 } from '@/features/booking/availability';
 import { computeBookingPrice } from '@/features/booking/pricing';
 import {
@@ -32,6 +33,7 @@ import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { businessDate, formatCalendarDayShort } from '@/lib/time';
 import { useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 type AvailabilityData = {
   lot: ParkingLot;
@@ -90,7 +92,7 @@ export default function BookingScreen() {
 
   const capacity = lot?.capacity ?? 1;
   const availableDates = useMemo(
-    () => listAvailableDates(recurring, exceptions, booked, capacity, 30),
+    () => listDisplayAvailableDates(recurring, exceptions, booked, capacity, 30),
     [recurring, exceptions, booked, capacity]
   );
 
@@ -99,7 +101,7 @@ export default function BookingScreen() {
   }, [availableDates, selectedDate]);
 
   const windowsForDate = useMemo(
-    () => (selectedDate ? getFreeWindowsForDate(selectedDate, recurring, exceptions, booked, capacity) : []),
+    () => (selectedDate ? getDisplayWindowsForDate(selectedDate, recurring, exceptions, booked, capacity) : []),
     [selectedDate, recurring, exceptions, booked, capacity]
   );
   const startOptions = useMemo(() => generateStartTimeOptions(windowsForDate), [windowsForDate]);
@@ -127,11 +129,18 @@ export default function BookingScreen() {
   // de la Fase 8, Q4·A.
   const onContinue = () => {
     if (!selectedDate || !selectedStart || !selectedEnd) {
-      setErrorMessage('Elegí fecha, hora de inicio y hora de fin.');
+      setErrorMessage(t('Elegí fecha, hora de inicio y hora de fin.'));
       return;
     }
     if (!selectedVehicleId) {
-      setErrorMessage('Elegí el vehículo con el que vas a llegar.');
+      setErrorMessage(t('Elegí el vehículo con el que vas a llegar.'));
+      return;
+    }
+    // Lo elegido está en la hora de la región (Nueva York en la demo): la reserva se guarda en
+    // hora de la cochera. En Argentina es el mismo horario.
+    const booking = toBusinessBooking(selectedDate, selectedStart, selectedEnd);
+    if (!booking) {
+      setErrorMessage(t('Ese horario no está disponible. Elegí otro.'));
       return;
     }
     setErrorMessage(null);
@@ -139,9 +148,9 @@ export default function BookingScreen() {
       pathname: '/(client)/search/booking/[parkingId]/payment',
       params: {
         parkingId,
-        date: selectedDate,
-        startTime: selectedStart,
-        endTime: selectedEnd,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
         vehicleId: selectedVehicleId,
       },
     });
@@ -151,10 +160,10 @@ export default function BookingScreen() {
     return (
       <Screen>
         <ScreenHeader
-          title="Reservar"
+          title={t('Reservar')}
           onBack={goBack}
         />
-        <Banner message="No se pudo cargar la disponibilidad de este estacionamiento." />
+        <Banner message={t('No se pudo cargar la disponibilidad de este estacionamiento.')} />
       </Screen>
     );
   }
@@ -163,10 +172,10 @@ export default function BookingScreen() {
     return (
       <Screen>
         <ScreenHeader
-          title="Reservar"
+          title={t('Reservar')}
           onBack={goBack}
         />
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando…</Text>
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{t('Cargando…')}</Text>
       </Screen>
     );
   }
@@ -175,7 +184,7 @@ export default function BookingScreen() {
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
         <ScreenHeader
-          title="Reservar"
+          title={t('Reservar')}
           onBack={goBack}
         />
 
@@ -190,10 +199,10 @@ export default function BookingScreen() {
         <BusinessTimeNote />
 
         {availableDates.length === 0 ? (
-          <Banner message="Este estacionamiento no tiene horarios disponibles en los próximos 30 días." />
+          <Banner message={t('Este estacionamiento no tiene horarios disponibles en los próximos 30 días.')} />
         ) : (
           <>
-            <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Fecha</Text>
+            <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>{t('Fecha')}</Text>
             <ChipSelect
               options={availableDates.map((d) => ({ value: d, label: formatCalendarDayShort(d) }))}
               value={selectedDate ?? ''}
@@ -202,10 +211,10 @@ export default function BookingScreen() {
 
             <View style={styles.spacer} />
 
-            <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Hora de inicio</Text>
+            <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>{t('Hora de inicio')}</Text>
             {startOptions.length === 0 ? (
               <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-                No hay horarios disponibles ese día.
+                {t('No hay horarios disponibles ese día.')}
               </Text>
             ) : (
               <ChipSelect
@@ -218,7 +227,7 @@ export default function BookingScreen() {
             {selectedStart ? (
               <>
                 <View style={styles.spacer} />
-                <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Hora de fin</Text>
+                <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>{t('Hora de fin')}</Text>
                 <ChipSelect
                   options={endOptions.map((t) => ({ value: t, label: t }))}
                   value={selectedEnd ?? ''}
@@ -231,14 +240,14 @@ export default function BookingScreen() {
 
         <View style={styles.spacer} />
 
-        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>Tu vehículo</Text>
+        <Text style={[typography.label, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>{t('Tu vehículo')}</Text>
         {vehicles.length === 0 ? (
           <>
             <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>
-              Todavía no cargaste ningún vehículo.
+              {t('Todavía no cargaste ningún vehículo.')}
             </Text>
             <Button
-              label="+ Agregar vehículo"
+              label={t('+ Agregar vehículo')}
               variant="outlined"
               size="compact"
               onPress={() => router.push('/(client)/vehicles/create')}
@@ -258,7 +267,7 @@ export default function BookingScreen() {
         <View style={styles.spacer} />
 
         <View style={[styles.summaryCard, { backgroundColor: colors.primaryContainer }]}>
-          <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>Total estimado</Text>
+          <Text style={[typography.label, { color: colors.onPrimaryContainer }]}>{t('Total estimado')}</Text>
           <Text style={[typography.displayLarge, { color: colors.onPrimaryContainer }]}>
             {estimatedPrice !== null ? formatMoney(estimatedPrice) : '—'}
           </Text>
@@ -270,7 +279,7 @@ export default function BookingScreen() {
         <View style={styles.spacer} />
 
         <Button
-          label="Continuar al pago"
+          label={t('Continuar al pago')}
           onPress={onContinue}
           disabled={!selectedDate || !selectedStart || !selectedEnd || !selectedVehicleId}
         />

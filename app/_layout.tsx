@@ -12,6 +12,8 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ensureProfile, getProfile, getWalletBalance } from '@/features/profile/api';
+import { useAppLimits } from '@/hooks/useAppLimits';
+import { useCatalogs } from '@/hooks/useCatalogs';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -145,6 +147,14 @@ function useNavigationGuard() {
   }, [session, profile, segments, isInitializing, passwordRecoveryInProgress, router]);
 }
 
+/** Pide al abrir la app lo que el equipo configura en el panel: los límites (0093) y los catálogos
+ *  (0094). Así los mensajes de error y las pantallas ya los tienen. */
+function RemoteConfigLoader() {
+  useAppLimits();
+  useCatalogs();
+  return null;
+}
+
 export default function RootLayout() {
   // Inter se carga en runtime (no embebida en el build nativo) para no depender de un rebuild.
   // Si la carga falla, se sigue igual: React Native cae a la fuente del sistema y la app queda
@@ -163,6 +173,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <RemoteConfigLoader />
       <SafeAreaProvider>
         {/* Con edge-to-edge (obligatorio en Android desde el SDK 54) la ventana ya no se achica
             al abrir el teclado: sin esto, el input de los chats quedaba tapado. */}

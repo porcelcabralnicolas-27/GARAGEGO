@@ -1,5 +1,6 @@
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { olderThanFilter, toPage, type MessageCursor, type Page } from '@/lib/pagination';
+import { activeRegion } from '@/lib/region';
 import { supabase } from '@/lib/supabase/client';
 
 import type {
@@ -183,6 +184,8 @@ export async function listTicketTargets(
       .from('parking_lots')
       .select('id, name, address')
       .eq('owner_id', userId)
+      // Solo las publicaciones del país activo (demo regional, 0087).
+      .eq('region', activeRegion().code)
       // Una publicación eliminada (archivada) ya no admite reportes (migración 0080).
       .is('archived_at', null)
       .order('created_at', { ascending: false })
@@ -248,6 +251,8 @@ export function subscribeToTicketMessages(
 export function getSupportErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
+    // El equipo desactivó la categoría mientras se escribía el ticket (catálogo, 0094).
+    if (message.includes('ticket_category_unavailable')) return 'Esa categoría ya no está disponible. Elegí otra.';
     return sanitizeErrorMessage(message, 'Ocurrió un error inesperado. Intenta nuevamente.');
   }
   return 'Ocurrió un error inesperado. Intenta nuevamente.';

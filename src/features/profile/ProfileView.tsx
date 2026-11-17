@@ -13,12 +13,13 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { StatsButton } from '@/components/ui/StatsButton';
 import { TextField } from '@/components/ui/TextField';
 import { signOut } from '@/features/auth/api';
-import { getTopupErrorMessage, topupWallet, updateProfile, switchActiveRole } from '@/features/profile/api';
-import { DEMO_TOPUP_AMOUNTS, useDemoTopupEnabled } from '@/features/profile/useDemoTopup';
+import { updateProfile, switchActiveRole } from '@/features/profile/api';
 import { editProfileSchema, type EditProfileFormValues } from '@/features/profile/schemas';
+import { useRegion } from '@/hooks/useRegion';
 import { formatMoney } from '@/lib/money';
 import { useAuthStore } from '@/store/useAuthStore';
 import { radius, shadows, spacing, useTheme } from '@/theme';
+import { t } from '@/lib/i18n';
 
 function getInitials(firstName: string, lastName: string) {
   const first = firstName.trim().charAt(0);
@@ -50,12 +51,11 @@ export function ProfileView() {
   const walletBalance = useAuthStore((s) => s.walletBalance);
   const setProfile = useAuthStore((s) => s.setProfile);
   const reloadProfile = useAuthStore((s) => s.reloadProfile);
-  const demoTopupEnabled = useDemoTopupEnabled();
 
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSwitchingRole, setIsSwitchingRole] = useState(false);
-  const [toppingUpAmount, setToppingUpAmount] = useState<number | null>(null);
+  const region = useRegion();
 
   const {
     control,
@@ -75,9 +75,9 @@ export function ProfileView() {
     return (
       <Screen>
         <Banner message={profileError} />
-        <Button label="Reintentar" variant="outlined" onPress={reloadProfile} />
+        <Button label={t('Reintentar')} variant="outlined" onPress={reloadProfile} />
         <View style={styles.spacerLarge} />
-        <Button label="Cerrar sesión" variant="text" onPress={signOut} />
+        <Button label={t('Cerrar sesión')} variant="text" onPress={signOut} />
       </Screen>
     );
   }
@@ -85,7 +85,7 @@ export function ProfileView() {
   if (!profile || !session) {
     return (
       <Screen>
-        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>Cargando perfil…</Text>
+        <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{t('Cargando perfil…')}</Text>
       </Screen>
     );
   }
@@ -107,7 +107,7 @@ export function ProfileView() {
       setProfile(updated);
       setIsEditing(false);
     } catch {
-      setErrorMessage('No pudimos guardar los cambios. Intenta nuevamente.');
+      setErrorMessage(t('No pudimos guardar los cambios. Intenta nuevamente.'));
     }
   };
 
@@ -124,22 +124,9 @@ export function ProfileView() {
       setProfile(updated);
       router.replace(role === 'owner' ? '/(owner)/parkings' : '/(client)');
     } catch {
-      setErrorMessage('No pudimos cambiar de rol. Intenta nuevamente.');
+      setErrorMessage(t('No pudimos cambiar de rol. Intenta nuevamente.'));
     } finally {
       setIsSwitchingRole(false);
-    }
-  };
-
-  const handleTopUp = async (amount: number) => {
-    setToppingUpAmount(amount);
-    setErrorMessage(null);
-    try {
-      await topupWallet(amount);
-      reloadProfile();
-    } catch (error) {
-      setErrorMessage(getTopupErrorMessage(error));
-    } finally {
-      setToppingUpAmount(null);
     }
   };
 
@@ -149,7 +136,7 @@ export function ProfileView() {
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
-          title="Perfil"
+          title={t('Perfil')}
           action={
             <Pressable
               onPress={() =>
@@ -157,7 +144,7 @@ export function ProfileView() {
               }
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Ajustes"
+              accessibilityLabel={t('Ajustes')}
             >
               <Ionicons name="settings-outline" size={24} color={colors.onSurfaceVariant} />
             </Pressable>
@@ -180,7 +167,7 @@ export function ProfileView() {
               onPress={startEditing}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Editar perfil"
+              accessibilityLabel={t('Editar perfil')}
               style={styles.avatarEdit}
             >
               <Ionicons name="create-outline" size={26} color={colors.onSurfaceVariant} />
@@ -197,7 +184,7 @@ export function ProfileView() {
               name="firstName"
               render={({ field, fieldState }) => (
                 <TextField
-                  label="Nombre"
+                  label={t('Nombre')}
                   value={field.value}
                   onChangeText={field.onChange}
                   errorMessage={fieldState.error?.message}
@@ -209,7 +196,7 @@ export function ProfileView() {
               name="lastName"
               render={({ field, fieldState }) => (
                 <TextField
-                  label="Apellido"
+                  label={t('Apellido')}
                   value={field.value}
                   onChangeText={field.onChange}
                   errorMessage={fieldState.error?.message}
@@ -221,7 +208,7 @@ export function ProfileView() {
               name="phone"
               render={({ field, fieldState }) => (
                 <TextField
-                  label="Teléfono"
+                  label={t('Teléfono')}
                   keyboardType="phone-pad"
                   value={field.value}
                   onChangeText={field.onChange}
@@ -230,26 +217,26 @@ export function ProfileView() {
               )}
             />
 
-            <Button label="Guardar" onPress={handleSubmit(onSubmit)} loading={isSubmitting} disabled={isSubmitting} />
+            <Button label={t('Guardar')} onPress={handleSubmit(onSubmit)} loading={isSubmitting} disabled={isSubmitting} />
             <View style={styles.spacer} />
-            <LinkText label="Cancelar" onPress={() => setIsEditing(false)} />
+            <LinkText label={t('Cancelar')} onPress={() => setIsEditing(false)} />
           </>
         ) : (
           <>
-            <InfoField label="Nombre completo" value={`${profile.firstName} ${profile.lastName}`} />
-            <InfoField label="Correo electrónico" value={session.user.email ?? '—'} />
-            <InfoField label="Teléfono" value={profile.phone || 'No registrado'} />
+            <InfoField label={t('Nombre completo')} value={`${profile.firstName} ${profile.lastName}`} />
+            <InfoField label={t('Correo electrónico')} value={session.user.email ?? '—'} />
+            <InfoField label={t('Teléfono')} value={profile.phone || t('No registrado')} />
 
             {/* El saldo y la recarga son del conductor. En modo propietario el saldo y el retiro
                 viven en su dashboard, que se abre desde acá. Vehículos, centro de ayuda y cierre
                 de sesión están en Ajustes (la tuerca). */}
             {isOwnerActive ? (
               <View style={styles.dashboardButton}>
-                <StatsButton label="Mis estadísticas" onPress={() => router.push('/(owner)/dashboard')} />
+                <StatsButton label={t('Mis estadísticas')} onPress={() => router.push('/(owner)/dashboard')} />
               </View>
             ) : (
               <>
-                <Text style={[typography.titleLarge, styles.balanceHeading, { color: colors.onSurface }]}>Saldo:</Text>
+                <Text style={[typography.titleLarge, styles.balanceHeading, { color: colors.onSurface }]}>{t('Saldo:')}</Text>
 
                 <View style={[styles.balanceCard, shadows.card, { backgroundColor: colors.surface }]}>
                   <Text style={[typography.displayLarge, { color: colors.accent }]}>
@@ -257,28 +244,19 @@ export function ProfileView() {
                   </Text>
                 </View>
 
-                {demoTopupEnabled ? (
-                  <>
-                    <Text style={[typography.label, styles.topUpNote, { color: colors.onSurfaceVariant }]}>
-                      Recarga de prueba: saldo ficticio, sin valor en dinero (todavía no hay pasarela de
-                      pago real)
-                    </Text>
-
-                    <View style={styles.topUpRow}>
-                      {DEMO_TOPUP_AMOUNTS.map((amount) => (
-                        <Button
-                          key={amount}
-                          label={`+ ${formatMoney(amount)}`}
-                          size="compact"
-                          variant="outlined"
-                          onPress={() => handleTopUp(amount)}
-                          loading={toppingUpAmount === amount}
-                          disabled={toppingUpAmount !== null}
-                        />
-                      ))}
-                    </View>
-                  </>
-                ) : null}
+                {/* La recarga (montos, topes y cómo funciona) tiene su propia pantalla. Es con
+                    Mercado Pago, que en la demo de Estados Unidos no está. */}
+                {region.mercadoPagoEnabled ? (
+                  <View style={styles.topUpButton}>
+                    <Button
+                      label={t('Recargar saldo')}
+                      icon="add-circle-outline"
+                      onPress={() => router.push('/(client)/profile/topup')}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.topUpButton} />
+                )}
               </>
             )}
 
@@ -290,7 +268,7 @@ export function ProfileView() {
                     { color: isOwnerActive ? colors.onSurfaceVariant : colors.onSurface },
                   ]}
                 >
-                  CONDUCTOR
+                  {t('CONDUCTOR')}
                 </Text>
                 <Text
                   style={[
@@ -298,7 +276,7 @@ export function ProfileView() {
                     { color: isOwnerActive ? colors.onSurface : colors.onSurfaceVariant },
                   ]}
                 >
-                  PROPIETARIO
+                  {t('PROPIETARIO')}
                 </Text>
               </View>
 
@@ -306,7 +284,7 @@ export function ProfileView() {
                 value={isOwnerActive}
                 onValueChange={handleRoleToggle}
                 disabled={isSwitchingRole}
-                accessibilityLabel="Cambiar entre modo conductor y modo propietario"
+                accessibilityLabel={t('Cambiar entre modo conductor y modo propietario')}
                 trackColor={{ false: colors.track, true: colors.primary }}
                 thumbColor={colors.surface}
               />
@@ -357,15 +335,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
   },
-  topUpNote: {
+  topUpButton: {
     marginTop: spacing.md,
-  },
-  topUpRow: {
-    flexDirection: 'row',
-    // Con cuatro botones, en pantallas angostas el último pasa a la línea de abajo.
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
   dashboardButton: {

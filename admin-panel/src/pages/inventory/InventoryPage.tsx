@@ -8,6 +8,7 @@ import {
   operationalStateOf,
   slaLevel,
   type AdminParkingLot,
+  type SlaThresholds,
   type ApprovalStatus,
   type ListingChangeField,
   type LotOperationalState,
@@ -20,6 +21,8 @@ import { Modal } from '../../ui/overlays';
 import { SearchInput, SubTabs, Tabs, Toolbar, FilterSelect } from '../../ui/controls';
 import { Badge, Button, Callout, EmptyState, Toggle } from '../../ui/primitives';
 import { useToast } from '../../ui/Toast';
+import { SLA_COLORS, SLA_TEXT_COLORS, SlaBar } from '../settings/ModerationSettings';
+import { useModerationConfig } from '../settings/useModerationConfig';
 import { ListingReviewPanel } from './ListingReviewPanel';
 import { type ReviewDecision } from './moderationApi';
 import { useModerationQueue, type ModerationQueue } from './useModerationQueue';
@@ -83,6 +86,14 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const now = Date.now();
+  // Plazos de la cola (Configuración → Moderación, 0095).
+  const { sla } = useModerationConfig();
+  const thresholds: SlaThresholds = {
+    info: sla.review_sla_info_hours,
+    warn: sla.review_sla_warn_hours,
+    danger: sla.review_sla_danger_hours,
+  };
+  const isWaitingTab = queueTab === 'pending' || queueTab === 'changes_requested';
 
   const countOf = (status: ApprovalStatus) =>
     rows.filter((r) => r.lot.approvalStatus === status).length;
@@ -120,11 +131,12 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
     decision: ReviewDecision,
     reason: string | null,
     okMessage: string,
-    fields?: ListingChangeField[]
+    fields?: ListingChangeField[],
+    checkedItems?: string[]
   ) => {
     advance(lot.id);
     try {
-      const { documentsPending } = await review(lot.id, decision, reason, fields);
+      const { documentsPending } = await review(lot.id, decision, reason, fields, checkedItems);
       show(
         documentsPending
           ? `${okMessage}. Ojo: los documentos de titularidad todavía no se pudieron borrar; se reintenta solo al recargar la cola.`
@@ -156,6 +168,13 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
             placeholder="Cochera, dirección o propietario"
             width={320}
           />
+          {isWaitingTab ? (
+            <details style={{ marginTop: 'var(--gg-s2)', fontSize: 'var(--gg-fs-sm)', color: 'var(--gg-text-soft)' }}>
+              <summary style={{ cursor: 'pointer' }}>¿Qué significan los colores?</summary>
+              <p style={{ margin: 'var(--gg-s2) 0 0' }}>Cuánto lleva esperando revisión desde que se envió:</p>
+              <SlaBar sla={sla} />
+            </details>
+          ) : null}
         </div>
 
         {visible.length === 0 ? (
@@ -175,6 +194,7 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
                 key={row.lot.id}
                 row={row}
                 now={now}
+                thresholds={thresholds}
                 isSelected={selected?.lot.id === row.lot.id}
                 onSelect={() => {
                   setSelectedId(row.lot.id);
@@ -191,9 +211,18 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
           <ListingReviewPanel
             row={selected}
             now={now}
-            events={historyOf(selected.lot)}
-            onApprove={() =>
-              runReview(selected.lot, 'approved', null, `"${selected.lot.name}" aprobada y publicada`)
+            events={historyOf(selected)}
+            checklistItems={queue.checklist}
+            allRows={queue.rows}
+            onApprove={(checkedItems) =>
+              runReview(
+                selected.lot,
+                'approved',
+                null,
+                `"${selected.lot.name}" aprobada y publicada`,
+                undefined,
+                checkedItems
+              )
             }
             onReject={(reason) =>
               runReview(selected.lot, 'rejected', reason, `"${selected.lot.name}" rechazada`)
@@ -220,14 +249,30 @@ function ApprovalQueue({ queue }: { queue: ModerationQueue }) {
   );
 }
 
-/** Historial de moderación derivado de la fila: el envío a revisión y la última decisión, si
- *  la hubo. Cuando exista una tabla `listing_moderation_events` se reemplaza por su query. */
+/** Historial de moderación derivado de la fila: el envío a revisión, la última decisión, si
+ *  la hubo, y cada aprobación con el checklist que se tildó (0092). Cuando exista una tabla
+ *  `listing_moderation_events` se reemplaza por su query. */
 function historyOf(
-  lot: AdminParkingLot
+  row: LotRow
 ): Array<{ id: string; label: string; detail: string | null; at: string }> {
+  const { lot } = row;
   const events: Array<{ id: string; label: string; detail: string | null; at: string }> = [
     { id: `${lot.id}-submit`, label: 'Enviada a revisión', detail: null, at: lot.submittedAt },
   ];
+  row.reviewChecks.forEach((check, index) => {
+    const done = check.items.filter((item) => item.checked).length;
+    events.push({
+      id: `${lot.id}-checklist-${index}`,
+      label: `Checklist de aprobación: ${done} de ${check.items.length} puntos tildados`,
+      detail:
+        check.items.length > 0
+          ? check.items
+              .map((item) => `${item.checked ? '✓' : '✗'} ${item.label}${item.required ? '' : ' (opcional)'}`)
+              .join(' · ')
+          : 'Sin puntos de checklist para esta publicación',
+      at: check.at,
+    });
+  });
   if (lot.reviewedAt) {
     const label =
       lot.approvalStatus === 'approved'
@@ -242,25 +287,22 @@ function historyOf(
   return events.sort((a, b) => b.at.localeCompare(a.at));
 }
 
-const SLA_TONE = {
-  ok: 'var(--gg-border-strong)',
-  info: 'var(--gg-info)',
-  warn: 'var(--gg-warn)',
-  danger: 'var(--gg-danger)',
-} as const;
+const SLA_TONE = SLA_COLORS;
 
 function ApprovalListItem({
   row,
   now,
+  thresholds,
   isSelected,
   onSelect,
 }: {
   row: LotRow;
   now: number;
+  thresholds: SlaThresholds;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const level = slaLevel(row.ageHours);
+  const level = slaLevel(row.ageHours, thresholds);
 
   return (
     <li>
@@ -325,7 +367,7 @@ function ApprovalListItem({
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <span style={{ color: SLA_TONE[level], fontSize: 'var(--gg-fs-sm)', fontWeight: 600 }}>
+          <span style={{ color: SLA_TEXT_COLORS[level], fontSize: 'var(--gg-fs-sm)', fontWeight: 600 }}>
             {formatRelative(row.lot.submittedAt, now)}
           </span>
         </div>
@@ -524,7 +566,9 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
           <ListingReviewPanel
             row={detail}
             now={now}
-            events={historyOf(detail.lot)}
+            events={historyOf(detail)}
+            checklistItems={queue.checklist}
+            allRows={queue.rows}
             onApprove={() => undefined}
             onReject={() => undefined}
             onRequestChanges={() => undefined}
@@ -535,14 +579,6 @@ function ActiveListings({ queue }: { queue: ModerationQueue }) {
     </>
   );
 }
-
-const PAUSE_REASONS = [
-  'Denuncias de acceso bloqueado',
-  'Datos de la publicación no verificables',
-  'Reclamos reiterados de conductores',
-  'Verificación de titularidad pendiente',
-  'Otro',
-];
 
 /**
  * El diálogo importante de la gestión forzada: antes de sacar una cochera de circulación hay que
@@ -558,7 +594,10 @@ function ForcePauseDialog({
   onClose: () => void;
   onConfirm: (state: ModerationState, reason: string, until: string | null) => void;
 }) {
-  const [reason, setReason] = useState(PAUSE_REASONS[0]);
+  // Motivos de pausa (Configuración → Moderación, 0095). Si el elegido se desactiva, el primero.
+  const pauseReasons = useModerationConfig().reasons.pause;
+  const [chosenReason, setReason] = useState<string | null>(null);
+  const reason = chosenReason && pauseReasons.includes(chosenReason) ? chosenReason : pauseReasons[0];
   const [detail, setDetail] = useState('');
   const [until, setUntil] = useState('');
 
@@ -624,7 +663,7 @@ function ForcePauseDialog({
       <div className="gg-field">
         <label className="gg-field__label">Motivo</label>
         <select className="gg-select" value={reason} onChange={(e) => setReason(e.target.value)}>
-          {PAUSE_REASONS.map((r) => (
+          {pauseReasons.map((r) => (
             <option key={r} value={r}>
               {r}
             </option>

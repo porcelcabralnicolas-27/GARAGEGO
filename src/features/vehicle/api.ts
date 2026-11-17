@@ -1,5 +1,7 @@
+import { appLimits } from '@/lib/appLimits';
 import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { guessImageContentType } from '@/lib/imageMime';
+import { activeRegion } from '@/lib/region';
 import { supabase } from '@/lib/supabase/client';
 
 import type { Vehicle, VehicleImage } from './types';
@@ -50,6 +52,8 @@ export async function listMyVehicles(userId: string): Promise<Vehicle[]> {
     .from('vehicles')
     .select('*')
     .eq('user_id', userId)
+    // Demo regional (0090): cada país tiene sus vehículos.
+    .eq('region', activeRegion().code)
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data.map(mapVehicleRow);
@@ -198,7 +202,7 @@ export async function deleteVehicleImage(image: { id: string; storagePath: strin
 export function getVehicleErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message: unknown }).message);
-    if (message.includes('max_vehicles_reached')) return 'Ya cargaste el máximo de 3 vehículos.';
+    if (message.includes('max_vehicles_reached')) return `Ya cargaste el máximo de ${appLimits().maxVehiclesPerRegion} vehículos en este país.`;
     if (message.includes('duplicate key') || message.includes('vehicles_user_id_plate_key')) {
       return 'Ya tenés un vehículo cargado con esa patente.';
     }

@@ -1,5 +1,7 @@
 import { useJsApiLoader } from '@react-google-maps/api';
 
+import { activeRegion } from '@/lib/region';
+
 import { withCountry, type Geocoder } from './geocodeTypes';
 
 const GOOGLE_MAPS_WEB_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_WEB_API_KEY ?? '';
@@ -15,7 +17,7 @@ export function useGeocoder(): Geocoder {
 
   const geocode: Geocoder['geocode'] = (query) =>
     new Promise((resolve, reject) => {
-      new google.maps.Geocoder().geocode({ address: withCountry(query), region: 'ar' }, (results, status) => {
+      new google.maps.Geocoder().geocode({ address: withCountry(query), region: activeRegion().geocodeRegion }, (results, status) => {
         if (status === google.maps.GeocoderStatus.ZERO_RESULTS) {
           resolve(null);
           return;

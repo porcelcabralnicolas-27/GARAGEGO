@@ -16,6 +16,10 @@ export type Database = {
           /** Habilita el backoffice. Solo lectura desde el cliente: la migración 0033 tiene un
            *  trigger que ignora cualquier intento de cambiarla vía PostgREST. */
           is_admin: boolean;
+          // Región de la demo de presentación regional (0086).
+          region: 'AR' | 'US';
+          // Cuenta eliminada desde Ajustes (0088): el perfil queda anonimizado.
+          deleted_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -34,6 +38,7 @@ export type Database = {
           avatar_url?: string | null;
           active_role?: 'client' | 'owner';
           is_owner_enabled?: boolean;
+          region?: 'AR' | 'US';
         };
         Relationships: [];
       };
@@ -101,6 +106,8 @@ export type Database = {
           /** Migración 0079: cuándo y quién verificó la titularidad. Lo pone la RPC de revisión. */
           ownership_verified_at: string | null;
           ownership_verified_by: string | null;
+          /** Demo regional (0087): país de la cochera, tomado del perfil del dueño al publicarla. */
+          region: 'AR' | 'US';
           rating_avg: number;
           is_active: boolean;
           created_at: string;
@@ -251,6 +258,12 @@ export type Database = {
           overtime_minutes: number;
           overtime_charge: number;
           created_at: string;
+          // Mercado Pago (0084). Una reserva 'pending' con mercadopago está esperando el pago.
+          payment_method: 'wallet' | 'mercadopago';
+          payment_deadline: string | null;
+          paid_at: string | null;
+          /** País de la cochera (0087). */
+          region: 'AR' | 'US';
         };
         Insert: never;
         Update: never;
@@ -327,6 +340,8 @@ export type Database = {
           related_ticket_id: string | null;
           read: boolean;
           created_at: string;
+          /** País de la reserva relacionada (0087). */
+          region: 'AR' | 'US';
         };
         Insert: never;
         Update: {
@@ -341,7 +356,7 @@ export type Database = {
           reporter_id: string;
           reporter_role: 'client' | 'owner';
           subject: string;
-          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          category: /** Código del catálogo ticket_categories (0094). */ string;
           status: 'open' | 'resolved';
           related_booking_id: string | null;
           related_parking_lot_id: string | null;
@@ -354,7 +369,7 @@ export type Database = {
           reporter_id: string;
           reporter_role: 'client' | 'owner';
           subject: string;
-          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          category: /** Código del catálogo ticket_categories (0094). */ string;
           related_booking_id?: string | null;
           related_parking_lot_id?: string | null;
         };
@@ -389,6 +404,8 @@ export type Database = {
           brand: string | null;
           model: string | null;
           color: string | null;
+          // País del vehículo en la demo regional (0090); lo pone la base al crearlo.
+          region: 'AR' | 'US';
           created_at: string;
         };
         Insert: {
@@ -459,6 +476,41 @@ export type Database = {
         };
         Returns: string;
       };
+      // Mercado Pago (0084): reserva que espera el pago, y el estado del pago o de una recarga.
+      create_booking_pending_payment: {
+        Args: {
+          p_parking_lot_id: string;
+          p_date: string;
+          p_start_time: string;
+          p_end_time: string;
+          p_vehicle_id: string;
+        };
+        Returns: string;
+      };
+      get_booking_payment_status: {
+        Args: { p_booking_id: string };
+        Returns: {
+          status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+          payment_method: 'wallet' | 'mercadopago';
+          payment_deadline: string | null;
+          seconds_left: number | null;
+          last_payment_status: string | null;
+          last_payment_detail: string | null;
+          refund_status: 'none' | 'required' | 'done' | 'failed';
+          can_retry: boolean;
+        }[];
+      };
+      get_topup_status: {
+        Args: { p_attempt_id: string };
+        Returns: {
+          status: 'created' | 'approved' | 'expired' | 'superseded' | 'failed';
+          amount: number;
+          expires_at: string;
+          last_payment_status: string | null;
+          last_payment_detail: string | null;
+          refund_status: 'none' | 'required' | 'done' | 'failed';
+        }[];
+      };
       start_booking: {
         Args: { p_booking_id: string };
         Returns: undefined;
@@ -479,7 +531,7 @@ export type Database = {
         Args: {
           p_reporter_role: 'client' | 'owner';
           p_subject: string;
-          p_category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          p_category: /** Código del catálogo ticket_categories (0094). */ string;
           p_body: string;
           p_related_booking_id: string | null;
           p_related_parking_lot_id: string | null;
@@ -490,7 +542,7 @@ export type Database = {
           reporter_id: string;
           reporter_role: 'client' | 'owner';
           subject: string;
-          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          category: /** Código del catálogo ticket_categories (0094). */ string;
           status: 'open' | 'resolved';
           related_booking_id: string | null;
           related_parking_lot_id: string | null;
@@ -515,6 +567,26 @@ export type Database = {
       demo_topup_enabled: {
         Args: Record<string, never>;
         Returns: boolean;
+      };
+      // Límites configurables que la app puede leer, como { clave: valor } (0093).
+      public_settings: {
+        Args: Record<string, never>;
+        Returns: Record<string, unknown>;
+      };
+      // Servicios y categorías de tickets, activos e inactivos (0094).
+      public_catalogs: {
+        Args: Record<string, never>;
+        Returns: Record<string, unknown>;
+      };
+      // Documentos de titularidad que se piden: todas las reglas, en orden (0097).
+      public_document_requirements: {
+        Args: Record<string, never>;
+        Returns: unknown[];
+      };
+      // Antes de eliminar la cuenta: reservas que la bloquean y saldo que se perdería (0088).
+      account_deletion_check: {
+        Args: Record<string, never>;
+        Returns: { driver_bookings: number; owner_bookings: number; wallet_balance: number }[];
       };
       // Listados paginados por cursor (0059).
       list_client_bookings: {
@@ -633,7 +705,7 @@ export type Database = {
           reporter_id: string;
           reporter_role: 'client' | 'owner';
           subject: string;
-          category: 'access' | 'payment' | 'listing' | 'behavior' | 'other';
+          category: /** Código del catálogo ticket_categories (0094). */ string;
           status: 'open' | 'resolved';
           related_booking_id: string | null;
           related_parking_lot_id: string | null;
