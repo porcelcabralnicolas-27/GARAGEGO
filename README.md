@@ -8,8 +8,8 @@ administración** web para el equipo.
 
 **Versión web publicada:** https://garagego.garagego2027.workers.dev
 
-**APK de Android:** https://expo.dev/artifacts/eas/zyMTFOcx2hJTpr93sniYKpA54DDxAYazvZPwynvdcaU.apk
-*(build del 17/11/2026 sobre `main`, commit `c6f1b07`, con todas las migraciones hasta la 0097)*
+**APK de Android:** https://expo.dev/artifacts/eas/_gUsrdE5Q-vOvdN1O-DjQr-dt3VqBjmtjDHYSfyvEdQ.apk
+*(build del 17/11/2026 sobre `main`, commit `71f75d1`, con todas las migraciones hasta la 0102)*
 
 **Repositorio:** https://github.com/porcelcabralnicolas-27/GARAGEGO · versión **1.0.0** en la rama
 `main`
@@ -91,15 +91,16 @@ la billetera.
 | Funciona hoy | Pendiente |
 |---|---|
 | Cuenta con correo o Google, recuperación de contraseña con código (tolera la demora del servidor de correo al guardar la clave nueva) | Mercado Pago en producción (credenciales reales, webhook de producción y temas legales) |
-| Búsqueda por ubicación y por dirección, «disponible ahora» | Retiro de fondos del propietario |
-| Reserva, pago con billetera o con Mercado Pago, inicio, fin, excedente y cancelación con reintegro | Notificaciones push remotas |
-| Recarga de saldo con Mercado Pago (modo de prueba) y reintegros al medio de pago | Modo oscuro (paleta definida, sin activar) |
-| Cierre automático de reservas olvidadas y recordatorios | Publicación en Play Store y App Store |
-| Publicación en 5 pasos con verificación de titularidad (se verifica una sola vez) | Prueba de la versión iOS en un dispositivo |
-| Moderación con pedido de cambios validado y checklist configurable | Correo propio (SMTP) para enviar el código de recuperación |
-| Chat, notificaciones por rol y centro de ayuda | Buscador inteligente que recomiende cocheras según destino, horario, precio y reservas anteriores |
-| Panel de administración con datos reales y Configuración de reglas sin tocar el código | Sesión guardada de forma cifrada, servidor de rutas propio y pruebas automáticas de punta a punta |
-| Eliminación de cuenta (avisa reservas y saldo pendientes) | Inglés en todas las pantallas (hoy, solo en el recorrido de la demo regional) |
+| Correo propio (SMTP con Gmail) para la verificación de la cuenta y el código de recuperación | Retiro de fondos del propietario |
+| Búsqueda por ubicación y por dirección, «disponible ahora» | Notificaciones push remotas |
+| Reserva, pago con billetera o con Mercado Pago, inicio, fin, excedente y cancelación con reintegro | Modo oscuro (paleta definida, sin activar) |
+| Recarga de saldo con Mercado Pago (modo de prueba) y reintegros al medio de pago | Publicación en Play Store y App Store |
+| Cierre automático de reservas olvidadas y recordatorios | Prueba de la versión iOS en un dispositivo |
+| Publicación en 5 pasos con verificación de titularidad (se verifica una sola vez) | Buscador inteligente que recomiende cocheras según destino, horario, precio y reservas anteriores |
+| Moderación con pedido de cambios validado y checklist configurable | Sesión guardada de forma cifrada, servidor de rutas propio y pruebas automáticas de punta a punta |
+| Chat, notificaciones por rol y centro de ayuda | Inglés en todas las pantallas (hoy, solo en el recorrido de la demo regional) |
+| Panel de administración con datos reales y Configuración de reglas sin tocar el código | |
+| Eliminación de cuenta (avisa reservas y saldo pendientes) | |
 | Demo regional de Estados Unidos: idioma, moneda y zona horaria | |
 
 > **Mercado Pago está en modo de prueba:** se paga con las tarjetas y el comprador de prueba de
