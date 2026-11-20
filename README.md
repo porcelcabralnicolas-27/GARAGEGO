@@ -105,7 +105,8 @@ la billetera.
 
 > **Mercado Pago está en modo de prueba:** se paga con las tarjetas y el comprador de prueba de
 > Mercado Pago, y el saldo no tiene valor en dinero. Los topes (por defecto, recargas de $ 100 a
-> $ 50.000 y saldo máximo de $ 200.000) se cambian desde Configuración → Límites.
+> $ 50.000 y saldo máximo de $ 200.000) se cambian desde Configuración → Límites. Ver
+> [Cómo probar el pago](#cómo-probar-el-pago).
 
 ---
 
@@ -219,6 +220,56 @@ Ver [admin-panel/README.md](admin-panel/README.md).
 
 ---
 
+## Cómo probar el pago
+
+Mercado Pago está en **modo de prueba**: no se mueve dinero real y el saldo de la billetera no
+tiene valor. Sirve para las dos formas de pago: **recargar saldo** (Perfil → Recargar saldo) y
+**pagar una reserva con Mercado Pago** (en la pantalla de pago, opción *Mercado Pago*). En la demo
+de Estados Unidos solo se paga con la billetera.
+
+1. **Tener un comprador de prueba.** Mercado Pago no acepta pagos de prueba con una cuenta real.
+   Se crea desde [Mercado Pago Developers](https://www.mercadopago.com.ar/developers/panel/app)
+   → *Tu aplicación* → *Cuentas de prueba* → *Crear cuenta de prueba* (tipo comprador, país
+   Argentina). Su usuario y contraseña **no se guardan en el repositorio**: se piden al equipo.
+2. En la app, elegir el monto o la reserva y tocar **Recargar … con Mercado Pago** o **Pagar … con
+   Mercado Pago**. Se abre el checkout de Mercado Pago.
+3. **Iniciar sesión con el comprador de prueba**, mejor en una pestaña de incógnito para no
+   mezclarlo con una cuenta real. Si pide un código por correo, está en *Cuentas de prueba*, junto
+   a esa cuenta.
+4. Pagar con una de las **tarjetas de prueba** de abajo. El **nombre del titular** decide el
+   resultado: con `APRO` el pago se aprueba.
+5. Al volver a la app, la recarga se acredita o la reserva queda confirmada. Si no se ve enseguida,
+   el webhook o la sincronización automática (`mp-sync`, cada 5 minutos) la completan.
+
+**Tarjetas de prueba** (Argentina, publicadas por Mercado Pago):
+
+| Tarjeta | Número | Código | Vencimiento |
+|---|---|---|---|
+| Mastercard crédito | `5031 7557 3453 0604` | `123` | `11/30` |
+| Visa crédito | `4509 9535 6623 3704` | `123` | `11/30` |
+| American Express | `3711 803032 57522` | `1234` | `11/30` |
+| Mastercard débito | `5287 3383 1025 3304` | `123` | `11/30` |
+| Visa débito | `4002 7686 9439 5619` | `123` | `11/30` |
+
+**Resultado según el nombre del titular:**
+
+| Titular | Resultado | Documento |
+|---|---|---|
+| `APRO` | Pago aprobado | DNI `12345678` |
+| `OTHE` | Rechazado por error general | DNI `12345678` |
+| `CONT` | Pendiente de pago | — |
+| `FUND` | Rechazado por importe insuficiente | — |
+| `SECU` | Rechazado por código de seguridad inválido | — |
+| `EXPI` | Rechazado por fecha de vencimiento | — |
+
+Hay más casos en la
+[documentación de Mercado Pago](https://www.mercadopago.com.ar/developers/es/docs/checkout-pro-preferences/integration-test/test-cards).
+
+> Los tokens de Mercado Pago (`MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`) son secretos de las Edge
+> Functions de Supabase y tampoco se suben al repositorio, aunque sean de prueba.
+
+---
+
 ## Pruebas
 
 | Comando | Qué verifica |
@@ -328,6 +379,8 @@ Diseño de las pantallas en Figma:
 
 | Documento | Contenido |
 |---|---|
-| `Documentacionfinal_Tecnica_GarageGo.pdf` | Documentación técnica completa: requerimientos, casos de uso, arquitectura, base de datos, seguridad, pruebas, instalación, despliegue y estado final |
-| `Manual_de_Usuario_GarageGo.docx` | Manual de usuario |
+| `Documentacion_del_Proyecto_GarageGo.pdf` | Documentación del proyecto |
+| `Manual_de_Usuario_GarageGo.pdf` | Manual de usuario |
+| `Presentacion_Tecnica_GarageGo_version_final.pdf` | Presentación técnica |
+| `GarageGo_PresentacionComercial2026_version_final.pdf` | Presentación comercial |
 | `diagramas/` | Arquitectura, casos de uso, modelo de datos, estados de la reserva y navegación |
