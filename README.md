@@ -262,9 +262,6 @@ de Estados Unidos solo se paga con la billetera.
 | `SECU` | Rechazado por código de seguridad inválido | — |
 | `EXPI` | Rechazado por fecha de vencimiento | — |
 
-Hay más casos en la
-[documentación de Mercado Pago](https://www.mercadopago.com.ar/developers/es/docs/checkout-pro-preferences/integration-test/test-cards).
-
 > Los tokens de Mercado Pago (`MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`) son secretos de las Edge
 > Functions de Supabase y tampoco se suben al repositorio, aunque sean de prueba.
 
