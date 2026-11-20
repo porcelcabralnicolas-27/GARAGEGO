@@ -64,7 +64,7 @@ export async function fetchUserDirectory(): Promise<UserDirectoryEntry[]> {
     activeRole: r.active_role,
     isOwnerEnabled: r.is_owner_enabled,
     createdAt: r.created_at,
-    email: r.email,
+    email: visibleEmail(r.email),
     vehiclesCount: r.vehicles_count,
     bookingsMade: r.bookings_made,
     lotsTotal: r.lots_total,
@@ -88,5 +88,13 @@ export type UserDetail = {
 export async function fetchUserDetail(userId: string): Promise<UserDetail> {
   const { data, error } = await guard().rpc('admin_user_detail', { p_user_id: userId });
   if (error) throw error;
-  return data as UserDetail;
+  const detail = data as UserDetail;
+  return { ...detail, email: visibleEmail(detail.email) };
+}
+
+/** Al borrar una cuenta, `delete-account` la da de baja con el borrado suave de Supabase, que
+ *  reemplaza su email por un valor aleatorio sin arroba: no es un correo, así que el panel muestra
+ *  «—» en su lugar. */
+function visibleEmail(email: string | null): string | null {
+  return email && email.includes('@') ? email : null;
 }

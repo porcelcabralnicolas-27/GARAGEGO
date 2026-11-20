@@ -2,6 +2,7 @@ import { sanitizeErrorMessage } from '@/lib/errorMessages';
 import { olderThanFilter, toPage, type MessageCursor, type Page } from '@/lib/pagination';
 import { activeRegion } from '@/lib/region';
 import { supabase } from '@/lib/supabase/client';
+import { formatCalendarDate } from '@/lib/time';
 
 import type {
   ReporterRole,
@@ -224,7 +225,7 @@ export async function listTicketTargets(
   return bookings.filter((b) => !archivedLotIds.has(b.parking_lot_id)).map((b) => ({
     key: `booking:${b.id}`,
     label: lotNameById.get(b.parking_lot_id) ?? 'Estacionamiento',
-    sublabel: `${b.date} · ${b.start_time.slice(0, 5)}`,
+    sublabel: `${formatCalendarDate(b.date)} · ${b.start_time.slice(0, 5)}`,
     bookingId: b.id,
     parkingLotId: null,
   }));

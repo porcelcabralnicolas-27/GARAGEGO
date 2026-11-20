@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { formatMoney } from '@/lib/money';
-import { businessToDisplay } from '@/lib/time';
+import { businessToDisplay, formatCalendarDate } from '@/lib/time';
 import type { BookingStatus } from '@/features/booking/types';
 import { BOOKING_STATUS_LABELS } from '@/features/booking/types';
 import { spacing, useTheme } from '@/theme';
@@ -77,7 +77,7 @@ export function BookingCard({
         {subtitle}
       </Text>
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: 4 }]}>
-        {shownStart.date} · {shownStart.time} - {shownEnd.time}
+        {formatCalendarDate(shownStart.date)} · {shownStart.time} - {shownEnd.time}
       </Text>
       {vehicleLabel ? (
         <View style={styles.vehicleRow}>

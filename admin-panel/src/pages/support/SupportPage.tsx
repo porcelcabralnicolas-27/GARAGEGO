@@ -229,8 +229,7 @@ function TransactionsView() {
       <div style={{ marginTop: 'var(--gg-s3)' }}>
         <SchemaNote>
           Solo lectura, de a {TRANSACTIONS_PAGE_SIZE} movimientos. Ordenar por una columna ordena los
-          ya cargados. Un ajuste manual de saldo (`wallet_transactions.type = 'adjustment'`) sería
-          otra RPC `security definer`: `wallets` no tiene policy de UPDATE.
+          ya cargados.
         </SchemaNote>
       </div>
 

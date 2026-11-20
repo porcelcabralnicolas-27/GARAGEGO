@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { TRANSACTION_TYPE_LABELS, type TransactionType } from '../../domain';
 import { formatDate, formatMoney, formatRelative, fullName } from '../../lib/format';
+import { formatCalendarDate } from '../../lib/time';
 import { PageHeader } from '../../shell/PageHeader';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer, DrawerSection, Modal } from '../../ui/overlays';
@@ -12,7 +14,6 @@ import {
   Callout,
   EmptyState,
   KeyValue,
-  SchemaNote,
   StarRating,
   UserCell,
 } from '../../ui/primitives';
@@ -617,7 +618,7 @@ function UserDetailDrawer({
                 {detail.recentBookings.map((b, i) => (
                   <li key={i} className="gg-row" style={{ padding: '4px 0' }}>
                     <span style={{ flex: 1, minWidth: 0 }}>{b.lot_name ?? '—'}</span>
-                    <span style={{ color: 'var(--gg-text-faint)' }}>{b.date}</span>
+                    <span style={{ color: 'var(--gg-text-faint)' }}>{formatCalendarDate(b.date)}</span>
                     <span className="gg-mono">{formatMoney(b.total_price)}</span>
                   </li>
                 ))}
@@ -636,7 +637,9 @@ function UserDetailDrawer({
                   className="gg-row"
                   style={{ padding: '3px 0', fontSize: 'var(--gg-fs-sm)' }}
                 >
-                  <span style={{ flex: 1 }}>{t.type}</span>
+                  <span style={{ flex: 1 }}>
+                    {TRANSACTION_TYPE_LABELS[t.type as TransactionType] ?? t.type}
+                  </span>
                   <span className={t.amount >= 0 ? 'gg-amount--pos' : 'gg-amount--neg'}>
                     {formatMoney(t.amount)}
                   </span>
@@ -646,11 +649,6 @@ function UserDetailDrawer({
           </DrawerSection>
         </>
       ) : null}
-
-      <SchemaNote>
-        Suspender o dar de baja una cuenta requeriría una migración: `profiles` no tiene ningún
-        campo de estado.
-      </SchemaNote>
     </Drawer>
   );
 }

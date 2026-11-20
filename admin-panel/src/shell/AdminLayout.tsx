@@ -18,6 +18,7 @@ const TITLES: Record<string, string> = {
   '/usuarios': 'Gestión de usuarios',
   '/inventario': 'Control de inventario',
   '/soporte': 'Operaciones de soporte',
+  '/configuracion': 'Configuración',
 };
 
 /** Guard de ruta: sin admin, al login. */

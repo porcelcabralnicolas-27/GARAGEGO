@@ -5,9 +5,9 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, usePathname, useRouter, useSegments, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -111,7 +111,9 @@ function useProfileLoader() {
 
 function useNavigationGuard() {
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
+  const initialRouteChecked = useRef(false);
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const isInitializing = useAuthStore((s) => s.isInitializing);
@@ -140,11 +142,32 @@ function useNavigationGuard() {
 
     const expectedGroup = profile.activeRole === 'owner' ? '(owner)' : '(client)';
     const isInRoleGroup = group === '(client)' || group === '(owner)';
+    const isFirstCheck = !initialRouteChecked.current;
+    initialRouteChecked.current = true;
+
+    // Recarga o enlace directo en modo propietario a una dirección que existe en los dos roles
+    // (/profile, /bookings…): expo-router la resuelve como conductor. Se abre la misma pantalla del
+    // propietario en vez de mandarlo a Publicaciones. Solo al abrir la app: después de un cambio de
+    // rol manda el propio cambio de rol (ver ProfileView).
+    if (isFirstCheck && group === '(client)' && expectedGroup === '(owner)' && hasOwnerTwin(segments)) {
+      router.replace(`/(owner)${pathname}` as Href);
+      return;
+    }
 
     if (inAuthGroup || (isInRoleGroup && group !== expectedGroup)) {
       router.replace(profile.activeRole === 'owner' ? '/(owner)/parkings' : '/(client)');
     }
-  }, [session, profile, segments, isInitializing, passwordRecoveryInProgress, router]);
+  }, [session, profile, segments, pathname, isInitializing, passwordRecoveryInProgress, router]);
+}
+
+/**
+ * Pantallas del conductor que tienen una igual en el propietario, con la misma dirección.
+ * `/profile/topup` es solo del conductor (el propietario no recarga saldo desde su perfil).
+ */
+function hasOwnerTwin(segments: string[]): boolean {
+  const [, section, subsection] = segments;
+  if (section === 'bookings' || section === 'messages' || section === 'notifications') return true;
+  return section === 'profile' && subsection !== 'topup';
 }
 
 /** Pide al abrir la app lo que el equipo configura en el panel: los límites (0093) y los catálogos

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { IconButton } from '@/components/ui/IconButton';
 import type { AppNotification } from '@/features/notifications/types';
+import { formatMoneyInText } from '@/lib/money';
 import { formatDayMonthTime } from '@/lib/time';
 import { radius, spacing, useTheme } from '@/theme';
 
@@ -46,7 +47,7 @@ export function NotificationListItem({
 
       {notification.description ? (
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant, marginTop: spacing.xs }]}>
-          {notification.description}
+          {formatMoneyInText(notification.description)}
         </Text>
       ) : null}
     </Card>
