@@ -174,7 +174,7 @@ Google Cloud (por paquete y firma, y por dominio).
 
 ### Base de datos
 
-1. Ejecutar **en orden** las **97 migraciones** de [`supabase/migrations/`](supabase/migrations/)
+1. Ejecutar **en orden** las **102 migraciones** de [`supabase/migrations/`](supabase/migrations/)
    desde el SQL Editor de Supabase (o con `supabase db push`). Todas son idempotentes. Algunas
    indican en su encabezado un orden especial (por ejemplo, la 0051).
 2. En **Authentication**: habilitar Email (con código de recuperación) y Google; agregar
@@ -280,7 +280,7 @@ GARAGEGO/
 │
 ├── shared/                     # Dominio y manejo de horas compartidos con el panel
 ├── supabase/
-│   ├── migrations/             # 97 migraciones SQL: esquema, RLS, funciones, disparadores y jobs
+│   ├── migrations/             # 102 migraciones SQL: esquema, RLS, funciones, disparadores y jobs
 │   ├── functions/              # Edge Functions: Mercado Pago y baja de la cuenta
 │   └── tests/                  # Scripts de verificación SQL
 ├── scripts/                    # Pruebas de concurrencia y de zonas horarias
